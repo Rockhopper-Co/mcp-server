@@ -24,6 +24,7 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
+    "@rollup/rollup-darwin-arm64": "^4.60.1",
     "@types/node": "^22.15.2",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
