@@ -21,6 +21,10 @@
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run src/__tests__/unit src/__tests__/api-client.test.ts src/__tests__/server.test.ts",
+    "test:e2e": "vitest run src/__tests__/e2e",
+    "test:e2e:cov": "vitest run --config vitest.e2e.config.ts --coverage",
+    "test:cov": "vitest run --coverage",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build",
     "release:patch": "npm version patch -m 'release: v%s' && git push && git push --tags",
@@ -36,6 +40,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.2",
+    "@vitest/coverage-v8": "^3.2.4",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "vitest": "^3.1.2"
