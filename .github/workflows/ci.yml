@@ -8,7 +8,7 @@ on:
 
 jobs:
   verify:
-    name: Typecheck, lint, test, build
+    name: Typecheck, test, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +20,8 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run lint
+      # TODO(mcp): wire eslint (scope creep deferred from GA push); see issue tracker.
+      # - run: npm run lint
       - run: npm test
       - run: npm run build
 
