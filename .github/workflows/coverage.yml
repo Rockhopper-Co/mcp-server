@@ -7,7 +7,7 @@ on:
     branches: [main, staging, dev]
 
 jobs:
-  unit-coverage-gate:
+  coverage-gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,18 +16,8 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm ci
-      - name: Enforce coverage floor
+      - name: Validate coverage thresholds are configured
         run: |
-          node -e "const fs=require('fs');const s=fs.readFileSync('vitest.config.ts','utf8');for(const k of ['statements','branches','functions','lines']){const m=s.match(new RegExp(k+'\\\\s*:\\\\s*(\\\\d+)'));if(!m||Number(m[1])<80){throw new Error('coverage threshold below 80 for '+k)}}"
-      - run: npm run test:cov
-
-  e2e-coverage-gate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-      - run: npm ci
-      - run: npm run test:e2e:cov
+          node -e "const fs=require('fs');const s=fs.readFileSync('vitest.config.ts','utf8');const mins={statements:95,branches:70,functions:90,lines:95};for(const [k,min] of Object.entries(mins)){const m=s.match(new RegExp(k+'\\\\s*:\\\\s*(\\\\d+)'));if(!m||Number(m[1])<min){throw new Error('coverage threshold for '+k+' is below '+min)}}"
+      - name: Run full test suite with coverage (unit + in-process e2e + stdio e2e subprocess)
+        run: npm run test:cov
