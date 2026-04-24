@@ -66,7 +66,7 @@ describe('ApiClient method coverage', () => {
     const fetchSpy = mockFetch({});
     vi.stubGlobal('fetch', fetchSpy);
     await client.getComment(5);
-    await client.replyToComment(5, { message: 'reply' });
+    await client.replyToComment(5, { message: 'reply', versionInternalId: 42 });
     await client.resolveComment(5);
     expect(fetchSpy).toHaveBeenCalledTimes(3);
     expect(fetchSpy.mock.calls[1][1].method).toBe('POST');
@@ -78,9 +78,9 @@ describe('ApiClient method coverage', () => {
     const fetchSpy = mockFetch({});
     vi.stubGlobal('fetch', fetchSpy);
     await client.createReviewRequest({
-      fileVersionInternalId: 1,
+      versionId: 1,
       subject: 's',
-      reviewerMsIds: ['u'],
+      reviewerIds: [42],
     });
     await client.approveReview(1, { notes: 'ok' });
     await client.updateEnrolledFile('file-1', { name: 'New' });

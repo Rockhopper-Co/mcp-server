@@ -12,9 +12,11 @@ export function registerWriteReviewTools(
       title: 'Create Review Request',
       description:
         'Request a review for a specific file version. Assigns reviewers who ' +
-        'will be notified to approve or comment on the version.',
+        'will be notified to approve or comment on the version. ' +
+        'Reviewer IDs are numeric internal user IDs — use list_team_members or ' +
+        'the team resource to resolve platform IDs (msId / googleId) to internal IDs first.',
       inputSchema: {
-        fileVersionInternalId: z
+        versionId: z
           .number()
           .describe('Internal ID of the file version to review'),
         subject: z
@@ -27,10 +29,10 @@ export function registerWriteReviewTools(
           .max(5000)
           .optional()
           .describe('Optional description of what to review'),
-        reviewerMsIds: z
-          .array(z.string())
+        reviewerIds: z
+          .array(z.number().int().positive())
           .min(1)
-          .describe('Platform IDs of users to assign as reviewers'),
+          .describe('Internal user IDs of reviewers to assign'),
       },
       annotations: {
         readOnlyHint: false,
@@ -38,18 +40,13 @@ export function registerWriteReviewTools(
         idempotentHint: false,
       },
     },
-    async ({
-      fileVersionInternalId,
-      subject,
-      description,
-      reviewerMsIds,
-    }) => {
+    async ({ versionId, subject, description, reviewerIds }) => {
       try {
         const review = await api.createReviewRequest({
-          fileVersionInternalId,
+          versionId,
           subject,
           description,
-          reviewerMsIds,
+          reviewerIds,
         });
 
         return {
@@ -60,7 +57,7 @@ export function registerWriteReviewTools(
                 `Review request created (id: ${review.id}):\n` +
                 `Subject: "${review.subject}"\n` +
                 `Status: ${review.status}\n` +
-                `Assigned to ${reviewerMsIds.length} reviewer(s)`,
+                `Assigned to ${reviewerIds.length} reviewer(s)`,
             },
           ],
         };
