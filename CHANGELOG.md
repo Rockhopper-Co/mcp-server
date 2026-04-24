@@ -15,6 +15,8 @@ First public release on npm as `@rockhopper-co/mcp-server`.
 - `prepublishOnly` build hook and `release:*` version scripts.
 - `files` whitelist so only `dist/`, `README.md`, and `LICENSE` ship.
 - npm provenance via OIDC in the publish workflow.
+- `tsconfig.build.json` to exclude test files from the published
+  tarball; production build now ships ~22 kB packed (vs ~80 kB before).
 
 ### Changed
 - Required `versionInternalId` on `add_comment` and `reply_to_comment`
