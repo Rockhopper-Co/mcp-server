@@ -1,0 +1,33 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main, staging, dev]
+  pull_request:
+    branches: [main, staging, dev]
+
+jobs:
+  unit-coverage-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Enforce coverage floor
+        run: |
+          node -e "const fs=require('fs');const s=fs.readFileSync('vitest.config.ts','utf8');for(const k of ['statements','branches','functions','lines']){const m=s.match(new RegExp(k+'\\\\s*:\\\\s*(\\\\d+)'));if(!m||Number(m[1])<80){throw new Error('coverage threshold below 80 for '+k)}}"
+      - run: npm run test:cov
+
+  e2e-coverage-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run test:e2e:cov
