@@ -101,4 +101,26 @@ describe('ApiClient method coverage', () => {
     );
     vi.unstubAllGlobals();
   });
+
+  it('should call getFileVersions', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+    await client.getFileVersions('file-1');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/file-versions/file/file-1',
+      expect.anything(),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('should call getFileComments', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+    await client.getFileComments('file-1');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/file-chat/file-1',
+      expect.anything(),
+    );
+    vi.unstubAllGlobals();
+  });
 });
