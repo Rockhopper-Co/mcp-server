@@ -19,13 +19,13 @@ Copy the token — it's shown only once.
 ### 2. Install
 
 ```bash
-npm install -g @rockhopper/mcp-server
+npm install -g @rockhopper-co/mcp-server
 ```
 
 Or run directly with npx:
 
 ```bash
-npx @rockhopper/mcp-server
+npx @rockhopper-co/mcp-server
 ```
 
 ### 3. Configure your AI tool
@@ -39,7 +39,7 @@ Add to your MCP config (`~/.claude/mcp.json` or Claude Desktop settings):
   "mcpServers": {
     "rockhopper": {
       "command": "npx",
-      "args": ["@rockhopper/mcp-server"],
+      "args": ["-y", "@rockhopper-co/mcp-server"],
       "env": {
         "ROCKHOPPER_TOKEN": "rh_pat_your_token_here",
         "ROCKHOPPER_API_URL": "https://api.rockhopper.co"
@@ -58,7 +58,7 @@ Add to `.cursor/mcp.json` in your project:
   "mcpServers": {
     "rockhopper": {
       "command": "npx",
-      "args": ["@rockhopper/mcp-server"],
+      "args": ["-y", "@rockhopper-co/mcp-server"],
       "env": {
         "ROCKHOPPER_TOKEN": "rh_pat_your_token_here",
         "ROCKHOPPER_API_URL": "https://api.rockhopper.co"

@@ -38,6 +38,7 @@ describe('MCP stdio protocol e2e', () => {
         const addCommentResult = await client.callTool('add_comment', {
           fileMsId: 'file-1',
           message: 'hello from e2e',
+          versionInternalId: 42,
         });
         expect(addCommentResult.error).toBeUndefined();
         expect(JSON.stringify(addCommentResult.result)).toContain(

@@ -1,12 +1,19 @@
 {
-  "name": "@rockhopper/mcp-server",
-  "version": "0.1.0",
+  "name": "@rockhopper-co/mcp-server",
+  "version": "0.2.0",
   "description": "Rockhopper MCP server — expose file metadata, versions, reviews, and comments to AI tools",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
     "rockhopper-mcp": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
@@ -14,7 +21,11 @@
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build",
+    "release:patch": "npm version patch -m 'release: v%s' && git push && git push --tags",
+    "release:minor": "npm version minor -m 'release: v%s' && git push && git push --tags",
+    "release:major": "npm version major -m 'release: v%s' && git push && git push --tags"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -32,11 +43,26 @@
   },
   "keywords": [
     "mcp",
+    "model-context-protocol",
     "rockhopper",
     "excel",
     "file-management",
-    "ai-tools"
+    "ai-tools",
+    "cursor",
+    "claude"
   ],
-  "license": "UNLICENSED",
-  "private": true
+  "author": "Rockhopper Technologies",
+  "license": "MIT",
+  "homepage": "https://rockhopper.co",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rockhopper-co/rockhopper-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rockhopper-co/rockhopper-mcp/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }
