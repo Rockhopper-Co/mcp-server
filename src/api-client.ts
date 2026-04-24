@@ -111,7 +111,7 @@ export class ApiClient {
     fileMsId: string;
     message: string;
     cellReference?: string;
-    versionInternalId?: number;
+    versionInternalId: number;
   }): Promise<FileChat> {
     return this.request<FileChat>('/file-chat', {
       method: 'POST',
@@ -121,7 +121,7 @@ export class ApiClient {
 
   async replyToComment(
     chatId: number,
-    body: { message: string },
+    body: { message: string; versionInternalId: number },
   ): Promise<FileChat> {
     return this.request<FileChat>(`/file-chat/${chatId}/replies`, {
       method: 'POST',
@@ -167,10 +167,10 @@ export class ApiClient {
   }
 
   async createReviewRequest(body: {
-    fileVersionInternalId: number;
+    versionId: number;
     subject: string;
     description?: string;
-    reviewerMsIds: string[];
+    reviewerIds: number[];
   }): Promise<ReviewRequest> {
     return this.request<ReviewRequest>('/reviews/requests', {
       method: 'POST',

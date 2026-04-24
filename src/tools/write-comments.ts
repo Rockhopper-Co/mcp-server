@@ -11,19 +11,24 @@ export function registerWriteCommentTools(
     {
       title: 'Add Comment',
       description:
-        'Add a new comment to an enrolled file. Optionally attach it to a ' +
-        'specific cell reference and/or file version.',
+        'Add a new comment to an enrolled file. Every comment is scoped to a ' +
+        'specific file version — typically the latest (live) version unless ' +
+        'the user explicitly wants to comment on a historical version.',
       inputSchema: {
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         message: z.string().min(1).max(5000).describe('Comment text'),
+        versionInternalId: z
+          .number()
+          .int()
+          .positive()
+          .describe(
+            'Required. Internal ID of the file version to attach the comment to. ' +
+              'Fetch via list_file_versions to find the correct id for the latest or target version.',
+          ),
         cellReference: z
           .string()
           .optional()
           .describe('Cell reference (e.g. "Sheet1!A1")'),
-        versionInternalId: z
-          .number()
-          .optional()
-          .describe('Internal ID of the file version to attach the comment to'),
       },
       annotations: {
         readOnlyHint: false,
@@ -71,10 +76,20 @@ export function registerWriteCommentTools(
     'reply_to_comment',
     {
       title: 'Reply to Comment',
-      description: 'Reply to an existing comment thread.',
+      description:
+        'Reply to an existing comment thread. Replies are scoped to a file version ' +
+        '— pass the same versionInternalId as the parent thread or the current live version.',
       inputSchema: {
         chatId: z.number().describe('Internal ID of the parent comment'),
         message: z.string().min(1).max(5000).describe('Reply text'),
+        versionInternalId: z
+          .number()
+          .int()
+          .positive()
+          .describe(
+            'Required. Internal ID of the file version the reply is scoped to. ' +
+              'Typically the live version or the same version as the parent comment.',
+          ),
       },
       annotations: {
         readOnlyHint: false,
@@ -82,9 +97,12 @@ export function registerWriteCommentTools(
         idempotentHint: false,
       },
     },
-    async ({ chatId, message }) => {
+    async ({ chatId, message, versionInternalId }) => {
       try {
-        const reply = await api.replyToComment(chatId, { message });
+        const reply = await api.replyToComment(chatId, {
+          message,
+          versionInternalId,
+        });
 
         return {
           content: [
