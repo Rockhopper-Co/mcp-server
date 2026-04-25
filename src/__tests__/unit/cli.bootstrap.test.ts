@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-describe('index bootstrap', () => {
+describe('cli bootstrap', () => {
   afterEach(() => {
     vi.resetModules();
     vi.unstubAllEnvs();
@@ -16,7 +16,7 @@ describe('index bootstrap', () => {
       }) as never);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    await expect(import('../../index.js')).rejects.toThrow('exit');
+    await expect(import('../../cli.js')).rejects.toThrow('exit');
 
     expect(errorSpy).toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -41,7 +41,7 @@ describe('index bootstrap', () => {
       StdioServerTransport: transportMock,
     }));
 
-    await import('../../index.js');
+    await import('../../cli.js');
 
     expect(apiClientMock).toHaveBeenCalledWith({
       baseUrl: 'http://localhost:3100',
