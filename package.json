@@ -60,10 +60,10 @@
   "homepage": "https://rockhopper.co",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rockhopper-co/mcp-server.git"
+    "url": "https://github.com/Rockhopper-Co/mcp-server.git"
   },
   "bugs": {
-    "url": "https://github.com/rockhopper-co/mcp-server/issues"
+    "url": "https://github.com/Rockhopper-Co/mcp-server/issues"
   },
   "publishConfig": {
     "access": "public",
