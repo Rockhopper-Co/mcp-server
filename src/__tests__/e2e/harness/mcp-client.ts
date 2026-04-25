@@ -34,7 +34,7 @@ export class McpStdioClient {
       process.platform === 'win32' ? 'tsx.cmd' : 'tsx',
     );
 
-    this.process = spawn(tsxBin, ['src/index.ts'], {
+    this.process = spawn(tsxBin, ['src/cli.ts'], {
       cwd: projectRoot,
       env: { ...process.env, ...env },
       stdio: 'pipe',

@@ -54,9 +54,9 @@ jobs:
 
       - name: Verify bin is executable
         run: |
-          test -f dist/index.js
-          head -n1 dist/index.js | grep -q '^#!/usr/bin/env node'
-          chmod +x dist/index.js
+          test -f dist/cli.js
+          head -n1 dist/cli.js | grep -q '^#!/usr/bin/env node'
+          chmod +x dist/cli.js
 
       - name: Verify package version matches tag
         if: startsWith(github.ref, 'refs/tags/v')

@@ -1,12 +1,19 @@
 {
   "name": "@rockhopper-co/mcp-server",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Rockhopper MCP server — expose file metadata, versions, reviews, and comments to AI tools",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
-    "rockhopper-mcp": "dist/index.js"
+    "rockhopper-mcp": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -16,8 +23,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "start": "node dist/cli.js",
+    "dev": "tsx watch src/cli.ts",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
