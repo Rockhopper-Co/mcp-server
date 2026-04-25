@@ -73,7 +73,7 @@ export class McpStdioClient {
     const response = await this.request('initialize', {
       protocolVersion: '2024-11-05',
       capabilities: {},
-      clientInfo: { name: 'rockhopper-mcp-test-client', version: '1.0.0' },
+      clientInfo: { name: 'mcp-server-test-client', version: '1.0.0' },
     });
 
     this.notify('notifications/initialized', {});
