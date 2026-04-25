@@ -31,6 +31,11 @@ jobs:
           registry-url: https://registry.npmjs.org/
           cache: npm
 
+      # Trusted Publishing (OIDC) requires npm CLI >= 11.5.1.
+      # Node 20 ships with npm 10.x, so upgrade explicitly.
+      - name: Upgrade npm CLI for Trusted Publishing
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: npm ci
 
@@ -67,8 +72,10 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: npm publish --dry-run --access public
 
-      - name: Publish to npm (provenance)
+      # Trusted Publishing: no NPM_TOKEN. npm CLI exchanges the GitHub OIDC
+      # token for a short-lived registry credential automatically, and
+      # provenance is implied (cannot be disabled). See:
+      # https://docs.npmjs.com/trusted-publishers
+      - name: Publish to npm (Trusted Publishing + provenance)
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
