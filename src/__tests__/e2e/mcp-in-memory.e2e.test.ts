@@ -42,7 +42,7 @@ describe('MCP in-memory protocol e2e', () => {
       InMemoryTransport.createLinkedPair();
 
     client = new Client(
-      { name: 'rockhopper-mcp-inproc-test-client', version: '1.0.0' },
+      { name: 'mcp-server-inproc-test-client', version: '1.0.0' },
       { capabilities: {} },
     );
 

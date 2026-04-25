@@ -151,7 +151,7 @@ npm run typecheck
 ## Architecture
 
 ```
-AI Tool (Claude/Cursor) <--stdio--> rockhopper-mcp <--HTTPS--> Rockhopper API <--> PostgreSQL
+AI Tool (Claude/Cursor) <--stdio--> mcp-server <--HTTPS--> Rockhopper API <--> PostgreSQL
 ```
 
 The MCP server is a thin adapter. It translates MCP tool/resource requests into Rockhopper REST API calls, authenticated with the user's PAT. All authorization is enforced server-side — the MCP server has no direct database access.
