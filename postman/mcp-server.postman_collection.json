@@ -1,0 +1,1050 @@
+{
+  "info": {
+    "name": "Rockhopper MCP Server",
+    "description": "Generated Postman collection for MCP gateway smoke testing and tool/resource/prompt calls.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Smoke test",
+      "item": [
+        {
+          "name": "Healthz",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{GATEWAY_URL}}/healthz",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            },
+            "description": "Expect 200 with {\"status\":\"ok\"}"
+          }
+        },
+        {
+          "name": "MCP Initialize",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"init-1\",\n  \"method\": \"initialize\",\n  \"params\": {\n    \"protocolVersion\": \"2025-03-26\",\n    \"capabilities\": {},\n    \"clientInfo\": {\n      \"name\": \"Postman\",\n      \"version\": \"1.0.0\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            }
+          }
+        },
+        {
+          "name": "MCP Tools List",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tools-list-1\",\n  \"method\": \"tools/list\",\n  \"params\": {}\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tools",
+      "item": [
+        {
+          "name": "add_comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-add_comment\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"add_comment\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Add a new comment to an enrolled file. Every comment is scoped to a specific file version — typically the latest (live) version unless the user explicitly wants to comment on a historical version."
+          },
+          "response": []
+        },
+        {
+          "name": "approve_review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-approve_review\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"approve_review\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Approve a review request. Only assigned reviewers can approve."
+          },
+          "response": []
+        },
+        {
+          "name": "create_review_request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-create_review_request\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"create_review_request\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Request a review for a specific file version. Assigns reviewers who will be notified to approve or comment on the version. Reviewer IDs are numeric internal user IDs — use list_team_members or the team resource to resolve platform IDs (msId / googleId) to internal IDs first."
+          },
+          "response": []
+        },
+        {
+          "name": "get_cell_history",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-get_cell_history\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_cell_history\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Get the change history for a specific cell in an enrolled file. Shows how the cell value changed across versions."
+          },
+          "response": []
+        },
+        {
+          "name": "get_file_comments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-get_file_comments\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_file_comments\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Get all comments and discussion threads on an enrolled file. Includes cell references, resolution status, and threaded replies."
+          },
+          "response": []
+        },
+        {
+          "name": "get_file_versions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-get_file_versions\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_file_versions\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Get the version history for a specific enrolled file. Returns all version snapshots with semver numbering, timestamps, and attribution."
+          },
+          "response": []
+        },
+        {
+          "name": "get_reviews",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-get_reviews\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_reviews\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Get all review requests for a specific file version, or for the latest version of a file. Provide either a versionId or fileMsId (for latest version reviews)."
+          },
+          "response": []
+        },
+        {
+          "name": "get_unattributed_changes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-get_unattributed_changes\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_unattributed_changes\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Get pending cell-level changes that have not been attributed to a committed version yet. Optionally filter by sheet name."
+          },
+          "response": []
+        },
+        {
+          "name": "list_files",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-list_files\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"list_files\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "List all Excel files enrolled in the user's Rockhopper workspace. Optionally filter by search term matching file names."
+          },
+          "response": []
+        },
+        {
+          "name": "reply_to_comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-reply_to_comment\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"reply_to_comment\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Reply to an existing comment thread. Replies are scoped to a file version — pass the same versionInternalId as the parent thread or the current live version."
+          },
+          "response": []
+        },
+        {
+          "name": "resolve_comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-resolve_comment\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"resolve_comment\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Mark a comment as resolved. Only the comment author can resolve it."
+          },
+          "response": []
+        },
+        {
+          "name": "search_files",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-search_files\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"search_files\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Search enrolled files by name. Returns matching files with their metadata including uncommitted change status."
+          },
+          "response": []
+        },
+        {
+          "name": "update_file_description",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-update_file_description\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"update_file_description\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Update the display name of an enrolled file."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Resources",
+      "item": [
+        {
+          "name": "enrolled-file",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"resource-enrolled-file\",\n  \"method\": \"resources/read\",\n  \"params\": {\n    \"uri\": {\n      \"template\": \"rockhopper://files/{fileMsId}\",\n      \"parts\": [\n        \"rockhopper://files/\",\n        {\n          \"name\": \"fileMsId\",\n          \"operator\": \"\",\n          \"names\": [\n            \"fileMsId\"\n          ],\n          \"exploded\": false\n        }\n      ]\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Details for a specific enrolled file by its platform ID"
+          },
+          "response": []
+        },
+        {
+          "name": "enrolled-files",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"resource-enrolled-files\",\n  \"method\": \"resources/read\",\n  \"params\": {\n    \"uri\": \"rockhopper://files\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "All Excel files enrolled in the current user's Rockhopper workspace"
+          },
+          "response": []
+        },
+        {
+          "name": "file-comments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"resource-file-comments\",\n  \"method\": \"resources/read\",\n  \"params\": {\n    \"uri\": {\n      \"template\": \"rockhopper://files/{fileMsId}/comments\",\n      \"parts\": [\n        \"rockhopper://files/\",\n        {\n          \"name\": \"fileMsId\",\n          \"operator\": \"\",\n          \"names\": [\n            \"fileMsId\"\n          ],\n          \"exploded\": false\n        },\n        \"/comments\"\n      ]\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "All comments and chat threads on a specific enrolled file"
+          },
+          "response": []
+        },
+        {
+          "name": "file-version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"resource-file-version\",\n  \"method\": \"resources/read\",\n  \"params\": {\n    \"uri\": {\n      \"template\": \"rockhopper://versions/{versionId}\",\n      \"parts\": [\n        \"rockhopper://versions/\",\n        {\n          \"name\": \"versionId\",\n          \"operator\": \"\",\n          \"names\": [\n            \"versionId\"\n          ],\n          \"exploded\": false\n        }\n      ]\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Details for a specific file version by internal ID"
+          },
+          "response": []
+        },
+        {
+          "name": "file-versions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"resource-file-versions\",\n  \"method\": \"resources/read\",\n  \"params\": {\n    \"uri\": {\n      \"template\": \"rockhopper://files/{fileMsId}/versions\",\n      \"parts\": [\n        \"rockhopper://files/\",\n        {\n          \"name\": \"fileMsId\",\n          \"operator\": \"\",\n          \"names\": [\n            \"fileMsId\"\n          ],\n          \"exploded\": false\n        },\n        \"/versions\"\n      ]\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "All version snapshots for a specific enrolled file"
+          },
+          "response": []
+        },
+        {
+          "name": "review-detail",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"resource-review-detail\",\n  \"method\": \"resources/read\",\n  \"params\": {\n    \"uri\": {\n      \"template\": \"rockhopper://reviews/{reviewId}\",\n      \"parts\": [\n        \"rockhopper://reviews/\",\n        {\n          \"name\": \"reviewId\",\n          \"operator\": \"\",\n          \"names\": [\n            \"reviewId\"\n          ],\n          \"exploded\": false\n        }\n      ]\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Details for a specific review request"
+          },
+          "response": []
+        },
+        {
+          "name": "team-detail",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"resource-team-detail\",\n  \"method\": \"resources/read\",\n  \"params\": {\n    \"uri\": {\n      \"template\": \"rockhopper://teams/{teamId}\",\n      \"parts\": [\n        \"rockhopper://teams/\",\n        {\n          \"name\": \"teamId\",\n          \"operator\": \"\",\n          \"names\": [\n            \"teamId\"\n          ],\n          \"exploded\": false\n        }\n      ]\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Details for a specific team including members and roles"
+          },
+          "response": []
+        },
+        {
+          "name": "unattributed-changes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"resource-unattributed-changes\",\n  \"method\": \"resources/read\",\n  \"params\": {\n    \"uri\": {\n      \"template\": \"rockhopper://files/{fileMsId}/changes\",\n      \"parts\": [\n        \"rockhopper://files/\",\n        {\n          \"name\": \"fileMsId\",\n          \"operator\": \"\",\n          \"names\": [\n            \"fileMsId\"\n          ],\n          \"exploded\": false\n        },\n        \"/changes\"\n      ]\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Pending cell-level changes not yet attributed to a version for a file"
+          },
+          "response": []
+        },
+        {
+          "name": "version-reviews",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"resource-version-reviews\",\n  \"method\": \"resources/read\",\n  \"params\": {\n    \"uri\": {\n      \"template\": \"rockhopper://versions/{versionId}/reviews\",\n      \"parts\": [\n        \"rockhopper://versions/\",\n        {\n          \"name\": \"versionId\",\n          \"operator\": \"\",\n          \"names\": [\n            \"versionId\"\n          ],\n          \"exploded\": false\n        },\n        \"/reviews\"\n      ]\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "All review requests associated with a specific file version"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Prompts",
+      "item": [
+        {
+          "name": "file-overview",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"prompt-file-overview\",\n  \"method\": \"prompts/get\",\n  \"params\": {\n    \"name\": \"file-overview\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Get a comprehensive overview of an enrolled file — versions, comments, reviews, and changes."
+          },
+          "response": []
+        },
+        {
+          "name": "pending-reviews",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"prompt-pending-reviews\",\n  \"method\": \"prompts/get\",\n  \"params\": {\n    \"name\": \"pending-reviews\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Show all pending review requests for the latest version of a file."
+          },
+          "response": []
+        },
+        {
+          "name": "summarize-file-changes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"prompt-summarize-file-changes\",\n  \"method\": \"prompts/get\",\n  \"params\": {\n    \"name\": \"summarize-file-changes\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Summarize recent version changes and unattributed edits for an enrolled file."
+          },
+          "response": []
+        },
+        {
+          "name": "unresolved-comments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ACCESS_TOKEN}}",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"prompt-unresolved-comments\",\n  \"method\": \"prompts/get\",\n  \"params\": {\n    \"name\": \"unresolved-comments\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "List all unresolved comments on a file for follow-up."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "GATEWAY_URL",
+      "value": "https://mcp.rockhopper.co"
+    },
+    {
+      "key": "ACCESS_TOKEN",
+      "value": ""
+    }
+  ]
+}
