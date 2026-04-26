@@ -75,6 +75,18 @@ Add to `.cursor/mcp.json` in your project:
 | `ROCKHOPPER_TOKEN` | Yes | — | Personal Access Token (starts with `rh_pat_`) |
 | `ROCKHOPPER_API_URL` | No | `https://api.rockhopper.co` | Rockhopper API base URL |
 
+## Postman
+
+A starter Postman collection + environment files are available in
+`postman/` for gateway smoke testing (`/healthz`, `/mcp initialize`,
+`/mcp tools/list`) across local/dev/staging/production.
+
+Regenerate artifacts with:
+
+```bash
+npm run generate:postman
+```
+
 ## Available Tools
 
 | Tool | Description |

@@ -1,0 +1,18 @@
+name: Postman drift
+
+on:
+  pull_request:
+  push:
+    branches: [main, staging, dev]
+
+jobs:
+  generated-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run generate:postman:check
