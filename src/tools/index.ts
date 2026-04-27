@@ -10,7 +10,15 @@ import { registerWriteCommentTools } from './write-comments.js';
 import { registerWriteReviewTools } from './write-reviews.js';
 import { registerWriteFileTool } from './write-files.js';
 
-export function registerTools(server: McpServer, api: ApiClient): void {
+export interface RegisterToolsOptions {
+  scope?: 'read-only' | 'read-write';
+}
+
+export function registerTools(
+  server: McpServer,
+  api: ApiClient,
+  options?: RegisterToolsOptions,
+): void {
   // Read-only tools (available to all scopes)
   registerListFilesTool(server, api);
   registerGetVersionsTool(server, api);
@@ -20,7 +28,9 @@ export function registerTools(server: McpServer, api: ApiClient): void {
   registerSearchTool(server, api);
 
   // Write tools (require read-write scope on PAT)
-  registerWriteCommentTools(server, api);
-  registerWriteReviewTools(server, api);
-  registerWriteFileTool(server, api);
+  if (options?.scope !== 'read-only') {
+    registerWriteCommentTools(server, api);
+    registerWriteReviewTools(server, api);
+    registerWriteFileTool(server, api);
+  }
 }

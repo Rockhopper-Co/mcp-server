@@ -1,0 +1,17 @@
+$kind: http-request
+name: Create Comment
+method: POST
+url: '{{BACKEND_URL}}/file-chat'
+order: 3000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "fileMsId": "{{fileMsId}}",
+      "message": "This is a comment",
+      "cellReference": "A1",
+      "versionInternalId": 1
+    }

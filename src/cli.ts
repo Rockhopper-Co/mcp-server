@@ -21,6 +21,24 @@ const apiClient = new ApiClient({
   token: ROCKHOPPER_TOKEN,
 });
 
+try {
+  await apiClient.getMe();
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('401') || msg.includes('403')) {
+    console.error(
+      'Error: ROCKHOPPER_TOKEN is invalid or expired.\n' +
+        'Create a new Personal Access Token in Rockhopper Settings and set it as ROCKHOPPER_TOKEN.',
+    );
+  } else {
+    console.error(
+      `Error: Could not reach Rockhopper API at ${ROCKHOPPER_API_URL}.\n` +
+        `Details: ${msg}`,
+    );
+  }
+  process.exit(1);
+}
+
 const server = createServer(apiClient);
 
 const transport = new StdioServerTransport();

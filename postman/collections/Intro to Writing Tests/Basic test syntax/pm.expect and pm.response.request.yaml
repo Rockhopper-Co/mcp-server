@@ -1,0 +1,53 @@
+$kind: http-request
+description: |-
+  This request demonstrates how to make assertions with `pm.response()` or `pm.expect()` within the second parameter of the `pm.test()` function.
+
+  Send the request to view the results of the sample tests in the "Test Results" tab in the response viewer.
+
+  ### Working with the `pm.expect()` and `pm.response()` functions
+
+  The `pm.expect()` generic assertion function relies on [Chai.js](https://www.chaijs.com/), a BDD / TDD assertion library for node.
+
+  ```
+  pm.test("Environment to be production", function () {
+    pm.expect(pm.environment.get("env")).to.equal("production");
+  });
+
+  ```
+
+  You can also use a second optional parameter with the `pm.expect()` function to create a custom error message.
+
+  ```
+  pm.test("Using a custom error message", function () {
+      pm.expect(false, 'nooo why fail??').to.be.ok;
+  });
+
+  ```
+
+  The `pm.response()` method uses `pm.expect()` under the hood.
+
+  Using `pm.response()` as your base assertion allows you to receive more specific error messages when debugging. Here are some [`pm.response()` methods](https://www.getpostman.com/docs/v6/postman/scripts/postman_sandbox_api_reference#response-assertion-api-in-test-scripts). Review the error messages under the **Test Results** tab to see the difference.
+url: https://postman-echo.com/get?foo1=bar1&foo2=bar2
+method: GET
+queryParams:
+  foo1: bar1
+  foo2: bar2
+scripts:
+  - type: afterResponse
+    code: |
+      // Note the difference in the test failure message under the **Test Results** tab when using pm.response vs. pm.expect
+      pm.test("Status code is 200 - pm.response", function () {
+          pm.response.to.have.status(201); // written to fail
+      });
+
+      pm.test("Status code is 200 - pm.expect", function () {
+          pm.expect(pm.response.code).to.equal(201); //written to fail
+      });
+
+      // Using a 2nd optional parameter with the pm.expect function to create a custom error message 
+      pm.test("Using a custom error message", function () {
+          pm.expect(false, 'nooo why fail??').to.be.ok;
+      });
+    language: text/javascript
+examples: ./.resources/pm.expect and pm.response.resources/examples
+order: 2000

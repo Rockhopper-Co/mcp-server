@@ -1,0 +1,8 @@
+$kind: http-request
+name: Get Team
+method: GET
+url: '{{BACKEND_URL}}/teams/{{teamId}}'
+order: 1000
+pathVariables:
+  - key: teamId
+    value: '1'

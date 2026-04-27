@@ -1,0 +1,33 @@
+$kind: collection
+description: |-
+  # About this collection
+
+  Postman provides dynamic variables that use the [Faker library](https://www.npmjs.com/package/@faker-js/faker) to generate sample data, including random names, addresses, and email addresses.
+
+  This collection demonstrates the use of dynamic variables to create randomized mock data. The examples in this collection utilize various data types and showcase how dynamic variables can help simulate real-world data within your API testing environment.
+
+  ## Using this collection
+
+  **Step 1: Send requests**
+
+  Select a request from the collection, review the request parameters and pre-request scripts, then hit "Send" to execute the request.
+
+  **Step 2: Review the "Body" and "Pre-request Script"** **tabs**
+
+  Understand how dynamic variables are used to generate mock data. Dynamic variables can be used in the request URL and Body, or even as part of a Pre-Request or Test script for more complex use cases (see "Create mock blog post" request).
+
+  **Step 3: Customize (optional)**
+
+  Customize dynamic variables to better suit your specific use case. Save the changes, and execute the requests.
+
+  **Step 4: Analyze responses**
+
+  Examine the response body to see the generated mock data. Note that the responses will be different each time you send the request, as the dynamic variables ensure randomized data generation.
+
+  Enjoy testing with diverse and dynamic data!
+
+  ## Resources
+
+  [Dynamic variables](https://learning.postman.com/docs/writing-scripts/script-references/variables-list/)
+variables:
+  baseUrl: https://postman-echo.com

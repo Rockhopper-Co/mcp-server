@@ -1,0 +1,19 @@
+$kind: collection
+description: |-
+  This folder helps you understand how to work with the [Postman Sandbox](https://www.getpostman.com/docs/v6/postman/scripts/postman_sandbox), a JavaScript execution environment that is accessible during pre-request scripts and test scripts.
+
+  Whatever code you write under the pre-request and test tabs is executed in this sandbox.
+
+  Any code that you write under the "Tests" tab, in the Postman app will execute after your request.
+
+  Consequently, you have access to the `pm.response` object to make assertions against the actual response -- this is what we call a Postman test.
+
+  Review the example tests under the "Tests" tab.
+
+  > **Quick tips for syntax** 
+    
+
+  - Give each test a descriptive name. When the test fails, this will provide context to the error.
+  - Use `pm.response()` as your base assertion where possible to provide more descriptive error messages.
+  - Use the optional 2nd parameter in `pm.expect()` to create custom error messages.
+order: 1000

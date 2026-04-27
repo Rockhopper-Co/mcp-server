@@ -1,0 +1,343 @@
+$kind: http-request
+description: |-
+  **Description  
+  **This request is designed to test an API endpoint with a large set of query parameters. By sending this request, you can assess how well your API handles complex requests and analyze its response times and performance under a significant load.
+
+  **Request details  
+  **URL: [https://postman-echo.com/get](https://postman-echo.com/get)  
+  HTTP Method: GET  
+  Query Parameters: Multiple instances of foo1 through foo10 with varying values of "bar"
+
+  **Usage**  
+  To use this request, simply replace the URL with your own API endpoint and modify the query parameters according to your requirements.
+url: https://postman-echo.com/get?foo1=bar1&foo2=bar2&foo2=bar2&foo3=bar3&foo4=bar4&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10&foo5=bar5&foo6=bar6&foo7=bar7&foo8=bar8&foo9=bar9&foo10=bar10
+method: GET
+queryParams:
+  - key: foo1
+    value: bar1
+  - key: foo2
+    value: bar2
+  - key: foo2
+    value: bar2
+  - key: foo3
+    value: bar3
+  - key: foo4
+    value: bar4
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+  - key: foo5
+    value: bar5
+  - key: foo6
+    value: bar6
+  - key: foo7
+    value: bar7
+  - key: foo8
+    value: bar8
+  - key: foo9
+    value: bar9
+  - key: foo10
+    value: bar10
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Response time is less than 1000ms", function () {
+          pm.expect(pm.response.responseTime).to.be.below(1000);
+      });
+    language: text/javascript
+order: 1000

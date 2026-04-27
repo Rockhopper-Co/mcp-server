@@ -1,0 +1,19 @@
+$kind: http-request
+description: |-
+  This returns a `token` that you can use to retrieve information later on.
+
+  We have included a test to confirm if a token is returned. We have also added test scripts to copy the token to the `token` collection variable. This makes it easy for us to reuse this token in other requests in the collection.
+url: "{{baseUrl}}/register"
+method: POST
+scripts:
+  - type: afterResponse
+    code: |
+      pm.test("An access token is returned", () => {
+          pm.expect(pm.response.json()).to.have.property('token')
+          pm.expect(pm.response.json().token).to.be.a('string')
+          // Set the collection-scope "token" variable to the token received from the API
+          // This lets us use it in other requests
+          pm.collectionVariables.set('token', pm.response.json().token)
+      })
+    language: text/javascript
+order: 1000

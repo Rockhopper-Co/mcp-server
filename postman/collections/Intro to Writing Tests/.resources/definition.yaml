@@ -1,0 +1,35 @@
+$kind: collection
+description: |-
+  # About this collection
+
+  Postman's powerful scripting feature helps you to write a range of API tests in JavaScript, including integration, regression, and contract tests.
+
+  ## Using the collection
+
+  **Step 1:** Send the sample requests and view the response and test results.
+
+  **Step 2:** Replace the sample request URLs with your desired API endpoints.
+
+  **Step 3:** Customize the tests in the "Tests" tab if needed. Don't forget to save your changes.
+
+  ## Quick tips for writing tests
+
+  - Organize your test scenarios by grouping your requests in [collections](https://www.getpostman.com/docs/v6/postman/collections/intro_to_collections) and [folders](https://www.getpostman.com/docs/v6/postman/collections/managing_collections#adding-folders), and naming them descriptively
+  - Document your API’s requirements using [markdown in the descriptions](https://www.getpostman.com/docs/v6/postman/collections/using_markdown_for_descriptions)
+  - Use [variables](https://www.getpostman.com/docs/v6/postman/environments_and_globals/variables) to simulate more sophisticated user flows
+  - Common tests that will be run after every request can be added to collection-level tests or folder-level tests
+      
+
+  ## Resources
+
+  [Test scripts](https://www.getpostman.com/docs/v6/postman/scripts/test_scripts)
+
+  [Test examples](https://www.getpostman.com/docs/v6/postman/scripts/test_examples)
+
+  [Quick reference guide](https://community.getpostman.com/t/the-postman-cheatsheet-quick-reference-guide/1054)
+
+  [Examples and guides](https://github.com/DannyDainton/All-Things-Postman)
+
+  [Writing tests in Postman](http://blog.getpostman.com/2017/10/25/writing-tests-in-postman/)
+
+  [API testing tips from a Postman professional](http://blog.getpostman.com/2017/07/28/api-testing-tips-from-a-postman-professional/)

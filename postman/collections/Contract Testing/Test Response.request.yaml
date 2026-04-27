@@ -1,0 +1,43 @@
+$kind: http-request
+description: |-
+  The tests in this request validate that:
+
+  - the response code is 200
+  - the response is a JSON object
+  - the response has an 'arg' object
+  - the response has 'headers' object
+  - the response has a 'URL' property
+url: https://postman-echo.com/get?foo1=bar1&foo2=bar2
+method: GET
+queryParams:
+  foo1: bar1
+  foo2: bar2
+scripts:
+  - type: afterResponse
+    code: |
+      // Validate that the response code should be 200
+      pm.test("Status code is 200", function () {
+          pm.response.to.have.status(200);
+      });
+
+      // Validate that the response is json object
+      pm.test("Response is a json object", function () {
+          pm.expect(pm.response.json()).to.be.an('object');
+      });
+
+      // Validate that the response has an arg object
+      pm.test("Response to have 'arg' object", function () {
+          pm.expect(pm.response.json()).to.have.property('args');
+      });
+
+      // Validate that the response has headers object
+      pm.test("Response to have 'headers' object", function () {
+          pm.expect(pm.response.json()).to.have.property('headers');
+      });
+
+      // Validate that the response has url property
+      pm.test("Response to have 'url' property", function () {
+          pm.expect(pm.response.json()).to.have.property('url');
+      });
+    language: text/javascript
+order: 1000
