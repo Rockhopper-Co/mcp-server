@@ -36,8 +36,21 @@ describe('createServer wiring', () => {
 
     expect(mcpServerConstructor).toHaveBeenCalledTimes(1);
     expect(registerResourcesMock).toHaveBeenCalledWith(mcpServerInstance, apiClient);
-    expect(registerToolsMock).toHaveBeenCalledWith(mcpServerInstance, apiClient);
+    expect(registerToolsMock).toHaveBeenCalledWith(mcpServerInstance, apiClient, undefined);
     expect(registerPromptsMock).toHaveBeenCalledWith(mcpServerInstance, apiClient);
     expect(server).toBe(mcpServerInstance);
+  });
+
+  it('should pass scope options to registerTools', async () => {
+    const { createServer } = await import('../../server.js');
+    const apiClient = { any: 'client' } as any;
+
+    createServer(apiClient, { scope: 'read-only' });
+
+    expect(registerToolsMock).toHaveBeenCalledWith(
+      mcpServerInstance,
+      apiClient,
+      { scope: 'read-only' },
+    );
   });
 });
