@@ -1,0 +1,21 @@
+$kind: http-request
+description: |-
+  This request uses the saved `token` collection variable to access a secret 'name' stored against that token.
+
+  In this request, we used the `token` collection variable as a query param to fetch the name generated for that token. We have added a test to check that a name is correctly returned.
+url: "{{baseUrl}}/my-name?token={{token}}"
+method: GET
+queryParams:
+  token: "{{token}}"
+body:
+  type: json
+  content: ""
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("A name is returned", () => {
+          pm.expect(pm.response.json()).to.have.property('name');
+          pm.expect(pm.response.json().name).to.be.a('string');
+      })
+    language: text/javascript
+order: 2000

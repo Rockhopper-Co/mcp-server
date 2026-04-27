@@ -1,0 +1,17 @@
+$kind: http-request
+name: Create Review Request
+method: POST
+url: '{{BACKEND_URL}}/reviews/requests'
+order: 5000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "versionId": 1,
+      "subject": "Please review this version",
+      "description": "Review description",
+      "reviewerIds": [1, 2]
+    }

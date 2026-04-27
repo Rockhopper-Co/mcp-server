@@ -1,0 +1,20 @@
+$kind: http-request
+description: "This test is to validate the content type of the returned content. This SNIPPET is also available on the right sidebar under `Response headers: Content-Type header check`."
+url: https://postman-echo.com/patch
+method: PATCH
+body:
+  type: text
+  content: This is expected to be sent back as part of response body.
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Content-Type is present", function () {
+          pm.response.to.have.header("Content-Type");
+      });
+
+      pm.test("Content-Type is JSON", function () {
+          pm.response.to.be.json;
+      })
+    language: text/javascript
+examples: ./.resources/Data type.resources/examples
+order: 3000

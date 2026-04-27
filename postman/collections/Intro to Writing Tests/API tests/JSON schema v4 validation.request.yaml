@@ -1,0 +1,29 @@
+$kind: http-request
+description: |-
+  This test is written to validate that response payloads returned from the server are well-formed. It uses the [Tiny Validator for JSON Schema v4](http://geraintluff.github.io/tv4/).
+
+  The Postman sandbox offers a built-in tv4 validator to simplify your assertions. Use [JSON-schema](http://json-schema.org/) [draft v4](http://json-schema.org/latest/json-schema-core.html) to validate simple values and complex objects using a rich [validation vocabulary](http://json-schema.org/latest/json-schema-validation.html) ([examples](http://json-schema.org/examples.html)).
+url: https://postman-echo.com/get?foo1=bar1&foo2=bar2
+method: GET
+queryParams:
+  foo1: bar1
+  foo2: bar2
+scripts:
+  - type: afterResponse
+    code: |
+      var schema = {
+        "items": {
+          "type": "boolean"
+        }
+      };
+
+      var data1 = [true, false];
+      var data2 = [true, 123];
+
+      pm.test('Schema is valid', function() {
+        pm.expect(tv4.validate(data1, schema)).to.be.true;
+      //   pm.expect(tv4.validate(data2, schema)).to.be.true; // this statement would not be true
+      });
+    language: text/javascript
+examples: ./.resources/JSON schema v4 validation.resources/examples
+order: 6000

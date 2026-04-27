@@ -1,0 +1,8 @@
+$kind: http-request
+name: Get Review Activities
+method: GET
+url: '{{BACKEND_URL}}/reviews/requests/{{reviewId}}/activities'
+order: 4000
+pathVariables:
+  - key: reviewId
+    value: '1'

@@ -1,0 +1,53 @@
+$kind: http-example
+request:
+  url: https://postman-echo.com/post
+  method: POST
+  body:
+    type: urlencoded
+    content:
+      someHash: "7654321"
+      secondHash: 987654321asdfgh
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Encoding: gzip
+    Content-Type: application/json; charset=utf-8
+    Date: Thu, 15 Nov 2018 22:22:08 GMT
+    ETag: W/"277-9d2jX3MwxfNYN4a9mHbeHYeuEMA"
+    Server: nginx
+    set-cookie: sails.sid=s%3AG3Skk-KwKzhuN9bCFLG38XDvX_n76FY7.SnEQNLnssVB0vIWq0%2Bqn%2FoZhMdvJqAp6Toc8YMDlMhw; Path=/; HttpOnly
+    Vary: Accept-Encoding
+    Content-Length: "408"
+    Connection: keep-alive
+  body:
+    type: json
+    content: |-
+      {
+          "args": {},
+          "data": "",
+          "files": {},
+          "form": {
+              "someHash": "7654321",
+              "secondHash": "987654321asdfgh"
+          },
+          "headers": {
+              "x-forwarded-proto": "https",
+              "host": "postman-echo.com",
+              "content-length": "43",
+              "accept": "*/*",
+              "accept-encoding": "gzip, deflate",
+              "cache-control": "no-cache",
+              "content-type": "application/x-www-form-urlencoded",
+              "cookie": "sails.sid=s%3AUuE9kqyAFxbvBvvH8aX3WEBLXiNgjK7-.ErzxoeVFY7HfTK%2BPjoOs%2BzaP3yU8%2BcM59adz0oo9LlA",
+              "postman-token": "e6a118ae-af47-4fb6-ac35-3cf2bcbafd00",
+              "user-agent": "PostmanRuntime/7.3.0",
+              "x-forwarded-port": "443"
+          },
+          "json": {
+              "someHash": "7654321",
+              "secondHash": "987654321asdfgh"
+          },
+          "url": "https://postman-echo.com/post"
+      }
+order: 1000

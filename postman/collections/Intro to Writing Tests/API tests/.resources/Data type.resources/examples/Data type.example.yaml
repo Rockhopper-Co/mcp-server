@@ -1,0 +1,44 @@
+$kind: http-example
+request:
+  url: https://postman-echo.com/patch
+  method: PATCH
+  body:
+    type: text
+    content: This is expected to be sent back as part of response body.
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Encoding: gzip
+    Content-Type: application/json; charset=utf-8
+    Date: Thu, 15 Nov 2018 22:21:46 GMT
+    ETag: W/"237-50TomUYGT9/V9ahCSqZGYpnnS48"
+    Server: nginx
+    Vary: Accept-Encoding
+    Content-Length: "410"
+    Connection: keep-alive
+  body:
+    type: json
+    content: |-
+      {
+          "args": {},
+          "data": "This is expected to be sent back as part of response body.",
+          "files": {},
+          "form": {},
+          "headers": {
+              "x-forwarded-proto": "https",
+              "host": "postman-echo.com",
+              "content-length": "58",
+              "accept": "*/*",
+              "accept-encoding": "gzip, deflate",
+              "cache-control": "no-cache",
+              "content-type": "text/plain",
+              "cookie": "sails.sid=s%3AUuE9kqyAFxbvBvvH8aX3WEBLXiNgjK7-.ErzxoeVFY7HfTK%2BPjoOs%2BzaP3yU8%2BcM59adz0oo9LlA",
+              "postman-token": "ebd30dd5-0044-4665-ae5c-cb31118f1119",
+              "user-agent": "PostmanRuntime/7.3.0",
+              "x-forwarded-port": "443"
+          },
+          "json": null,
+          "url": "https://postman-echo.com/patch"
+      }
+order: 1000
