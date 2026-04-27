@@ -1,0 +1,8 @@
+$kind: collection
+description: |-
+  This folder contains examples of testing a single HTTP API request.
+
+  In the Postman app, under the "Tests" tab for each request, notice the test(s) written to validate specific assertions. Some of these tests are available as a "Snippet" on the right sidebar.
+
+  Send each request to see the results under the "Test Results" tab in the response viewer.
+order: 2000

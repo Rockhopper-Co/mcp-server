@@ -1,0 +1,18 @@
+$kind: http-request
+name: Reply to Comment
+method: POST
+url: '{{BACKEND_URL}}/file-chat/{{chatId}}/replies'
+order: 4000
+pathVariables:
+  - key: chatId
+    value: '1'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "message": "This is a reply",
+      "versionInternalId": 1
+    }

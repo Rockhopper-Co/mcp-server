@@ -1,0 +1,45 @@
+$kind: http-example
+request:
+  url: https://postman-echo.com/delete
+  method: DELETE
+  body:
+    type: text
+    content: This is expected to be sent back as part of response body.
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Encoding: gzip
+    Content-Type: application/json; charset=utf-8
+    Date: Thu, 15 Nov 2018 22:22:22 GMT
+    ETag: W/"236-unqr/LuiPP07B85WHuciASf+YdA"
+    Server: nginx
+    set-cookie: sails.sid=s%3Aa9JaDxhKoLl3zyptDL3Vbo-kXgiIoqOY.o566AhO0IGGXbdop127kZi0Xq9bHd0q3RjrHgs2G9c4; Path=/; HttpOnly
+    Vary: Accept-Encoding
+    Content-Length: "415"
+    Connection: keep-alive
+  body:
+    type: json
+    content: |-
+      {
+          "args": {},
+          "data": "This is expected to be sent back as part of response body.",
+          "files": {},
+          "form": {},
+          "headers": {
+              "x-forwarded-proto": "https",
+              "host": "postman-echo.com",
+              "content-length": "58",
+              "accept": "*/*",
+              "accept-encoding": "gzip, deflate",
+              "cache-control": "no-cache",
+              "content-type": "text/plain",
+              "cookie": "sails.sid=s%3AG3Skk-KwKzhuN9bCFLG38XDvX_n76FY7.SnEQNLnssVB0vIWq0%2Bqn%2FoZhMdvJqAp6Toc8YMDlMhw",
+              "postman-token": "a26a6cbb-abb4-4e8b-8a1e-4ba63450afcb",
+              "user-agent": "PostmanRuntime/7.3.0",
+              "x-forwarded-port": "443"
+          },
+          "json": null,
+          "url": "https://postman-echo.com/delete"
+      }
+order: 1000

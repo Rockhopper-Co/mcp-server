@@ -1,0 +1,44 @@
+$kind: http-request
+description: |-
+  This request uses tests to verify both the structure (existence and type of individual properties) and exact values of the response data.
+
+  Use `pm.expect(subject)` to wrap test subjects, and [Chai](https://www.chaijs.com/api/bdd/) for assertions.
+url: "{{baseUrl}}/post"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+        "title": "Sapiens",
+        "author": "Yuval Noah Harari",
+        "published": 2011
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      const getData = () => pm.response.json().data;
+
+      pm.test("Returns a book object", () => {
+          const data = getData();
+
+          // Check the expected properties exist
+          pm.expect(data).to.have.property("title");
+          pm.expect(data).to.have.property("author");
+          pm.expect(data).to.have.property("published");
+
+          // Check the values have the expected types
+          pm.expect(data.title).to.be.a('string');
+          pm.expect(data.author).to.be.a('string');
+          pm.expect(data.published).to.be.a('number');
+      });
+
+      pm.test("Return correct details for 'Sapiens' book", () => {
+          const data = getData();
+
+          // Check expected values are present
+          pm.expect(data.title).to.equal("Sapiens");
+          pm.expect(data.author).to.equal("Yuval Noah Harari");
+          pm.expect(data.published).to.equal(2011);
+      });
+    language: text/javascript
+order: 3000

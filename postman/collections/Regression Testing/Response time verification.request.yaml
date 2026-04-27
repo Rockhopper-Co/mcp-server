@@ -1,0 +1,22 @@
+$kind: http-request
+description: |-
+  This request has a test asserting that a response is received within a specific time limit (in this case 5 seconds). This is useful for ensuring consistent API performance.
+
+  You can access details of the response, such as response time, on the `pm.response` object. See the [response object documentation](https://learning.postman.com/docs/writing-scripts/script-references/postman-sandbox-api-reference/#scripting-with-response-data) for other properties available.
+url: "{{baseUrl}}/get"
+method: GET
+body:
+  type: json
+  content: |
+    {
+        "foo": "bar"
+    }
+scripts:
+  - type: afterResponse
+    code: |
+      pm.test("Verify response time is less than 5 seconds", function () {
+          const fiveSecondsMs = 5_000; // 5 seconds in milliseconds
+          pm.expect(pm.response.responseTime).to.be.below(fiveSecondsMs);
+      });
+    language: text/javascript
+order: 4000

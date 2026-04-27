@@ -1,0 +1,45 @@
+$kind: http-example
+request:
+  url: https://postman-echo.com/put
+  method: PUT
+  body:
+    type: text
+    content: This is expected to be sent back as part of response body.
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Encoding: gzip
+    Content-Type: application/json; charset=utf-8
+    Date: Thu, 15 Nov 2018 22:21:34 GMT
+    ETag: W/"235-EkrhuBWZKrBKKgRg6q6rJ7DOZ/o"
+    Server: nginx
+    set-cookie: sails.sid=s%3AUuE9kqyAFxbvBvvH8aX3WEBLXiNgjK7-.ErzxoeVFY7HfTK%2BPjoOs%2BzaP3yU8%2BcM59adz0oo9LlA; Path=/; HttpOnly
+    Vary: Accept-Encoding
+    Content-Length: "414"
+    Connection: keep-alive
+  body:
+    type: json
+    content: |-
+      {
+          "args": {},
+          "data": "This is expected to be sent back as part of response body.",
+          "files": {},
+          "form": {},
+          "headers": {
+              "x-forwarded-proto": "https",
+              "host": "postman-echo.com",
+              "content-length": "58",
+              "accept": "*/*",
+              "accept-encoding": "gzip, deflate",
+              "cache-control": "no-cache",
+              "content-type": "text/plain",
+              "cookie": "sails.sid=s%3AK8csWt5VZ3Oalv85HiBtffDcrSOJ-RiP.V14RjjJqkOv8%2BLXuHRmZ9l50G8S6eU16yLU%2F3N%2F0dKU",
+              "postman-token": "cc394095-6587-4079-bcba-3705b175115d",
+              "user-agent": "PostmanRuntime/7.3.0",
+              "x-forwarded-port": "443"
+          },
+          "json": null,
+          "url": "https://postman-echo.com/put"
+      }
+order: 1000

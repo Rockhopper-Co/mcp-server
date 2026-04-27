@@ -1,0 +1,8 @@
+$kind: http-request
+name: Get Reviews for Version
+method: GET
+url: '{{BACKEND_URL}}/reviews/versions/{{versionId}}/requests'
+order: 1000
+pathVariables:
+  - key: versionId
+    value: '1'

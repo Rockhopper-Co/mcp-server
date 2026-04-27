@@ -1,0 +1,16 @@
+$kind: http-request
+description: "This test is to validate the response status code. This Snippet is also available on the right sidebar under `Status code: Code in 200`."
+url: https://postman-echo.com/get?foo1=bar1&foo2=bar2
+method: GET
+queryParams:
+  foo1: bar1
+  foo2: bar2
+scripts:
+  - type: afterResponse
+    code: |
+      pm.test("response is ok", function () {
+          pm.response.to.have.status(200);
+      });
+    language: text/javascript
+examples: ./.resources/Status.resources/examples
+order: 1000

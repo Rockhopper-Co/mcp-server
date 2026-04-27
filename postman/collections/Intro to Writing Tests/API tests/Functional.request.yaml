@@ -1,0 +1,24 @@
+$kind: http-request
+description: This test is written to validate the server performed a function as expected.
+url: https://postman-echo.com/post
+method: POST
+body:
+  type: urlencoded
+  content:
+    someHash: "7654321"
+    secondHash: 987654321asdfgh
+scripts:
+  - type: afterResponse
+    code: |
+      pm.test("Returns 7 char alphanumeric id", function () {
+          let jsonData = pm.response.json();
+          pm.expect(jsonData.form.someHash).to.match(/^[a-z0-9]{7}$/);
+      });
+
+      pm.test("Returns 15 char alhpanumeric id", function () {
+          let jsonData = pm.response.json();
+          pm.expect(jsonData.form.secondHash).to.match(/^[a-z0-9]{15}$/);
+      });
+    language: text/javascript
+examples: ./.resources/Functional.resources/examples
+order: 4000
