@@ -1,0 +1,35 @@
+$kind: http-request
+description: |-
+  This request shows an example of generating longer-form content, in this case, a blog post, and transforming mock data as part of a pre-request script.
+
+  In the body, we use dynamic variables to generate a name, a short set of words as a title, a 'slug' (URL-safe textual identifier like "dolores-est-iusto"), and a post summary.
+
+  In the pre-request script, we generate some paragraphs of text using `pm.variables.replaceIn`. We then transform this text to make it JSON-safe by replacing newline characters with escaped newline characters and setting the result to a variable we can reference in the body.
+url: "{{baseUrl}}/post"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+        "author": "{{$randomUserName}}",
+        "title": "{{$randomLoremWords}}",
+        "slug": "{{$randomLoremSlug}}",
+        "summary": "{{$randomLoremSentences}}",
+        "body": "{{blogPostContent}}"
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Use a dynamic variable in script
+      // https://learning.postman.com/docs/writing-scripts/script-references/variables-list/
+      const loremParagraphs = pm.variables.replaceIn("{{$randomLoremParagraphs}}");
+
+      // $randomLoremParagraphs generates a string with multiple paragraphs separated by 
+      // newline control characters ("\n"). Since we're using this in a JSON object, we 
+      // need to replace the newline control character with the JSON-safe string "\\n".
+      const blogPostContent = loremParagraphs.replace(/\n/g, "\\n")
+
+      // Make the result available as a variable for use in the request body
+      pm.variables.set('blogPostContent', blogPostContent)
+    language: text/javascript
+order: 3000

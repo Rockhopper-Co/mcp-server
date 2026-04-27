@@ -18,5 +18,6 @@
  */
 
 export { createServer } from './server.js';
+export { type RegisterToolsOptions } from './tools/index.js';
 export { ApiClient, type ApiClientConfig } from './api-client.js';
 export * from './types.js';

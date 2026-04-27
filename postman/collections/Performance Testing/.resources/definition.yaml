@@ -1,0 +1,26 @@
+$kind: collection
+description: |-
+  # About this collection
+
+  This collection is designed to help you test the performance of your API endpoints with varying sizes of query parameters. The collection contains pre-built requests that simulate large and small query parameters to assess how well your API handles different loads.
+
+  Using this collection, you can identify potential bottlenecks or performance issues in your API, enabling you to optimize and enhance the overall performance.
+
+  ## **Using the collection**
+
+  **Step 1:** Replace the placeholders in the URLs and parameters with your own API base URLs and relevant query parameters.
+
+  **Step 2 (optional):** Modify the sizes of the query parameters to reflect your specific use case better. You can create multiple requests with varying parameter sizes to test your API's performance thoroughly.
+
+  **Step 3:** Run the collection using Postman's Collection Runner or Postman's Newman CLI tool.
+
+  **Step 4:** Analyze the results to identify performance bottlenecks, slow response times, or potential issues with handling large or small query parameters.
+
+  ## Resources
+
+  [Performance Testing](https://learning.postman.com/docs/designing-and-developing-your-api/testing-your-api/introduction-to-performance-testing/)  
+  [Postman Collection Runner](https://learning.postman.com/docs/running-collections/intro-to-collection-runs/)  
+  [Postman Newman CLI](https://learning.postman.com/docs/running-collections/using-newman-cli/command-line-integration-with-newman/)
+
+  [  
+  ](https://postman.postman.co/documentation/22517504-3302192d-87dd-4612-b381-61894de21203?entity=&branch=&version=)

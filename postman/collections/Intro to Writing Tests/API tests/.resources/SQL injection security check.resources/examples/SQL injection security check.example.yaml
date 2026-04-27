@@ -1,0 +1,58 @@
+$kind: http-example
+request:
+  url: https://postman-echo.com/post
+  method: POST
+  body:
+    type: urlencoded
+    content:
+      - key: customerName
+        value: "' or '1'='1"
+        description: |2-
+           String query = "SELECT account_balance FROM user_data WHERE user_name = "
+             + request.getParameter("customerName");
+      - key: anotherAttack
+        value: "' or 1=1; drop table myTable; --"
+        disabled: true
+        description: Probably best not to do this one in production, or at all, except for demonstration purposes
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Encoding: gzip
+    Content-Type: application/json; charset=utf-8
+    Date: Thu, 15 Nov 2018 22:54:34 GMT
+    ETag: W/"249-6aeADdjaahUu4RmO474pv4LUCJk"
+    Server: nginx
+    set-cookie: sails.sid=s%3AqIFh_GxNGvPg8xIoXG3SXa3q2FttuGK_.CEzJcRVX9GQwHnXPKthJmnkwV90OP23VXhuGizFFuXE; Path=/; HttpOnly
+    Vary: Accept-Encoding
+    Content-Length: "403"
+    Connection: keep-alive
+  body:
+    type: json
+    content: |-
+      {
+          "args": {},
+          "data": "",
+          "files": {},
+          "form": {
+              "customerName": "' or '1'='1"
+          },
+          "headers": {
+              "x-forwarded-proto": "https",
+              "host": "postman-echo.com",
+              "content-length": "38",
+              "accept": "*/*",
+              "accept-encoding": "gzip, deflate",
+              "cache-control": "no-cache",
+              "content-type": "application/x-www-form-urlencoded",
+              "cookie": "sails.sid=s%3A7tFj5KB_lujWMK1xoroPV_xSKkRDxR1W.qUauhME8lGY%2FnBlCT4iVRCs0badee7%2Fmen9XorL%2FJ4s",
+              "postman-token": "031152dc-59c7-4529-8f8a-29faf9f41afe",
+              "user-agent": "PostmanRuntime/7.3.0",
+              "x-forwarded-port": "443"
+          },
+          "json": {
+              "customerName": "' or '1'='1"
+          },
+          "url": "https://postman-echo.com/post"
+      }
+order: 1000

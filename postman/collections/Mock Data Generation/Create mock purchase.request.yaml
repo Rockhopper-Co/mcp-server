@@ -1,0 +1,28 @@
+$kind: http-request
+description: This request shows an example of generating mock purchase details in the request body. It demonstrates a few finance-related dynamic variables, in addition to the ones for random ID, Integer, Boolean, and Timestamp.
+url: "{{baseUrl}}/post"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+        "userId": "{{$guid}}",
+        "payment": {
+            "cardNumber": "{{$randomCreditCardMask}}",
+            "currency": "{{$randomCurrencyCode}}",
+            "amount": {{$randomInt}},
+            "confirmed": "{{$randomBoolean}}",
+            "confirmedAt": "{{$isoTimestamp}}"
+        },
+        "basket": [
+            {
+                "id": "{{$guid}}",
+                "quantity": {{$randomInt}}
+            },
+            {
+                "id": "{{$guid}}",
+                "quantity": {{$randomInt}}
+            }
+        ]
+    }
+order: 2000

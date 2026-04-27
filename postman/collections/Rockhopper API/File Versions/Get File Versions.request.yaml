@@ -1,0 +1,8 @@
+$kind: http-request
+name: Get File Versions
+method: GET
+url: '{{BACKEND_URL}}/file-versions/file/{{fileMsId}}'
+order: 1000
+pathVariables:
+  - key: fileMsId
+    value: ''

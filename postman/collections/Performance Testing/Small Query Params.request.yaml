@@ -1,0 +1,29 @@
+$kind: http-request
+description: |-
+  **Description**  
+  This request is designed to test an API endpoint with a small set of query parameters. By sending this request, you can assess how well your API handles simple requests and analyze its response times and performance under a minimal load.
+
+  **Request details**  
+  URL: [https://postman-echo.com/get](https://postman-echo.com/get)  
+  HTTP Method: GET  
+  Query Parameters:
+
+  - foo1: bar1
+  - foo2: bar2
+      
+
+  **Usage**  
+  To use this request, simply replace the URL with your own API endpoint and modify the query parameters according to your requirements.
+url: https://postman-echo.com/get?foo1=bar1&foo2=bar2
+method: GET
+queryParams:
+  foo1: bar1
+  foo2: bar2
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Response time is less than 500ms", function () {
+          pm.expect(pm.response.responseTime).to.be.below(500);
+      });
+    language: text/javascript
+order: 2000

@@ -1,0 +1,28 @@
+$kind: collection
+description: |-
+  # About this collection
+
+  This collection helps you set up contract tests to ensure that two separate systems are compatible and can communicate with one another.
+
+  ## **Using the collection**
+
+  **Step 1:** Send the sample requests and view the response and test results.
+
+  **Step 2:** Replace the sample request URLs with your desired API endpoints.
+
+  **Step 3:** Customize the tests in the "Tests" tab if needed. Don't forget to save your changes.
+
+  ### Resources
+
+  [Scripting in Postman](https://learning.postman.com/docs/writing-scripts/intro-to-scripts/)
+
+  [Test script examples](https://learning.postman.com/docs/writing-scripts/script-references/test-examples/)
+
+  [Postman Sandbox API reference](https://learning.postman.com/docs/sending-requests/grpc/postman-sandbox-api/#writing-assertions)
+
+  [Using the Collection Runner](https://learning.postman.com/docs/collections/running-collections/intro-to-collection-runs/)
+
+  [  
+  ](https://postman.postman.co/documentation/24552533-5bead607-0197-4e1d-87d4-3160bc7631c1?entity=&branch=&version=)
+variables:
+  baseUrl: https://postman-echo.com
