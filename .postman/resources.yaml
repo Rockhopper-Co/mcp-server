@@ -12,6 +12,9 @@ cloudResources:
     ../postman/collections/Mock Data Generation: 54299481-c864a8c9-0931-4434-8af8-70eda342ac6e
     ../postman/collections/Regression Testing: 54299481-d967a290-c1bb-4883-8533-09770c2fe8d7
     ../postman/collections/Contract Testing: 54299481-eacf051b-b520-474c-87f2-00179ddcc4d5
+    ../postman/collections/Rockhopper API: 54299481-ccf69267-6e02-41e5-8c3e-19a3ba1dbb80
+  environments:
+    ../postman/environments/New Environment.environment.yaml: 94f9130c-908d-53b3-bd30-c9e7aa19e609
 
 # All resources in the `postman/` folder are automatically registered in Local View.
 # Point to additional files outside the `postman/` folder to register them individually. Example:
