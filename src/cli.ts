@@ -16,6 +16,14 @@ if (!ROCKHOPPER_TOKEN) {
   process.exit(1);
 }
 
+if (!ROCKHOPPER_TOKEN.startsWith('rh_pat_')) {
+  console.error(
+    'Error: ROCKHOPPER_TOKEN does not look like a valid Personal Access Token.\n' +
+      'Tokens start with "rh_pat_". Check that the full token was copied correctly.',
+  );
+  process.exit(1);
+}
+
 const apiClient = new ApiClient({
   baseUrl: ROCKHOPPER_API_URL,
   token: ROCKHOPPER_TOKEN,

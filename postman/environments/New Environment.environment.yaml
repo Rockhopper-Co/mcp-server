@@ -1,0 +1,6 @@
+name: New Environment
+values:
+  - key: ROCKHOPPER_API_TOKEN
+    enabled: true
+    value: ''
+color: 0
