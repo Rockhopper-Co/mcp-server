@@ -1,0 +1,25 @@
+name: Rockhopper MCP Staging
+values:
+  - key: GATEWAY_URL
+    value: 'https://mcp-staging.rockhopper.co'
+    enabled: true
+  - key: BACKEND_URL
+    value: 'https://api-staging.rockhopper.co'
+    enabled: true
+  - key: ROCKHOPPER_API_TOKEN
+    value: ''
+    enabled: true
+    type: secret
+  - key: ACCESS_TOKEN
+    value: ''
+    enabled: true
+    type: secret
+  - key: OAUTH_AUTHORIZE_URL
+    value: 'https://mcp-staging.rockhopper.co/oauth/authorize'
+    enabled: true
+  - key: OAUTH_TOKEN_URL
+    value: 'https://mcp-staging.rockhopper.co/oauth/token'
+    enabled: true
+  - key: OAUTH_REGISTER_URL
+    value: 'https://mcp-staging.rockhopper.co/oauth/register'
+    enabled: true
