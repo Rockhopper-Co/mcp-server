@@ -1,6 +1,6 @@
 {
   "name": "@rockhopper-co/mcp-server",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Rockhopper MCP server — expose file metadata, versions, reviews, and comments to AI tools",
   "type": "module",
   "main": "dist/index.js",
