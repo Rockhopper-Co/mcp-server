@@ -179,6 +179,7 @@ const smokeItems = [
       header: [
         { key: 'Content-Type', value: 'application/json' },
         { key: 'Accept', value: 'application/json, text/event-stream' },
+        { key: 'Authorization', value: 'Bearer {{ROCKHOPPER_PAT}}' },
       ],
       body: {
         mode: 'raw',
@@ -209,6 +210,7 @@ const smokeItems = [
       header: [
         { key: 'Content-Type', value: 'application/json' },
         { key: 'Accept', value: 'application/json, text/event-stream' },
+        { key: 'Authorization', value: 'Bearer {{ROCKHOPPER_PAT}}' },
       ],
       body: {
         mode: 'raw',
@@ -246,8 +248,7 @@ const toolItems = server.tools
           { key: 'Accept', value: 'application/json, text/event-stream' },
           {
             key: 'Authorization',
-            value: 'Bearer {{ACCESS_TOKEN}}',
-            disabled: true,
+            value: 'Bearer {{ROCKHOPPER_PAT}}',
           },
         ],
         body: {
@@ -276,8 +277,7 @@ const resourceItems = server.resources
         { key: 'Accept', value: 'application/json, text/event-stream' },
         {
           key: 'Authorization',
-          value: 'Bearer {{ACCESS_TOKEN}}',
-          disabled: true,
+          value: 'Bearer {{ROCKHOPPER_PAT}}',
         },
       ],
       body: {
@@ -314,8 +314,7 @@ const promptItems = server.prompts
           { key: 'Accept', value: 'application/json, text/event-stream' },
           {
             key: 'Authorization',
-            value: 'Bearer {{ACCESS_TOKEN}}',
-            disabled: true,
+            value: 'Bearer {{ROCKHOPPER_PAT}}',
           },
         ],
         body: {
@@ -367,7 +366,7 @@ const collection = {
   ],
   variable: [
     { key: 'GATEWAY_URL', value: 'https://mcp.rockhopper.co' },
-    { key: 'ACCESS_TOKEN', value: '' },
+    { key: 'ROCKHOPPER_PAT', value: '' },
   ],
 };
 

@@ -37,6 +37,10 @@
               {
                 "key": "Accept",
                 "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -66,6 +70,10 @@
               {
                 "key": "Accept",
                 "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -103,8 +111,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -139,8 +146,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -175,8 +181,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -211,8 +216,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -247,8 +251,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -283,8 +286,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -319,8 +321,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -355,8 +356,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -391,8 +391,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -427,8 +426,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -463,8 +461,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -499,8 +496,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -535,8 +531,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -576,8 +571,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -612,8 +606,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -648,8 +641,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -684,8 +676,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -720,8 +711,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -756,8 +746,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -792,8 +781,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -828,8 +816,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -864,8 +851,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -905,8 +891,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -941,8 +926,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -977,8 +961,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -1013,8 +996,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{ACCESS_TOKEN}}",
-                "disabled": true
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
               }
             ],
             "body": {
@@ -1043,7 +1025,7 @@
       "value": "https://mcp.rockhopper.co"
     },
     {
-      "key": "ACCESS_TOKEN",
+      "key": "ROCKHOPPER_PAT",
       "value": ""
     }
   ]
