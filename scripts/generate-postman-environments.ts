@@ -45,13 +45,7 @@ for (const seed of seeds) {
       { key: 'GATEWAY_URL', value: seed.gatewayUrl, enabled: true },
       { key: 'BACKEND_URL', value: seed.backendUrl, enabled: true },
       {
-        key: 'ROCKHOPPER_API_TOKEN',
-        value: '',
-        enabled: true,
-        type: 'secret',
-      },
-      {
-        key: 'ACCESS_TOKEN',
+        key: 'ROCKHOPPER_PAT',
         value: '',
         enabled: true,
         type: 'secret',

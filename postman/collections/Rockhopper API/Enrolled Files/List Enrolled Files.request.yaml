@@ -1,9 +1,0 @@
-$kind: http-request
-name: List Enrolled Files
-method: GET
-url: '{{BACKEND_URL}}/enrolled-files'
-order: 1000
-queryParams:
-  - key: search
-    value: ''
-    disabled: true

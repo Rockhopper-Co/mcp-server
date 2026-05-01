@@ -1,8 +1,0 @@
-$kind: http-request
-name: Get Reviews for Latest Version
-method: GET
-url: '{{BACKEND_URL}}/reviews/files/{{fileMsId}}/latest-version/requests'
-order: 2000
-pathVariables:
-  - key: fileMsId
-    value: ''
