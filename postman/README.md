@@ -1,44 +1,24 @@
-# Postman setup (Rockhopper MCP workspace)
+# Postman artifacts (generated)
 
-This folder contains generated Postman artifacts for the Rockhopper MCP
-workspace.
-
-## Files
-
-- `mcp-server.postman_collection.json`
-- `local.postman_environment.json`
-- `dev.postman_environment.json`
-- `staging.postman_environment.json`
-- `production.postman_environment.json`
-
-## Import
-
-1. Postman -> Import -> select the collection JSON.
-2. Import one or more environment JSON files.
-3. Pick an environment (Dev/Staging/Production).
-4. If your target requires auth, set `ACCESS_TOKEN` and enable the
-   `Authorization: Bearer {{ACCESS_TOKEN}}` header on MCP requests.
+This folder contains Postman collection and environment JSON files generated
+from MCP server tool/resource/prompt definitions. The canonical home for
+these files is `mcp-gateway/postman/` — copy them there after regenerating.
 
 ## Regenerate
-
-Run from repo root:
 
 ```bash
 npm run generate:postman
 ```
 
-CI enforces that generated artifacts are up to date using
-`npm run generate:postman:check`.
+Then copy the output to `mcp-gateway/postman/`.
 
-## Smoke flow
+## CI
 
-1. Run `Healthz` (expect 200).
-2. Run `MCP Initialize`.
-3. Run `MCP Tools List`.
+`npm run generate:postman:check` verifies generated artifacts are up to date.
 
-## Notes
+## Variables
 
-- The MCP endpoint is `POST /mcp`.
-- `Healthz` is unauthenticated.
-- OAuth and token issuance flow is environment-dependent; this collection
-  assumes you already have an access token when auth is required.
+- `GATEWAY_URL` — MCP gateway base URL (per environment)
+- `BACKEND_URL` — Rockhopper API base URL (per environment)
+- `ROCKHOPPER_PAT` — Personal Access Token (`rh_pat_...`)
+- `OAUTH_*` — OAuth URLs (for reference; not needed for PAT-based testing)

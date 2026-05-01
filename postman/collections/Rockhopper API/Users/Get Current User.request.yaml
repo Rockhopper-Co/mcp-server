@@ -1,5 +1,0 @@
-$kind: http-request
-name: Get Current User
-method: GET
-url: '{{BACKEND_URL}}/users/me'
-order: 1000

@@ -1,8 +1,0 @@
-$kind: collection
-name: Rockhopper API
-description: API collection for the Rockhopper MCP Server. Covers Users, Teams, Enrolled Files, File Versions, Comments, Reviews, and Unattributed Changes.
-auth:
-  type: bearer
-  credentials:
-    - key: token
-      value: '{{ROCKHOPPER_API_TOKEN}}'
