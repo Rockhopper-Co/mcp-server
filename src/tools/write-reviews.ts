@@ -122,4 +122,63 @@ export function registerWriteReviewTools(
       }
     },
   );
+
+  server.registerTool(
+    'cancel_review',
+    {
+      title: 'Cancel Review',
+      description:
+        'Cancel a pending review request. Only the requester can cancel. ' +
+        'The review must be in "pending" status — completed or already-cancelled reviews cannot be cancelled.',
+      inputSchema: {
+        reviewId: z
+          .number()
+          .describe('ID of the review request to cancel'),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+      },
+    },
+    async ({ reviewId }) => {
+      try {
+        const review = await api.getReview(reviewId);
+        if (review.status !== 'pending') {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Review ${reviewId} cannot be cancelled — status is "${review.status}".`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const cancelled = await api.cancelReview(reviewId);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text:
+                `Review ${cancelled.id} cancelled.\n` +
+                `Subject: "${cancelled.subject}"`,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Failed to cancel review: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
 }

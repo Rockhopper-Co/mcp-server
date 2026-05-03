@@ -8,6 +8,7 @@ import { registerGetCellHistoryTool } from './get-cell-history.js';
 import { registerSearchTool } from './search.js';
 import { registerWriteCommentTools } from './write-comments.js';
 import { registerWriteReviewTools } from './write-reviews.js';
+import { registerWriteVersionTools } from './write-versions.js';
 import { registerWriteFileTool } from './write-files.js';
 
 export interface RegisterToolsOptions {
@@ -31,6 +32,7 @@ export function registerTools(
   if (options?.scope !== 'read-only') {
     registerWriteCommentTools(server, api);
     registerWriteReviewTools(server, api);
+    registerWriteVersionTools(server, api);
     registerWriteFileTool(server, api);
   }
 }

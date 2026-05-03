@@ -276,6 +276,46 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    if (method === 'PUT' && path === '/reviews/requests/500') {
+      sendJson(res, 200, { ...sampleReview, status: 'CANCELLED' });
+      return;
+    }
+
+    // --- File Version lifecycle ---
+    if (method === 'POST' && path === '/file-versions') {
+      const body = await readBody(req);
+      const parsed = JSON.parse(body || '{}') as {
+        enrolledFileMsId?: string;
+        version?: {
+          majorVersion?: number;
+          minorVersion?: number;
+          patchVersion?: number;
+          description?: string;
+        };
+      };
+      sendJson(res, 200, {
+        internalId: 102,
+        majorVersion: parsed.version?.majorVersion ?? 1,
+        minorVersion: parsed.version?.minorVersion ?? 0,
+        patchVersion: parsed.version?.patchVersion ?? 0,
+        description: parsed.version?.description ?? 'created',
+        createdAt: '2026-01-10T00:00:00Z',
+        wasDiscarded: false,
+        wasReverted: false,
+      });
+      return;
+    }
+
+    if (method === 'POST' && path === '/file-versions/file/discard-live/file-1') {
+      sendJson(res, 200, {
+        ...sampleVersion,
+        internalId: 103,
+        wasDiscarded: true,
+        description: 'Discarded',
+      });
+      return;
+    }
+
     // --- Unattributed Changes ---
     if (method === 'GET' && path === '/unattributed-changes/file-1/EmptySheet') {
       sendJson(res, 200, []);

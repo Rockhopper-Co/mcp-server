@@ -64,7 +64,10 @@ describe('MCP in-memory protocol e2e', () => {
       [
         'add_comment',
         'approve_review',
+        'cancel_review',
         'create_review_request',
+        'create_version',
+        'discard_changes',
         'get_cell_history',
         'get_file_comments',
         'get_file_versions',
@@ -438,6 +441,71 @@ describe('MCP in-memory protocol e2e', () => {
     });
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain('Failed to approve');
+  });
+
+  it('create_version commits uncommitted changes as a new version', async () => {
+    const result = await client.callTool({
+      name: 'create_version',
+      arguments: {
+        fileMsId: 'file-1',
+        versionType: 'minor',
+        description: 'Updated assumptions',
+      },
+    });
+    expect(JSON.stringify(result.content)).toContain('Version v1.1.0 created');
+  });
+
+  it('create_version surfaces API errors for unknown files', async () => {
+    const result = await client.callTool({
+      name: 'create_version',
+      arguments: {
+        fileMsId: 'does-not-exist',
+        versionType: 'patch',
+        description: 'test',
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('Failed to create version');
+  });
+
+  it('discard_changes discards uncommitted edits', async () => {
+    const result = await client.callTool({
+      name: 'discard_changes',
+      arguments: {
+        fileMsId: 'file-1',
+        description: 'Wrong assumptions',
+      },
+    });
+    expect(JSON.stringify(result.content)).toContain('Changes discarded');
+  });
+
+  it('discard_changes surfaces API errors for unknown files', async () => {
+    const result = await client.callTool({
+      name: 'discard_changes',
+      arguments: {
+        fileMsId: 'does-not-exist',
+        description: 'test',
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('Failed to discard');
+  });
+
+  it('cancel_review cancels a pending review', async () => {
+    const result = await client.callTool({
+      name: 'cancel_review',
+      arguments: { reviewId: 500 },
+    });
+    expect(JSON.stringify(result.content)).toContain('Review 500 cancelled');
+  });
+
+  it('cancel_review surfaces API errors for unknown reviews', async () => {
+    const result = await client.callTool({
+      name: 'cancel_review',
+      arguments: { reviewId: 12345 },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('Failed to cancel review');
   });
 
   it('update_file_description renames a file', async () => {
