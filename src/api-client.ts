@@ -204,6 +204,45 @@ export class ApiClient {
     return this.request<UnattributedChange[]>(path);
   }
 
+  // --- Version lifecycle ---
+
+  async createVersion(body: {
+    enrolledFileMsId: string;
+    version: {
+      majorVersion: number;
+      minorVersion: number;
+      patchVersion: number;
+      description: string;
+    };
+  }): Promise<FileVersion> {
+    return this.request<FileVersion>('/file-versions', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async discardChanges(
+    fileMsId: string,
+    body: { description: string },
+  ): Promise<FileVersion> {
+    return this.request<FileVersion>(
+      `/file-versions/file/discard-live/${fileMsId}`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    );
+  }
+
+  // --- Review lifecycle ---
+
+  async cancelReview(reviewId: number): Promise<ReviewRequest> {
+    return this.request<ReviewRequest>(`/reviews/requests/${reviewId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'CANCELLED' }),
+    });
+  }
+
   // --- File metadata update ---
 
   async updateEnrolledFile(
