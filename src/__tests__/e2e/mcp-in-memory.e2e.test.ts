@@ -455,6 +455,18 @@ describe('MCP in-memory protocol e2e', () => {
     expect(JSON.stringify(result.content)).toContain('Version v1.1.0 created');
   });
 
+  it('create_version on a file with no prior versions starts from v0.0.0', async () => {
+    const result = await client.callTool({
+      name: 'create_version',
+      arguments: {
+        fileMsId: 'new-file',
+        versionType: 'major',
+        description: 'First version',
+      },
+    });
+    expect(JSON.stringify(result.content)).toContain('Version v1.0.0 created');
+  });
+
   it('create_version surfaces API errors for unknown files', async () => {
     const result = await client.callTool({
       name: 'create_version',
@@ -466,6 +478,18 @@ describe('MCP in-memory protocol e2e', () => {
     });
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain('Failed to create version');
+  });
+
+  it('discard_changes returns error when file has no uncommitted changes', async () => {
+    const result = await client.callTool({
+      name: 'discard_changes',
+      arguments: {
+        fileMsId: 'no-changes-file',
+        description: 'test',
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('no uncommitted changes to discard');
   });
 
   it('discard_changes discards uncommitted edits', async () => {

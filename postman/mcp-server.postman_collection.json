@@ -167,6 +167,41 @@
           "response": []
         },
         {
+          "name": "cancel_review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-cancel_review\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"cancel_review\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Cancel a pending review request. Only the requester can cancel. The review must be in \"pending\" status — completed or already-cancelled reviews cannot be cancelled."
+          },
+          "response": []
+        },
+        {
           "name": "create_review_request",
           "request": {
             "method": "POST",
@@ -198,6 +233,76 @@
               ]
             },
             "description": "Request a review for a specific file version. Assigns reviewers who will be notified to approve or comment on the version. Reviewer IDs are numeric internal user IDs — use list_team_members or the team resource to resolve platform IDs (msId / googleId) to internal IDs first."
+          },
+          "response": []
+        },
+        {
+          "name": "create_version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-create_version\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"create_version\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Commit the current uncommitted changes on an enrolled file as a new version. The tool auto-computes the next semver number from the latest committed version. The file must have uncommitted changes (hasUncommittedChanges = true). Use get_file_versions first to confirm uncommitted changes exist."
+          },
+          "response": []
+        },
+        {
+          "name": "discard_changes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"tool-discard_changes\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"discard_changes\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Discard all uncommitted changes on an enrolled file, reverting it to the latest committed version. This is destructive — the uncommitted edits are lost (though preserved in version history for audit). The file must have uncommitted changes. Cannot discard while other users have the file open."
           },
           "response": []
         },

@@ -116,6 +116,16 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    if (method === 'GET' && path === '/enrolled-files/no-changes-file') {
+      sendJson(res, 200, { ...sampleFile, platformId: 'no-changes-file', hasUncommittedChanges: false });
+      return;
+    }
+
+    if (method === 'GET' && path === '/enrolled-files/new-file') {
+      sendJson(res, 200, { ...sampleFile, platformId: 'new-file', name: 'New.xlsx', hasUncommittedChanges: true });
+      return;
+    }
+
     if (method === 'PATCH' && path === '/enrolled-files/file-1') {
       const body = await readBody(req);
       const { name } = JSON.parse(body || '{}') as { name?: string };
@@ -125,6 +135,11 @@ export function handleMockRockhopperRequest(
 
     // --- File Versions ---
     if (method === 'GET' && path === '/file-versions/file/empty-file') {
+      sendJson(res, 200, []);
+      return;
+    }
+
+    if (method === 'GET' && path === '/file-versions/file/new-file') {
       sendJson(res, 200, []);
       return;
     }
