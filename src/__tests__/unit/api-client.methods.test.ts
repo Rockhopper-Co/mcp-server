@@ -91,6 +91,42 @@ describe('ApiClient method coverage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('should call createVersion with POST', async () => {
+    const fetchSpy = mockFetch({});
+    vi.stubGlobal('fetch', fetchSpy);
+    await client.createVersion({
+      enrolledFileMsId: 'file-1',
+      version: { majorVersion: 2, minorVersion: 0, patchVersion: 0, description: 'v2' },
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/file-versions',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('should call discardChanges with POST', async () => {
+    const fetchSpy = mockFetch({});
+    vi.stubGlobal('fetch', fetchSpy);
+    await client.discardChanges('file-1', { description: 'reason' });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/file-versions/file/discard-live/file-1',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('should call cancelReview with PUT', async () => {
+    const fetchSpy = mockFetch({});
+    vi.stubGlobal('fetch', fetchSpy);
+    await client.cancelReview(500);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/reviews/requests/500',
+      expect.objectContaining({ method: 'PUT' }),
+    );
+    vi.unstubAllGlobals();
+  });
+
   it('should build unattributed changes path with sheetName', async () => {
     const fetchSpy = mockFetch({});
     vi.stubGlobal('fetch', fetchSpy);

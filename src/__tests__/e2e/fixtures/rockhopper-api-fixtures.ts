@@ -116,6 +116,16 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    if (method === 'GET' && path === '/enrolled-files/no-changes-file') {
+      sendJson(res, 200, { ...sampleFile, platformId: 'no-changes-file', hasUncommittedChanges: false });
+      return;
+    }
+
+    if (method === 'GET' && path === '/enrolled-files/new-file') {
+      sendJson(res, 200, { ...sampleFile, platformId: 'new-file', name: 'New.xlsx', hasUncommittedChanges: true });
+      return;
+    }
+
     if (method === 'PATCH' && path === '/enrolled-files/file-1') {
       const body = await readBody(req);
       const { name } = JSON.parse(body || '{}') as { name?: string };
@@ -125,6 +135,11 @@ export function handleMockRockhopperRequest(
 
     // --- File Versions ---
     if (method === 'GET' && path === '/file-versions/file/empty-file') {
+      sendJson(res, 200, []);
+      return;
+    }
+
+    if (method === 'GET' && path === '/file-versions/file/new-file') {
       sendJson(res, 200, []);
       return;
     }
@@ -273,6 +288,46 @@ export function handleMockRockhopperRequest(
 
     if (method === 'POST' && path === '/reviews/requests/500/approve') {
       sendJson(res, 200, { ...sampleReview, status: 'approved' });
+      return;
+    }
+
+    if (method === 'PUT' && path === '/reviews/requests/500') {
+      sendJson(res, 200, { ...sampleReview, status: 'CANCELLED' });
+      return;
+    }
+
+    // --- File Version lifecycle ---
+    if (method === 'POST' && path === '/file-versions') {
+      const body = await readBody(req);
+      const parsed = JSON.parse(body || '{}') as {
+        enrolledFileMsId?: string;
+        version?: {
+          majorVersion?: number;
+          minorVersion?: number;
+          patchVersion?: number;
+          description?: string;
+        };
+      };
+      sendJson(res, 200, {
+        internalId: 102,
+        majorVersion: parsed.version?.majorVersion ?? 1,
+        minorVersion: parsed.version?.minorVersion ?? 0,
+        patchVersion: parsed.version?.patchVersion ?? 0,
+        description: parsed.version?.description ?? 'created',
+        createdAt: '2026-01-10T00:00:00Z',
+        wasDiscarded: false,
+        wasReverted: false,
+      });
+      return;
+    }
+
+    if (method === 'POST' && path === '/file-versions/file/discard-live/file-1') {
+      sendJson(res, 200, {
+        ...sampleVersion,
+        internalId: 103,
+        wasDiscarded: true,
+        description: 'Discarded',
+      });
       return;
     }
 
