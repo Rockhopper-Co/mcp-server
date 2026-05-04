@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   verify:
@@ -42,6 +43,8 @@ jobs:
           fetch-depth: 0
 
       - name: Check for new version and create tag
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
           TAG="v${PKG_VERSION}"
@@ -51,4 +54,6 @@ jobs:
             echo "Creating tag $TAG"
             git tag "$TAG"
             git push origin "$TAG"
+            echo "Dispatching publish workflow"
+            gh workflow run publish.yml
           fi
