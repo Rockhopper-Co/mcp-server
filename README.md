@@ -126,11 +126,14 @@ npm run generate:postman
 
 | Tool | Description |
 |------|-------------|
+| `create_version` | Commit uncommitted changes as a new semver version (major/minor/patch) |
+| `discard_changes` | Discard all uncommitted changes, revert to latest committed version |
 | `add_comment` | Add a comment to an enrolled file (optionally at a cell) |
 | `reply_to_comment` | Reply to an existing comment thread |
 | `resolve_comment` | Mark a comment as resolved (author only) |
 | `create_review_request` | Request a review on a file version |
 | `approve_review` | Approve a review request (assigned reviewer only) |
+| `cancel_review` | Cancel a pending review request (requester only) |
 | `update_file_description` | Update the display name of an enrolled file |
 
 ## Development

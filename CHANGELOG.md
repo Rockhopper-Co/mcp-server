@@ -4,6 +4,26 @@ All notable changes to this project are documented here. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-05-03
+
+### Added
+- **`create_version` tool.** Commit uncommitted changes as a new semver
+  version (major/minor/patch). Auto-computes the next version number from
+  the latest committed version. Pre-checks `hasUncommittedChanges`.
+- **`discard_changes` tool.** Discard all uncommitted changes, reverting
+  to the latest committed version. Marked `destructiveHint: true`.
+  Pre-checks `hasUncommittedChanges`. Discarded changes are preserved in
+  version history for audit.
+- **`cancel_review` tool.** Cancel a pending review request. Pre-checks
+  that the review status is `pending`. Marked `destructiveHint: true`.
+- `ApiClient` methods: `createVersion()`, `discardChanges()`,
+  `cancelReview()`.
+
+### Internal
+- E2e and unit test coverage for all three new tools (success, error,
+  and guard branches).
+- Regenerated Postman collection (16 tools, 9 resources, 4 prompts).
+
 ## [0.3.0] — 2026-04-24
 
 Adds a **library entry point** so `@rockhopper-co/mcp-server` can be
