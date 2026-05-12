@@ -29,20 +29,14 @@ export function registerFileResources(
     },
   );
 
+  // KI-078 (ENG-1381): the per-file template no longer enumerates `resources/list`.
+  // It is exposed via `resources/templates/list` so AI clients learn the URI pattern;
+  // concrete instances are read by URI on demand (e.g. `rockhopper://files/abc123`).
+  // The workspace-level `rockhopper://files` listing above is the discovery entry point.
   server.registerResource(
     'enrolled-file',
     new ResourceTemplate('rockhopper://files/{fileMsId}', {
-      list: async () => {
-        const files = await api.listEnrolledFiles();
-        return {
-          resources: files.map((f) => ({
-            uri: `rockhopper://files/${f.platformId}`,
-            name: f.name,
-            description: `${f.name} (${f.fileType})`,
-            mimeType: 'application/json',
-          })),
-        };
-      },
+      list: undefined,
     }),
     {
       title: 'Enrolled File Details',

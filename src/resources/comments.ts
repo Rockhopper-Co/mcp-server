@@ -6,19 +6,11 @@ export function registerCommentResources(
   server: McpServer,
   api: ApiClient,
 ): void {
+  // KI-078 (ENG-1381): template only, no per-file expansion into resources/list.
   server.registerResource(
     'file-comments',
     new ResourceTemplate('rockhopper://files/{fileMsId}/comments', {
-      list: async () => {
-        const files = await api.listEnrolledFiles();
-        return {
-          resources: files.map((f) => ({
-            uri: `rockhopper://files/${f.platformId}/comments`,
-            name: `Comments on ${f.name}`,
-            mimeType: 'application/json',
-          })),
-        };
-      },
+      list: undefined,
     }),
     {
       title: 'File Comments',
