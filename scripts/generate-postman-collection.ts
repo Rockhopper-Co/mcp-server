@@ -1,154 +1,56 @@
+/**
+ * Generate the Rockhopper MCP Server Postman collection.
+ *
+ * Why this is small:
+ *   The Postman public workspace's headline is a single first-class MCP Request
+ *   (transport=HTTP, URL={{GATEWAY_URL}}/mcp, Bearer auth) created via Postman's
+ *   web UI. The "Load Capabilities" button on that request discovers our tools,
+ *   resources, and prompts at runtime from the live server. We don't ship
+ *   per-tool requests — every published vendor MCP collection on the Postman
+ *   API Network (HubSpot, AWS Labs, Stripe, Cockroach Labs, etc.) follows this
+ *   single-MCP-Request pattern.
+ *
+ *   This committed JSON exists as a deliberate fallback / "raw protocol view"
+ *   for engineers who don't want to use the MCP Request UI, plus a discovery
+ *   surface that explains where to go. We still introspect the registered tool
+ *   / resource / prompt names so the description's tool list stays in sync.
+ */
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import { registerPrompts } from '../src/prompts/index.js';
 import { registerResources } from '../src/resources/index.js';
 import { registerTools } from '../src/tools/index.js';
 
 type SchemaMap = Record<string, z.ZodTypeAny>;
 
-type CapturedTool = {
-  name: string;
-  title?: string;
-  description?: string;
-  inputSchema?: SchemaMap;
-};
-
-type CapturedPrompt = {
-  name: string;
-  title?: string;
-  description?: string;
-  argsSchema?: SchemaMap;
-};
-
-type CapturedResource = {
-  name: string;
-  title?: string;
-  description?: string;
-  uri: string;
-};
-
 class CapturingServer {
-  readonly tools: CapturedTool[] = [];
+  readonly toolNames: string[] = [];
 
-  readonly prompts: CapturedPrompt[] = [];
+  readonly resourceNames: string[] = [];
 
-  readonly resources: CapturedResource[] = [];
+  readonly promptNames: string[] = [];
 
-  registerTool(
-    name: string,
-    config: { title?: string; description?: string; inputSchema?: SchemaMap },
-    _handler: unknown,
-  ): void {
-    this.tools.push({
-      name,
-      title: config.title,
-      description: config.description,
-      inputSchema: config.inputSchema,
-    });
-  }
-
-  registerPrompt(
-    name: string,
-    config: { title?: string; description?: string; argsSchema?: SchemaMap },
-    _handler: unknown,
-  ): void {
-    this.prompts.push({
-      name,
-      title: config.title,
-      description: config.description,
-      argsSchema: config.argsSchema,
-    });
+  registerTool(name: string, _config: { inputSchema?: SchemaMap }, _handler: unknown): void {
+    this.toolNames.push(name);
   }
 
   registerResource(
     name: string,
-    uriOrTemplate: unknown,
-    config: { title?: string; description?: string },
+    _uriOrTemplate: unknown,
+    _config: { description?: string },
     _handler: unknown,
   ): void {
-    const template =
-      typeof uriOrTemplate === 'string'
-        ? uriOrTemplate
-        : ((uriOrTemplate as { uriTemplate?: string })?.uriTemplate ??
-          String(uriOrTemplate));
-    this.resources.push({
-      name,
-      title: config.title,
-      description: config.description,
-      uri: template,
-    });
-  }
-}
-
-function schemaMapToJsonSchema(shape?: SchemaMap): Record<string, unknown> {
-  if (!shape || Object.keys(shape).length === 0) {
-    return {};
-  }
-  const objectSchema = z.object(shape);
-  return zodToJsonSchema(objectSchema, 'input');
-}
-
-function exampleFromJsonSchema(schema: unknown): unknown {
-  if (!schema || typeof schema !== 'object') {
-    return null;
+    this.resourceNames.push(name);
   }
 
-  const raw = schema as {
-    type?: string;
-    properties?: Record<string, unknown>;
-    anyOf?: unknown[];
-    oneOf?: unknown[];
-    enum?: unknown[];
-    items?: unknown;
-  };
-
-  if (raw.enum && raw.enum.length > 0) {
-    return raw.enum[0];
+  registerPrompt(
+    name: string,
+    _config: { argsSchema?: SchemaMap },
+    _handler: unknown,
+  ): void {
+    this.promptNames.push(name);
   }
-  if (raw.anyOf && raw.anyOf.length > 0) {
-    return exampleFromJsonSchema(raw.anyOf[0]);
-  }
-  if (raw.oneOf && raw.oneOf.length > 0) {
-    return exampleFromJsonSchema(raw.oneOf[0]);
-  }
-
-  switch (raw.type) {
-    case 'string':
-      return 'example';
-    case 'integer':
-      return 1;
-    case 'number':
-      return 1;
-    case 'boolean':
-      return true;
-    case 'array':
-      return raw.items ? [exampleFromJsonSchema(raw.items)] : [];
-    case 'object': {
-      const properties = raw.properties ?? {};
-      const output: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(properties)) {
-        output[key] = exampleFromJsonSchema(value);
-      }
-      return output;
-    }
-    default:
-      return null;
-  }
-}
-
-function buildJsonRpcBody(method: string, params: unknown, id: string): string {
-  return JSON.stringify(
-    {
-      jsonrpc: '2.0',
-      id,
-      method,
-      params,
-    },
-    null,
-    2,
-  );
 }
 
 const server = new CapturingServer();
@@ -158,210 +60,158 @@ registerTools(server as never, api);
 registerResources(server as never, api);
 registerPrompts(server as never, api);
 
-const smokeItems = [
+const tools = [...server.toolNames].sort();
+const resources = [...server.resourceNames].sort();
+const prompts = [...server.promptNames].sort();
+
+function bulletList(items: string[]): string {
+  return items.map((item) => `- \`${item}\``).join('\n');
+}
+
+const description = `# Rockhopper MCP Server
+
+Postman workspace for **Rockhopper's Model Context Protocol (MCP) server**. Connect AI agents (Cursor, Claude Desktop, Claude.ai, ChatGPT) to your Excel files, reviews, comments, and version history in Rockhopper.
+
+## Use the MCP Request (recommended)
+
+The fastest way to test the server is the **MCP Request** item in this workspace. It uses Postman's first-class MCP transport — click **Load Capabilities** and Postman discovers every tool, resource, and prompt the server exposes. No raw JSON-RPC needed.
+
+If you don't see an MCP Request item yet, add one yourself:
+
+1. Click **+ → MCP Request** in the workspace.
+2. Transport: **HTTP**.
+3. URL: \`{{GATEWAY_URL}}/mcp\`.
+4. Authorization: **Bearer Token**, value \`{{ROCKHOPPER_PAT}}\`.
+5. Click **Load Capabilities**.
+
+## Raw protocol smoke tests (fallback)
+
+The three items below send raw JSON-RPC requests for engineers who want to inspect the protocol directly without the MCP Request UI:
+
+- \`Healthz\` — gateway is up
+- \`MCP Initialize\` — JSON-RPC handshake
+- \`MCP Tools List\` — \`tools/list\` returns the advertised tool set
+
+If they pass you're ready to use the MCP Request item (or wire the server into your AI client).
+
+## Connecting an AI client
+
+Drop this into Cursor / Claude Desktop / Claude.ai (\`~/.cursor/mcp.json\` or equivalent):
+
+\`\`\`json
+{
+  "mcpServers": {
+    "rockhopper": {
+      "url": "https://mcp.rockhopper.co/mcp",
+      "headers": { "Authorization": "Bearer rh_pat_..." }
+    }
+  }
+}
+\`\`\`
+
+Get a PAT from **Avatar → Access Tokens** at app.rockhopper.co. See the [Rockhopper MCP setup guide](https://docs.rockhopper.co/it-setup/mcp-server) for full details.
+
+## What the server exposes
+
+**${tools.length} tools**: ${tools.map((t) => `\`${t}\``).join(', ')}.
+
+**${resources.length} resources**: ${resources.map((r) => `\`${r}\``).join(', ')}.
+
+**${prompts.length} prompts**: ${prompts.map((p) => `\`${p}\``).join(', ')}.
+
+## Authentication
+
+Personal Access Tokens (\`rh_pat_...\`) work end-to-end. OAuth 2.0 with Dynamic Client Registration is available for web AI clients — see the [setup guide](https://docs.rockhopper.co/it-setup/mcp-server) for the endpoint URLs and DCR flow.
+`;
+
+const initializeBody = JSON.stringify(
   {
-    name: 'Healthz',
-    request: {
-      method: 'GET',
-      header: [],
-      url: {
-        raw: '{{GATEWAY_URL}}/healthz',
-        host: ['{{GATEWAY_URL}}'],
-        path: ['healthz'],
-      },
-      description: 'Expect 200 with {"status":"ok"}',
+    jsonrpc: '2.0',
+    id: 'init-1',
+    method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'Postman', version: '1.0.0' },
     },
   },
+  null,
+  2,
+);
+
+const toolsListBody = JSON.stringify(
   {
-    name: 'MCP Initialize',
-    request: {
-      method: 'POST',
-      header: [
-        { key: 'Content-Type', value: 'application/json' },
-        { key: 'Accept', value: 'application/json, text/event-stream' },
-        { key: 'Authorization', value: 'Bearer {{ROCKHOPPER_PAT}}' },
-      ],
-      body: {
-        mode: 'raw',
-        raw: buildJsonRpcBody(
-          'initialize',
-          {
-            protocolVersion: '2025-03-26',
-            capabilities: {},
-            clientInfo: {
-              name: 'Postman',
-              version: '1.0.0',
-            },
-          },
-          'init-1',
-        ),
-      },
-      url: {
-        raw: '{{GATEWAY_URL}}/mcp',
-        host: ['{{GATEWAY_URL}}'],
-        path: ['mcp'],
-      },
-    },
+    jsonrpc: '2.0',
+    id: 'tools-list-1',
+    method: 'tools/list',
+    params: {},
   },
-  {
-    name: 'MCP Tools List',
-    request: {
-      method: 'POST',
-      header: [
-        { key: 'Content-Type', value: 'application/json' },
-        { key: 'Accept', value: 'application/json, text/event-stream' },
-        { key: 'Authorization', value: 'Bearer {{ROCKHOPPER_PAT}}' },
-      ],
-      body: {
-        mode: 'raw',
-        raw: buildJsonRpcBody('tools/list', {}, 'tools-list-1'),
-      },
-      url: {
-        raw: '{{GATEWAY_URL}}/mcp',
-        host: ['{{GATEWAY_URL}}'],
-        path: ['mcp'],
-      },
-    },
-  },
+  null,
+  2,
+);
+
+const mcpHeaders = [
+  { key: 'Content-Type', value: 'application/json' },
+  { key: 'Accept', value: 'application/json, text/event-stream' },
+  { key: 'Authorization', value: 'Bearer {{ROCKHOPPER_PAT}}' },
 ];
-
-const toolItems = server.tools
-  .sort((a, b) => a.name.localeCompare(b.name))
-  .map((tool) => {
-    const schema = schemaMapToJsonSchema(tool.inputSchema);
-    const args = exampleFromJsonSchema(schema);
-    const body = buildJsonRpcBody(
-      'tools/call',
-      {
-        name: tool.name,
-        arguments: args ?? {},
-      },
-      `tool-${tool.name}`,
-    );
-
-    return {
-      name: tool.name,
-      request: {
-        method: 'POST',
-        header: [
-          { key: 'Content-Type', value: 'application/json' },
-          { key: 'Accept', value: 'application/json, text/event-stream' },
-          {
-            key: 'Authorization',
-            value: 'Bearer {{ROCKHOPPER_PAT}}',
-          },
-        ],
-        body: {
-          mode: 'raw',
-          raw: body,
-        },
-        url: {
-          raw: '{{GATEWAY_URL}}/mcp',
-          host: ['{{GATEWAY_URL}}'],
-          path: ['mcp'],
-        },
-        description: tool.description,
-      },
-      response: [],
-    };
-  });
-
-const resourceItems = server.resources
-  .sort((a, b) => a.name.localeCompare(b.name))
-  .map((resource) => ({
-    name: resource.name,
-    request: {
-      method: 'POST',
-      header: [
-        { key: 'Content-Type', value: 'application/json' },
-        { key: 'Accept', value: 'application/json, text/event-stream' },
-        {
-          key: 'Authorization',
-          value: 'Bearer {{ROCKHOPPER_PAT}}',
-        },
-      ],
-      body: {
-        mode: 'raw',
-        raw: buildJsonRpcBody(
-          'resources/read',
-          {
-            uri: resource.uri,
-          },
-          `resource-${resource.name}`,
-        ),
-      },
-      url: {
-        raw: '{{GATEWAY_URL}}/mcp',
-        host: ['{{GATEWAY_URL}}'],
-        path: ['mcp'],
-      },
-      description: resource.description,
-    },
-    response: [],
-  }));
-
-const promptItems = server.prompts
-  .sort((a, b) => a.name.localeCompare(b.name))
-  .map((prompt) => {
-    const schema = schemaMapToJsonSchema(prompt.argsSchema);
-    const args = exampleFromJsonSchema(schema);
-    return {
-      name: prompt.name,
-      request: {
-        method: 'POST',
-        header: [
-          { key: 'Content-Type', value: 'application/json' },
-          { key: 'Accept', value: 'application/json, text/event-stream' },
-          {
-            key: 'Authorization',
-            value: 'Bearer {{ROCKHOPPER_PAT}}',
-          },
-        ],
-        body: {
-          mode: 'raw',
-          raw: buildJsonRpcBody(
-            'prompts/get',
-            {
-              name: prompt.name,
-              arguments: args ?? {},
-            },
-            `prompt-${prompt.name}`,
-          ),
-        },
-        url: {
-          raw: '{{GATEWAY_URL}}/mcp',
-          host: ['{{GATEWAY_URL}}'],
-          path: ['mcp'],
-        },
-        description: prompt.description,
-      },
-      response: [],
-    };
-  });
 
 const collection = {
   info: {
     name: 'Rockhopper MCP Server',
-    description:
-      'Generated Postman collection for MCP gateway smoke testing and tool/resource/prompt calls.',
+    description,
     schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
   },
+  // Flat items (no folder). The Postman API's PUT /collections endpoint
+  // currently strips nested folders that aren't pre-existing — keeping the
+  // committed JSON flat means a one-shot push from disk to the public
+  // workspace round-trips byte-stable. 3 items is small enough that a folder
+  // would be visual noise anyway.
   item: [
     {
-      name: 'Smoke test',
-      item: smokeItems,
+      name: 'Healthz',
+      request: {
+        method: 'GET',
+        header: [],
+        url: {
+          raw: '{{GATEWAY_URL}}/healthz',
+          host: ['{{GATEWAY_URL}}'],
+          path: ['healthz'],
+        },
+        description: 'Verify the gateway is reachable. Expect 200 with {"status":"ok"}.',
+      },
+      response: [],
     },
     {
-      name: 'Tools',
-      item: toolItems,
+      name: 'MCP Initialize',
+      request: {
+        method: 'POST',
+        header: mcpHeaders,
+        body: { mode: 'raw', raw: initializeBody },
+        url: {
+          raw: '{{GATEWAY_URL}}/mcp',
+          host: ['{{GATEWAY_URL}}'],
+          path: ['mcp'],
+        },
+        description:
+          "JSON-RPC handshake against the MCP gateway. Returns the server's advertised capabilities and protocol version.",
+      },
+      response: [],
     },
     {
-      name: 'Resources',
-      item: resourceItems,
-    },
-    {
-      name: 'Prompts',
-      item: promptItems,
+      name: 'MCP Tools List',
+      request: {
+        method: 'POST',
+        header: mcpHeaders,
+        body: { mode: 'raw', raw: toolsListBody },
+        url: {
+          raw: '{{GATEWAY_URL}}/mcp',
+          host: ['{{GATEWAY_URL}}'],
+          path: ['mcp'],
+        },
+        description: 'Returns the list of tools the server advertises via the MCP protocol.',
+      },
+      response: [],
     },
   ],
   variable: [
@@ -374,5 +224,5 @@ const outPath = resolve(process.cwd(), 'postman', 'mcp-server.postman_collection
 writeFileSync(outPath, `${JSON.stringify(collection, null, 2)}\n`, 'utf8');
 
 console.log(
-  `Wrote ${outPath} (tools=${toolItems.length}, resources=${resourceItems.length}, prompts=${promptItems.length})`,
+  `Wrote ${outPath} (tools=${tools.length}, resources=${resources.length}, prompts=${prompts.length}, raw items=3)`,
 );
