@@ -4,6 +4,42 @@ All notable changes to this project are documented here. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-05-12
+
+### Changed
+- **`resources/list` no longer enumerates per-file instances.** The 4
+  per-file resource templates (`enrolled-file`, `file-versions`,
+  `file-comments`, `unattributed-changes`) previously expanded into one
+  concrete resource per enrolled file via their `list:` callbacks,
+  bloating the response to 44+ entries at single-digit file counts and
+  ~400 at 100 files. They now appear in `resources/templates/list`
+  semantics instead — AI clients learn the URI pattern and construct
+  concrete URIs on demand. `resources/list` stays at a small static set
+  regardless of workspace size. Closes KI-078 / ENG-1381.
+
+### Added
+- **`rockhopper://orchestration-guide` resource.** Static markdown
+  resource that documents tool sequencing, identity disambiguation
+  (`fileMsId` vs `versionId` vs `versionInternalId`), the comment and
+  review lifecycles, versioning rules, and cross-cloud (Microsoft vs
+  Google Sheets) differences. AI clients can read it once at session
+  start to avoid common tool-sequencing errors. Backed by
+  `src/resources/orchestration-guide.md`. Closes KI-079 / ENG-1382.
+
+### Internal
+- Build step now copies `src/**/*.md` into `dist/` so non-`.ts` assets
+  ship with the package (`scripts/copy-non-ts-assets.mjs`).
+- Unit and e2e test updates: assert `resources/list` returns exactly 2
+  static entries and `resources/templates/list` returns the 8 URI
+  templates; new test reads the orchestration-guide content.
+- Regenerated Postman collection (16 tools, 10 resources, 4 prompts).
+
+### Breaking changes
+- Behavior change in `resources/list` response shape. Downstream
+  consumers that cached the previous per-file enumeration must refresh
+  their resource lists. No tool, prompt, or resource-read semantics
+  changed — only the `resources/list` response.
+
 ## [0.4.0] — 2026-05-03
 
 ### Added

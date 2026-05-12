@@ -88,6 +88,10 @@ export class McpStdioClient {
     return this.request('resources/list', {});
   }
 
+  async listResourceTemplates(): Promise<JsonRpcResponse> {
+    return this.request('resources/templates/list', {});
+  }
+
   async listPrompts(): Promise<JsonRpcResponse> {
     return this.request('prompts/list', {});
   }
