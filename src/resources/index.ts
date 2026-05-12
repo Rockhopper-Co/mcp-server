@@ -6,6 +6,7 @@ import { registerCommentResources } from './comments.js';
 import { registerReviewResources } from './reviews.js';
 import { registerTeamResources } from './teams.js';
 import { registerChangeResources } from './changes.js';
+import { registerOrchestrationGuideResource } from './orchestration-guide.js';
 
 export function registerResources(
   server: McpServer,
@@ -17,4 +18,5 @@ export function registerResources(
   registerReviewResources(server, api);
   registerTeamResources(server, api);
   registerChangeResources(server, api);
+  registerOrchestrationGuideResource(server);
 }

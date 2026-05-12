@@ -82,8 +82,24 @@ describe('MCP in-memory protocol e2e', () => {
     );
 
     const resources = await client.listResources();
-    expect(resources.resources.map((r) => r.uri)).toContain(
-      'rockhopper://files',
+    expect(resources.resources.map((r) => r.uri).sort()).toEqual(
+      ['rockhopper://files', 'rockhopper://orchestration-guide'].sort(),
+    );
+
+    const templates = await client.listResourceTemplates();
+    expect(
+      templates.resourceTemplates.map((t) => t.uriTemplate).sort(),
+    ).toEqual(
+      [
+        'rockhopper://files/{fileMsId}',
+        'rockhopper://files/{fileMsId}/changes',
+        'rockhopper://files/{fileMsId}/comments',
+        'rockhopper://files/{fileMsId}/versions',
+        'rockhopper://reviews/{reviewId}',
+        'rockhopper://teams/{teamId}',
+        'rockhopper://versions/{versionId}',
+        'rockhopper://versions/{versionId}/reviews',
+      ].sort(),
     );
 
     const prompts = await client.listPrompts();
@@ -611,15 +627,50 @@ describe('MCP in-memory protocol e2e', () => {
     expect(textOf(result.contents[0])).toContain('Sheet1');
   });
 
-  // ---------------- resource list templates ----------------
+  // ---------------- resource list shape ----------------
 
-  it('listResources includes dynamically generated entries from templates', async () => {
+  it('listResources returns only static resources, never per-file expansions', async () => {
     const resources = await client.listResources();
     const uris = resources.resources.map((r) => r.uri);
-    expect(uris).toEqual(expect.arrayContaining(['rockhopper://files']));
+    // Only the workspace-level listing + orchestration guide are static.
+    // Per-file URIs must NOT appear here — they are accessed via templates/list and read-by-URI.
+    expect(uris.sort()).toEqual(
+      ['rockhopper://files', 'rockhopper://orchestration-guide'].sort(),
+    );
     expect(
       uris.some((u) => u.startsWith('rockhopper://files/file-1')),
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it('listResourceTemplates exposes the 8 URI templates clients use for per-file reads', async () => {
+    const templates = await client.listResourceTemplates();
+    const patterns = templates.resourceTemplates.map((t) => t.uriTemplate);
+    expect(patterns).toContain('rockhopper://files/{fileMsId}');
+    expect(patterns).toContain('rockhopper://files/{fileMsId}/versions');
+    expect(patterns).toContain('rockhopper://files/{fileMsId}/comments');
+    expect(patterns).toContain('rockhopper://files/{fileMsId}/changes');
+    expect(patterns).toContain('rockhopper://versions/{versionId}');
+    expect(patterns).toContain('rockhopper://versions/{versionId}/reviews');
+    expect(patterns).toContain('rockhopper://reviews/{reviewId}');
+    expect(patterns).toContain('rockhopper://teams/{teamId}');
+  });
+
+  it('reads rockhopper://orchestration-guide and returns markdown with all expected sections', async () => {
+    const result = await client.readResource({
+      uri: 'rockhopper://orchestration-guide',
+    });
+    expect(result.contents[0].uri).toBe('rockhopper://orchestration-guide');
+    expect(result.contents[0].mimeType).toBe('text/markdown');
+    const md = textOf(result.contents[0]);
+    expect(md).toContain('fileMsId');
+    expect(md).toContain('versionId');
+    expect(md).toContain('versionInternalId');
+    expect(md).toMatch(/identity/i);
+    expect(md).toMatch(/comment/i);
+    expect(md).toMatch(/review lifecycle/i);
+    expect(md).toMatch(/versioning/i);
+    expect(md).toMatch(/uncommitted/i);
+    expect(md).toMatch(/google/i);
   });
 
   // ---------------- prompts ----------------

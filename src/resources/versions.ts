@@ -6,19 +6,11 @@ export function registerVersionResources(
   server: McpServer,
   api: ApiClient,
 ): void {
+  // KI-078 (ENG-1381): template only, no per-file expansion into resources/list.
   server.registerResource(
     'file-versions',
     new ResourceTemplate('rockhopper://files/{fileMsId}/versions', {
-      list: async () => {
-        const files = await api.listEnrolledFiles();
-        return {
-          resources: files.map((f) => ({
-            uri: `rockhopper://files/${f.platformId}/versions`,
-            name: `Versions of ${f.name}`,
-            mimeType: 'application/json',
-          })),
-        };
-      },
+      list: undefined,
     }),
     {
       title: 'File Version History',

@@ -25,7 +25,27 @@ describe('MCP stdio protocol e2e', () => {
 
         const resourcesList = await client.listResources();
         expect(resourcesList.error).toBeUndefined();
-        expect(JSON.stringify(resourcesList.result)).toContain('rockhopper://files');
+        const resources = (resourcesList.result as {
+          resources: Array<{ uri: string }>;
+        }).resources;
+        const resourceUris = resources.map((r) => r.uri).sort();
+        // After KI-078 + KI-079: exactly 2 static resources, never per-file expansions.
+        expect(resourceUris).toEqual(
+          [
+            'rockhopper://files',
+            'rockhopper://orchestration-guide',
+          ].sort(),
+        );
+
+        const templatesList = await client.listResourceTemplates();
+        expect(templatesList.error).toBeUndefined();
+        const templates = (templatesList.result as {
+          resourceTemplates: Array<{ uriTemplate: string }>;
+        }).resourceTemplates;
+        expect(templates).toHaveLength(8);
+        expect(templates.map((t) => t.uriTemplate)).toContain(
+          'rockhopper://files/{fileMsId}',
+        );
 
         const promptsList = await client.listPrompts();
         expect(promptsList.error).toBeUndefined();

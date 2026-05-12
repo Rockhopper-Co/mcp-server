@@ -6,21 +6,13 @@ export function registerChangeResources(
   server: McpServer,
   api: ApiClient,
 ): void {
+  // KI-078 (ENG-1381): template only, no per-file expansion into resources/list.
+  // Previously this enumerated only files with `hasUncommittedChanges === true` —
+  // a per-call API request that scaled linearly with file count.
   server.registerResource(
     'unattributed-changes',
     new ResourceTemplate('rockhopper://files/{fileMsId}/changes', {
-      list: async () => {
-        const files = await api.listEnrolledFiles();
-        return {
-          resources: files
-            .filter((f) => f.hasUncommittedChanges)
-            .map((f) => ({
-              uri: `rockhopper://files/${f.platformId}/changes`,
-              name: `Unattributed changes in ${f.name}`,
-              mimeType: 'application/json',
-            })),
-        };
-      },
+      list: undefined,
     }),
     {
       title: 'Unattributed Changes',

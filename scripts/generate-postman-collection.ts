@@ -24,10 +24,15 @@ import { registerTools } from '../src/tools/index.js';
 
 type SchemaMap = Record<string, z.ZodTypeAny>;
 
+interface CapturedResource {
+  name: string;
+  uriOrTemplate: string;
+}
+
 class CapturingServer {
   readonly toolNames: string[] = [];
 
-  readonly resourceNames: string[] = [];
+  readonly resources: CapturedResource[] = [];
 
   readonly promptNames: string[] = [];
 
@@ -37,11 +42,16 @@ class CapturingServer {
 
   registerResource(
     name: string,
-    _uriOrTemplate: unknown,
+    uriOrTemplate: unknown,
     _config: { description?: string },
     _handler: unknown,
   ): void {
-    this.resourceNames.push(name);
+    const pattern =
+      typeof uriOrTemplate === 'string'
+        ? uriOrTemplate
+        : ((uriOrTemplate as { uriTemplate?: { toString?: () => string } })
+            ?.uriTemplate?.toString?.() ?? String(uriOrTemplate));
+    this.resources.push({ name, uriOrTemplate: pattern });
   }
 
   registerPrompt(
@@ -61,7 +71,21 @@ registerResources(server as never, api);
 registerPrompts(server as never, api);
 
 const tools = [...server.toolNames].sort();
-const resources = [...server.resourceNames].sort();
+const sortedResources = [...server.resources].sort((a, b) =>
+  a.name.localeCompare(b.name),
+);
+// Partition by URI shape: a `{` character marks a URI template (e.g.
+// `rockhopper://files/{fileMsId}`), which surfaces via
+// `resources/templates/list`. Bare URIs are static resources, surfaced via
+// `resources/list`. See KI-078 / ENG-1381 — the description must reflect the
+// real split (2 static + 8 templates today) so customers don't see a 10-name
+// flat list and then encounter a different shape via Load Capabilities.
+const staticResources = sortedResources.filter(
+  (r) => !r.uriOrTemplate.includes('{'),
+);
+const templateResources = sortedResources.filter((r) =>
+  r.uriOrTemplate.includes('{'),
+);
 const prompts = [...server.promptNames].sort();
 
 function bulletList(items: string[]): string {
@@ -115,7 +139,9 @@ Get a PAT from **Avatar → Access Tokens** at app.rockhopper.co. See the [Rockh
 
 **${tools.length} tools**: ${tools.map((t) => `\`${t}\``).join(', ')}.
 
-**${resources.length} resources**: ${resources.map((r) => `\`${r}\``).join(', ')}.
+**${staticResources.length} static resources** (returned by \`resources/list\`): ${staticResources.map((r) => `\`${r.name}\``).join(', ')}.
+
+**${templateResources.length} URI templates** (returned by \`resources/templates/list\`; AI clients read concrete instances by constructing URIs from the patterns): ${templateResources.map((r) => `\`${r.uriOrTemplate}\``).join(', ')}.
 
 **${prompts.length} prompts**: ${prompts.map((p) => `\`${p}\``).join(', ')}.
 
@@ -224,5 +250,5 @@ const outPath = resolve(process.cwd(), 'postman', 'mcp-server.postman_collection
 writeFileSync(outPath, `${JSON.stringify(collection, null, 2)}\n`, 'utf8');
 
 console.log(
-  `Wrote ${outPath} (tools=${tools.length}, resources=${resources.length}, prompts=${prompts.length}, raw items=3)`,
+  `Wrote ${outPath} (tools=${tools.length}, resources=${staticResources.length} static + ${templateResources.length} templates, prompts=${prompts.length}, raw items=3)`,
 );
