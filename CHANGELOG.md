@@ -4,7 +4,14 @@ All notable changes to this project are documented here. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] — 2026-05-12
+## [0.6.0] — 2026-05-13
+
+> Released to npm as `0.6.0`. The release branch was prepared with
+> `package.json` at `0.5.0` (set in [PR #37](https://github.com/Rockhopper-Co/mcp-server/pull/37)),
+> but the `release:minor` script ran on top of that and produced `0.6.0`
+> via `npm version minor`. No code differs between the `0.5.0` manifest
+> and the `0.6.0` published artifact — the bump is purely a version-string
+> change. Content below is what shipped.
 
 ### Changed
 - **`resources/list` no longer enumerates per-file instances.** The 4
