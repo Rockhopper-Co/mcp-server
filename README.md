@@ -74,6 +74,10 @@ Add to `.cursor/mcp.json` in your project:
 |----------|----------|---------|-------------|
 | `ROCKHOPPER_TOKEN` | Yes | — | Personal Access Token (starts with `rh_pat_`) |
 | `ROCKHOPPER_API_URL` | No | `https://api.rockhopper.co` | Rockhopper API base URL |
+| `NODE_ENV` | No | — | Set to `development` to accept self-signed HTTPS (local backend) |
+| `ROCKHOPPER_TLS_INSECURE` | No | — | Set to `1` to force TLS verify off (dev only) |
+
+For local development in this repo, copy `.env.example` to `.env` in the `mcp-server` directory. The CLI loads that file automatically before `npm run dev` or `npm start`. Variables already set in the shell or in your MCP client config take precedence. When Cursor or Claude spawns the server via `npx`, use the `env` block in `mcp.json` (or export vars in your shell) — a project `.env` is only read if the process working directory is `mcp-server` or the file lives next to the installed package.
 
 ## Postman
 

@@ -1,3 +1,4 @@
+import { rockhopperFetch } from './http-fetch.js';
 import type {
   CellHistoryEntry,
   EnrolledFile,
@@ -26,14 +27,14 @@ export class ApiClient {
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const response = await fetch(url, {
+    const response = await rockhopperFetch(url, {
       ...init,
       headers: {
         Authorization: `Bearer ${this.token}`,
         'Content-Type': 'application/json',
         ...init?.headers,
       },
-    });
+    }, this.baseUrl);
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');

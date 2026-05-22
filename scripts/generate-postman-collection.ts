@@ -17,80 +17,13 @@
  */
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { z } from 'zod';
-import { registerPrompts } from '../src/prompts/index.js';
-import { registerResources } from '../src/resources/index.js';
-import { registerTools } from '../src/tools/index.js';
-
-type SchemaMap = Record<string, z.ZodTypeAny>;
-
-interface CapturedResource {
-  name: string;
-  uriOrTemplate: string;
-}
-
-class CapturingServer {
-  readonly toolNames: string[] = [];
-
-  readonly resources: CapturedResource[] = [];
-
-  readonly promptNames: string[] = [];
-
-  registerTool(name: string, _config: { inputSchema?: SchemaMap }, _handler: unknown): void {
-    this.toolNames.push(name);
-  }
-
-  registerResource(
-    name: string,
-    uriOrTemplate: unknown,
-    _config: { description?: string },
-    _handler: unknown,
-  ): void {
-    const pattern =
-      typeof uriOrTemplate === 'string'
-        ? uriOrTemplate
-        : ((uriOrTemplate as { uriTemplate?: { toString?: () => string } })
-            ?.uriTemplate?.toString?.() ?? String(uriOrTemplate));
-    this.resources.push({ name, uriOrTemplate: pattern });
-  }
-
-  registerPrompt(
-    name: string,
-    _config: { argsSchema?: SchemaMap },
-    _handler: unknown,
-  ): void {
-    this.promptNames.push(name);
-  }
-}
-
-const server = new CapturingServer();
-const api = {} as never;
-
-registerTools(server as never, api);
-registerResources(server as never, api);
-registerPrompts(server as never, api);
-
-const tools = [...server.toolNames].sort();
-const sortedResources = [...server.resources].sort((a, b) =>
-  a.name.localeCompare(b.name),
-);
-// Partition by URI shape: a `{` character marks a URI template (e.g.
-// `rockhopper://files/{fileMsId}`), which surfaces via
-// `resources/templates/list`. Bare URIs are static resources, surfaced via
-// `resources/list`. See KI-078 / ENG-1381 — the description must reflect the
-// real split (2 static + 8 templates today) so customers don't see a 10-name
-// flat list and then encounter a different shape via Load Capabilities.
-const staticResources = sortedResources.filter(
-  (r) => !r.uriOrTemplate.includes('{'),
-);
-const templateResources = sortedResources.filter((r) =>
-  r.uriOrTemplate.includes('{'),
-);
-const prompts = [...server.promptNames].sort();
-
-function bulletList(items: string[]): string {
-  return items.map((item) => `- \`${item}\``).join('\n');
-}
+import {
+  promptNames as prompts,
+  registrySummaryMarkdown,
+  staticResources,
+  templateResources,
+  toolNames as tools,
+} from './postman-introspect.js';
 
 const description = `# Rockhopper MCP Server
 
@@ -133,17 +66,15 @@ Drop this into Cursor / Claude Desktop / Claude.ai (\`~/.cursor/mcp.json\` or eq
 }
 \`\`\`
 
-Get a PAT from **Avatar → Access Tokens** at app.rockhopper.co. See the [Rockhopper MCP setup guide](https://docs.rockhopper.co/it-setup/mcp-server) for full details.
+Get a PAT from **Avatar → Access Tokens** at app.rockhopper.co. Select a Postman environment (staging, dev, production, local) for \`GATEWAY_URL\` — see \`postman/*.postman_environment.json\`. See the [setup guide](https://docs.rockhopper.co/it-setup/mcp-server) for full details.
 
 ## What the server exposes
 
-**${tools.length} tools**: ${tools.map((t) => `\`${t}\``).join(', ')}.
+${registrySummaryMarkdown()}
 
-**${staticResources.length} static resources** (returned by \`resources/list\`): ${staticResources.map((r) => `\`${r.name}\``).join(', ')}.
+## Full tool test suite
 
-**${templateResources.length} URI templates** (returned by \`resources/templates/list\`; AI clients read concrete instances by constructing URIs from the patterns): ${templateResources.map((r) => `\`${r.uriOrTemplate}\``).join(', ')}.
-
-**${prompts.length} prompts**: ${prompts.map((p) => `\`${p}\``).join(', ')}.
+For raw JSON-RPC coverage of every tool, import \`mcp-server-full.postman_collection.json\` (generated alongside this file). Run **Setup (REST)** first, then **Read Tools** / **Write Tools**.
 
 ## Authentication
 
@@ -240,10 +171,8 @@ const collection = {
       response: [],
     },
   ],
-  variable: [
-    { key: 'GATEWAY_URL', value: 'https://mcp.rockhopper.co' },
-    { key: 'ROCKHOPPER_PAT', value: '' },
-  ],
+  // GATEWAY_URL comes from the active Postman environment (not collection defaults).
+  variable: [{ key: 'ROCKHOPPER_PAT', value: '' }],
 };
 
 const outPath = resolve(process.cwd(), 'postman', 'mcp-server.postman_collection.json');

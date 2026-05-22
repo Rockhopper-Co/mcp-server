@@ -20,6 +20,9 @@ The committed JSON in this folder ships:
   points consumers at the MCP Request UI flow. Every published vendor MCP
   collection on the Postman API Network (HubSpot, AWS Labs, Stripe, etc.) is
   built around a single MCP Request — we follow the same pattern.
+- `mcp-server-full.postman_collection.json` — **full test suite**: REST setup,
+  MCP protocol, every `tools/call`, every `prompts/get`, sample `resources/read`,
+  and negative cases. Generated from `src/`; use this to exercise all 16 tools.
 - 5 environment files:
   - `local`, `dev`, `staging`, `production` — internal use (6 vars including
     `BACKEND_URL` + `OAUTH_*_URL`s).
@@ -44,12 +47,18 @@ no drift between source code and committed JSON.
   endpoints from `mcp-gateway/src/oauth.ts`. Reference only; PAT-based testing
   doesn't need them.
 
-## Why no per-tool requests?
+## Full collection workflow
 
-The previous generator emitted 34 hand-crafted HTTP POST requests with raw
-JSON-RPC bodies — one per tool/resource/prompt. Two bugs in the generator
-caused ~80% of those to fail on Send (empty `arguments: {}`, object-shaped
-resource URIs). The whole pattern was pre-mid-2025 legacy; Postman now has a
-first-class MCP Request type whose UI discovers everything at runtime. See
-[`knowledge-base/docs/plans/postman-mcp-request-rebuild.md`](../../knowledge-base/docs/plans/postman-mcp-request-rebuild.md)
-for the full migration rationale and benchmark against peer vendor collections.
+1. Import `mcp-server-full.postman_collection.json` and pick an environment (`staging`, `dev`, `production`, `local`). That environment sets `GATEWAY_URL` and `BACKEND_URL` — the collection does not hardcode them.
+2. Set `ROCKHOPPER_PAT` (read-write for **Write Tools**).
+3. Run **Setup (REST)** → **MCP Protocol** → **Read Tools** / **MCP Prompts** / **MCP Resources**.
+4. **Write Tools** only on staging — they create comments, reviews, and versions.
+
+Tool responses use `result.content[0].text` (markdown summaries), not JSON arrays.
+Setup uses REST to populate `fileMsId`, `versionInternalId`, `chatId`, `reviewId`, and `userId`.
+
+## Why two collections?
+
+The minimal collection stays small for the public Postman API Network workspace.
+The full collection is regenerated from source (`scripts/generate-postman-collection-full.ts`)
+so every tool stays in sync without hand-maintaining 50+ requests.

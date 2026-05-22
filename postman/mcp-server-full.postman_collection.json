@@ -1,0 +1,2487 @@
+{
+  "info": {
+    "name": "Rockhopper MCP Server (full)",
+    "description": "# Rockhopper MCP Server (full test suite)\n\nEnd-to-end Postman collection for **every MCP tool**, **prompt**, and key **resource** reads exposed by the Rockhopper MCP server, plus REST setup calls to populate collection variables.\n\n## Before you run\n\n1. **Select a Postman environment** (`staging`, `dev`, `production`, or `local`) — it supplies `GATEWAY_URL` and `BACKEND_URL` (e.g. staging → `https://mcp-staging.rockhopper.co` + `https://api-staging.rockhopper.co`).\n2. Set `ROCKHOPPER_PAT` (`rh_pat_...`, **read-write** scope for Write Tools).\n3. Run **Setup (REST)** folder first (saves `fileMsId`, `versionInternalId`, `chatId`, `reviewId`, `userId`).\n4. Run **MCP Protocol**, then **Read Tools** / **MCP Prompts** / **MCP Resources**.\n5. **Write Tools** mutate data — use staging only.\n\n## MCP Request UI\n\nFor interactive discovery without raw JSON-RPC, add Postman's **MCP Request** pointing at `{{GATEWAY_URL}}/mcp` with Bearer `{{ROCKHOPPER_PAT}}` and click **Load Capabilities**.\n\n## Registry (from source)\n\n**16 tools**: `add_comment`, `approve_review`, `cancel_review`, `create_review_request`, `create_version`, `discard_changes`, `get_cell_history`, `get_file_comments`, `get_file_versions`, `get_reviews`, `get_unattributed_changes`, `list_files`, `reply_to_comment`, `resolve_comment`, `search_files`, `update_file_description`.\n\n**2 static resources** (returned by `resources/list`): `enrolled-files`, `orchestration-guide`.\n\n**8 URI templates** (returned by `resources/templates/list`): `rockhopper://files/{fileMsId}`, `rockhopper://files/{fileMsId}/comments`, `rockhopper://versions/{versionId}`, `rockhopper://files/{fileMsId}/versions`, `rockhopper://reviews/{reviewId}`, `rockhopper://teams/{teamId}`, `rockhopper://files/{fileMsId}/changes`, `rockhopper://versions/{versionId}/reviews`.\n\n**4 prompts**: `file-overview`, `pending-reviews`, `summarize-file-changes`, `unresolved-comments`.\n\n## Authentication\n\nBearer `{{ROCKHOPPER_PAT}}`. OAuth 2.0 DCR for web clients — see [setup guide](https://docs.rockhopper.co/it-setup/mcp-server).\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Setup (REST)",
+      "description": "Populate collection variables from the REST API. Run this folder before MCP tool calls.",
+      "item": [
+        {
+          "name": "GET /users/me → userId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "url": "{{BACKEND_URL}}/users/me",
+            "description": "Saves `userId` for create_review_request reviewerIds."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const u = pm.response.json();",
+                  "pm.test('Has id', () => pm.expect(u.id).to.exist);",
+                  "if (u.id != null) pm.collectionVariables.set('userId', String(u.id));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /enrolled-files → fileMsId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "url": "{{BACKEND_URL}}/enrolled-files",
+            "description": "Saves `fileMsId` from the first enrolled file."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const files = pm.response.json();",
+                  "pm.test('Array', () => pm.expect(files).to.be.an('array'));",
+                  "if (files.length > 0 && files[0].platformId) {",
+                  "  pm.collectionVariables.set('fileMsId', files[0].platformId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /file-versions/file/{fileMsId} → versionInternalId (latest semver)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "url": "{{BACKEND_URL}}/file-versions/file/{{fileMsId}}",
+            "description": "Saves `versionInternalId` for the latest major.minor.patch (skips wasDiscarded when possible)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "function pickLatestVersionBySemver(versions) {",
+                  "  if (!Array.isArray(versions) || versions.length === 0) return null;",
+                  "  const pool = versions.filter((v) => v && v.wasDiscarded !== true);",
+                  "  const list = pool.length ? pool : versions;",
+                  "  return list.reduce((best, v) => {",
+                  "    if (!best) return v;",
+                  "    if (v.majorVersion !== best.majorVersion) {",
+                  "      return v.majorVersion > best.majorVersion ? v : best;",
+                  "    }",
+                  "    if (v.minorVersion !== best.minorVersion) {",
+                  "      return v.minorVersion > best.minorVersion ? v : best;",
+                  "    }",
+                  "    return v.patchVersion > best.patchVersion ? v : best;",
+                  "  }, null);",
+                  "}",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const versions = pm.response.json();",
+                  "pm.test('Array', () => pm.expect(versions).to.be.an('array'));",
+                  "const latest = pickLatestVersionBySemver(versions);",
+                  "pm.test('Latest version has semver', () => {",
+                  "  pm.expect(latest).to.exist;",
+                  "  pm.expect(latest.majorVersion).to.be.a('number');",
+                  "  pm.expect(latest.minorVersion).to.be.a('number');",
+                  "  pm.expect(latest.patchVersion).to.be.a('number');",
+                  "});",
+                  "if (latest && latest.internalId != null) {",
+                  "  pm.collectionVariables.set('versionInternalId', String(latest.internalId));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /file-chat/{fileMsId} → chatId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "url": "{{BACKEND_URL}}/file-chat/{{fileMsId}}",
+            "description": "Saves `chatId` from the first comment thread (if any)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const chats = pm.response.json();",
+                  "if (Array.isArray(chats) && chats.length > 0 && chats[0].id != null) {",
+                  "  pm.collectionVariables.set('chatId', String(chats[0].id));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /reviews/versions/{latest versionId}/requests → reviewId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "url": "{{BACKEND_URL}}/reviews/versions/{{versionInternalId}}/requests",
+            "description": "Resolves latest version by major.minor.patch, then saves reviewId from the first request on that version."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "function pickLatestVersionBySemver(versions) {",
+                  "  if (!Array.isArray(versions) || versions.length === 0) return null;",
+                  "  const pool = versions.filter((v) => v && v.wasDiscarded !== true);",
+                  "  const list = pool.length ? pool : versions;",
+                  "  return list.reduce((best, v) => {",
+                  "    if (!best) return v;",
+                  "    if (v.majorVersion !== best.majorVersion) {",
+                  "      return v.majorVersion > best.majorVersion ? v : best;",
+                  "    }",
+                  "    if (v.minorVersion !== best.minorVersion) {",
+                  "      return v.minorVersion > best.minorVersion ? v : best;",
+                  "    }",
+                  "    return v.patchVersion > best.patchVersion ? v : best;",
+                  "  }, null);",
+                  "}",
+                  "const base = pm.environment.get(\"BACKEND_URL\") || pm.collectionVariables.get(\"BACKEND_URL\");",
+                  "const fileMsId = pm.collectionVariables.get(\"fileMsId\");",
+                  "const pat = pm.environment.get(\"ROCKHOPPER_PAT\") || pm.collectionVariables.get(\"ROCKHOPPER_PAT\");",
+                  "if (!base || !fileMsId || !pat) {",
+                  "  throw new Error(\"Run Setup through enrolled-files first (need BACKEND_URL, fileMsId, ROCKHOPPER_PAT)\");",
+                  "}",
+                  "const versionRes = await pm.sendRequest({",
+                  "  url: `${base}/file-versions/file/${fileMsId}`,",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: `Bearer ${pat}` },",
+                  "});",
+                  "const latest = pickLatestVersionBySemver(versionRes.json());",
+                  "if (!latest || latest.internalId == null) {",
+                  "  throw new Error(\"No file version found to resolve latest major.minor.patch\");",
+                  "}",
+                  "pm.collectionVariables.set('versionInternalId', String(latest.internalId));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const reviews = pm.response.json();",
+                  "if (Array.isArray(reviews) && reviews.length > 0 && reviews[0].id != null) {",
+                  "  pm.collectionVariables.set('reviewId', String(reviews[0].id));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MCP Protocol",
+      "description": "Handshake and capability discovery. Run after Setup when using Collection Runner.",
+      "item": [
+        {
+          "name": "Healthz",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{GATEWAY_URL}}/healthz",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            },
+            "description": "Expect 200 {\"status\":\"ok\"}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "MCP Initialize",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"initialize\",\n  \"id\": \"init-1\",\n  \"params\": {\n    \"protocolVersion\": \"2025-03-26\",\n    \"capabilities\": {},\n    \"clientInfo\": {\n      \"name\": \"Postman\",\n      \"version\": \"1.0.0\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "JSON-RPC handshake."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('protocolVersion', () => pm.expect(r.result.protocolVersion).to.exist);",
+                  "pm.test('serverInfo', () => pm.expect(r.result.serverInfo).to.exist);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "notifications/initialized",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"notifications/initialized\"\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Client initialized notification (no JSON-RPC id)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Accepted', () => pm.expect(pm.response.code).to.be.oneOf([200, 202, 204]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "tools/list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"id\": \"tools-list-1\",\n  \"params\": {}\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Lists advertised tools."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('tools array', () => pm.expect(r.result.tools).to.be.an('array'));",
+                  "pm.test('tool count 7-16', () => {",
+                  "  const n = r.result.tools.length;",
+                  "  pm.expect(n).to.be.at.least(7).and.at.most(16);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resources/list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/list\",\n  \"id\": \"res-list-1\",\n  \"params\": {}\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Static resources."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().result.resources).to.be.an('array');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resources/templates/list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/templates/list\",\n  \"id\": \"res-tpl-1\",\n  \"params\": {}\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "URI templates for parameterized resources."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().result.resourceTemplates).to.be.an('array');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "prompts/list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"prompts/list\",\n  \"id\": \"prompts-list-1\",\n  \"params\": {}\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Lists prompts."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().result.prompts.length).to.be.at.least(4);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "ping",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"ping\",\n  \"id\": \"ping-1\"\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Liveness ping."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Read Tools",
+      "description": "tools/call for read-only tools. Requires Setup + MCP Initialize.",
+      "item": [
+        {
+          "name": "list_files",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 10,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"list_files\",\n    \"arguments\": {\n    \n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "List all enrolled files."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "list_files (search)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 11,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"list_files\",\n    \"arguments\": {\n    \"search\": \"{{searchQuery}}\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Filter by search term."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "search_files",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 12,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"search_files\",\n    \"arguments\": {\n    \"query\": \"{{searchQuery}}\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Search files by name."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "get_file_versions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 13,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_file_versions\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Version history for fileMsId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "get_file_comments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 14,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_file_comments\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Comments on file."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "get_reviews (by fileMsId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 15,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_reviews\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Reviews for latest version."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "get_reviews (by versionId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 16,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_reviews\",\n    \"arguments\": {\n    \"versionId\": {{versionInternalId}}\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Reviews for a specific version (versionId = versionInternalId)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "get_cell_history",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 17,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_cell_history\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\",\n    \"sheetName\": \"{{sheetName}}\",\n    \"cellAddress\": \"{{cellAddress}}\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Change history for one cell."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "get_unattributed_changes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 18,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_unattributed_changes\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Pending unattributed changes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "get_unattributed_changes (sheet filter)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 19,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_unattributed_changes\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\",\n    \"sheetName\": \"{{sheetName}}\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Unattributed changes on one sheet."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Write Tools",
+      "description": "tools/call for mutating tools. Requires read-write PAT and staging. Run Setup first.",
+      "item": [
+        {
+          "name": "add_comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 20,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"add_comment\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\",\n    \"message\": \"Postman smoke test comment\",\n    \"versionInternalId\": {{versionInternalId}}\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Add a file comment."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "add_comment (cell)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 21,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"add_comment\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\",\n    \"message\": \"Postman cell-scoped comment\",\n    \"versionInternalId\": {{versionInternalId}},\n    \"cellReference\": \"{{cellAddress}}\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Comment anchored to a cell."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "reply_to_comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 22,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"reply_to_comment\",\n    \"arguments\": {\n    \"chatId\": {{chatId}},\n    \"message\": \"Postman reply\",\n    \"versionInternalId\": {{versionInternalId}}\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Reply to chatId from Setup. Skips gracefully if chatId unset."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});",
+                  "if (!pm.collectionVariables.get('chatId')) {",
+                  "  pm.test.skip('No chatId — run Setup or add_comment first');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resolve_comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 23,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"resolve_comment\",\n    \"arguments\": {\n    \"chatId\": {{chatId}}\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Resolve comment thread."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});",
+                  "if (!pm.collectionVariables.get('chatId')) {",
+                  "  pm.test.skip('No chatId — run Setup or add_comment first');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "create_review_request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 24,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"create_review_request\",\n    \"arguments\": {\n    \"versionId\": {{versionInternalId}},\n    \"subject\": \"Postman smoke test review\",\n    \"reviewerIds\": [{{userId}}]\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Creates review; reviewerIds uses userId from /users/me."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "approve_review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 25,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"approve_review\",\n    \"arguments\": {\n    \"reviewId\": {{reviewId}},\n    \"notes\": \"Approved via Postman\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Approve pending review."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});",
+                  "if (!pm.collectionVariables.get('reviewId')) {",
+                  "  pm.test.skip('No reviewId — run Setup or create_review_request first');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "cancel_review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 26,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"cancel_review\",\n    \"arguments\": {\n    \"reviewId\": {{reviewId}}\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Cancel pending review."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});",
+                  "if (!pm.collectionVariables.get('reviewId')) {",
+                  "  pm.test.skip('No reviewId — run Setup or create_review_request first');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "create_version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 27,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"create_version\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\",\n    \"versionType\": \"patch\",\n    \"description\": \"Postman smoke test version\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Commit uncommitted changes (file must have live edits)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "discard_changes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 28,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"discard_changes\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\",\n    \"description\": \"Discarded via Postman smoke test\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Discard uncommitted changes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "update_file_description",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 29,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"update_file_description\",\n    \"arguments\": {\n    \"fileMsId\": \"{{fileMsId}}\",\n    \"name\": \"Postman Test File\"\n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Rename enrolled file display name."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('JSON-RPC result', () => pm.expect(r.result).to.exist);",
+                  "pm.test('Tool content', () => {",
+                  "  const content = r.result.content;",
+                  "  pm.expect(content).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(content[0].text).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MCP Prompts",
+      "description": "prompts/get for every registered prompt.",
+      "item": [
+        {
+          "name": "prompts/get - file-overview",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"prompts/get\",\n  \"id\": 40,\n  \"params\": {\n    \"name\": \"file-overview\",\n    \"arguments\": {\n      \"fileMsId\": \"{{fileMsId}}\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Expand prompt file-overview for fileMsId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Prompt messages', () => {",
+                  "  pm.expect(r.result.messages).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "prompts/get - pending-reviews",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"prompts/get\",\n  \"id\": 41,\n  \"params\": {\n    \"name\": \"pending-reviews\",\n    \"arguments\": {\n      \"fileMsId\": \"{{fileMsId}}\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Expand prompt pending-reviews for fileMsId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Prompt messages', () => {",
+                  "  pm.expect(r.result.messages).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "prompts/get - summarize-file-changes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"prompts/get\",\n  \"id\": 42,\n  \"params\": {\n    \"name\": \"summarize-file-changes\",\n    \"arguments\": {\n      \"fileMsId\": \"{{fileMsId}}\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Expand prompt summarize-file-changes for fileMsId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Prompt messages', () => {",
+                  "  pm.expect(r.result.messages).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "prompts/get - unresolved-comments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"prompts/get\",\n  \"id\": 43,\n  \"params\": {\n    \"name\": \"unresolved-comments\",\n    \"arguments\": {\n      \"fileMsId\": \"{{fileMsId}}\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Expand prompt unresolved-comments for fileMsId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Prompt messages', () => {",
+                  "  pm.expect(r.result.messages).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MCP Resources",
+      "description": "resources/read for 2 static + sample templated URIs.",
+      "item": [
+        {
+          "name": "resources/read - rockhopper://orchestration-guide",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/read\",\n  \"id\": 60,\n  \"params\": {\n    \"uri\": \"rockhopper://orchestration-guide\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Static markdown orchestration guide."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Resource contents', () => {",
+                  "  pm.expect(r.result.contents).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.expect(pm.response.json().result.contents[0].mimeType).to.eql('text/markdown');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resources/read - rockhopper://files",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/read\",\n  \"id\": 61,\n  \"params\": {\n    \"uri\": \"rockhopper://files\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Workspace file listing (JSON)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Resource contents', () => {",
+                  "  pm.expect(r.result.contents).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.expect(pm.response.json().result.contents[0].mimeType).to.eql('application/json');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resources/read - rockhopper://files/{fileMsId}",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/read\",\n  \"id\": 62,\n  \"params\": {\n    \"uri\": \"rockhopper://files/{{fileMsId}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Single file metadata."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Resource contents', () => {",
+                  "  pm.expect(r.result.contents).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resources/read - rockhopper://files/{fileMsId}/versions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/read\",\n  \"id\": 63,\n  \"params\": {\n    \"uri\": \"rockhopper://files/{{fileMsId}}/versions\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Version list resource."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Resource contents', () => {",
+                  "  pm.expect(r.result.contents).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resources/read - rockhopper://versions/{versionId}",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/read\",\n  \"id\": 64,\n  \"params\": {\n    \"uri\": \"rockhopper://versions/{{versionInternalId}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Single version metadata."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Resource contents', () => {",
+                  "  pm.expect(r.result.contents).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resources/read - rockhopper://files/{fileMsId}/comments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/read\",\n  \"id\": 65,\n  \"params\": {\n    \"uri\": \"rockhopper://files/{{fileMsId}}/comments\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Comments resource."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Resource contents', () => {",
+                  "  pm.expect(r.result.contents).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resources/read - rockhopper://versions/{versionId}/reviews",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/read\",\n  \"id\": 66,\n  \"params\": {\n    \"uri\": \"rockhopper://versions/{{versionInternalId}}/reviews\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Reviews on a version."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Resource contents', () => {",
+                  "  pm.expect(r.result.contents).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resources/read - rockhopper://reviews/{reviewId}",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/read\",\n  \"id\": 67,\n  \"params\": {\n    \"uri\": \"rockhopper://reviews/{{reviewId}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Single review resource."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Resource contents', () => {",
+                  "  pm.expect(r.result.contents).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "if (!pm.collectionVariables.get('reviewId')) {",
+                  "  pm.test.skip('No reviewId from Setup');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resources/read - rockhopper://files/{fileMsId}/changes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"resources/read\",\n  \"id\": 68,\n  \"params\": {\n    \"uri\": \"rockhopper://files/{{fileMsId}}/changes\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Unattributed changes resource."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Resource contents', () => {",
+                  "  pm.expect(r.result.contents).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Error Handling",
+      "description": "Negative cases.",
+      "item": [
+        {
+          "name": "401 - missing Authorization",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{BACKEND_URL}}/users/me",
+            "description": "No Authorization header."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "tools/call - get_file_versions (missing fileMsId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 90,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_file_versions\",\n    \"arguments\": {\n    \n  }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "Tool error when required fileMsId omitted."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Tool error content', () => {",
+                  "  const text = (r.result && r.result.content && r.result.content[0] && r.result.content[0].text) || '';",
+                  "  pm.expect(text.length).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 - nonexistent file (REST)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "url": "{{BACKEND_URL}}/enrolled-files/00000000-0000-0000-0000-000000000000"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const code = pm.response.code;",
+                  "pm.test('404 or 400', () => pm.expect([400, 404]).to.include(code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "tools/call - unknown tool",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, text/event-stream"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ROCKHOPPER_PAT}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"id\": 91,\n  \"params\": {\n    \"name\": \"nonexistent_tool\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{GATEWAY_URL}}/mcp",
+              "host": [
+                "{{GATEWAY_URL}}"
+              ],
+              "path": [
+                "mcp"
+              ]
+            },
+            "description": "JSON-RPC error for unknown tool name."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.test('Has error', () => pm.expect(r.error || (r.result && r.result.isError)).to.exist);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "ROCKHOPPER_PAT",
+      "value": ""
+    },
+    {
+      "key": "fileMsId",
+      "value": ""
+    },
+    {
+      "key": "versionInternalId",
+      "value": ""
+    },
+    {
+      "key": "chatId",
+      "value": ""
+    },
+    {
+      "key": "reviewId",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "searchQuery",
+      "value": "a"
+    },
+    {
+      "key": "sheetName",
+      "value": "Sheet1"
+    },
+    {
+      "key": "cellAddress",
+      "value": "A1"
+    }
+  ]
+}

@@ -2,7 +2,10 @@
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ApiClient } from './api-client.js';
+import { loadEnvFiles } from './load-env.js';
 import { createServer } from './server.js';
+
+loadEnvFiles();
 
 const ROCKHOPPER_API_URL =
   process.env.ROCKHOPPER_API_URL || 'https://api.rockhopper.co';
