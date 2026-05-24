@@ -313,8 +313,21 @@ describe('MCP in-memory protocol e2e', () => {
       arguments: { fileMsId: 'file-1', sheetName: 'EmptySheet' },
     });
     expect(JSON.stringify(result.content)).toContain(
-      'No unattributed changes found',
+      'No unattributed changes on sheet ',
     );
+    expect(JSON.stringify(result.content)).toContain('EmptySheet');
+  });
+
+  // KI-097: file-wide mode uses the cursor-paginated route.
+  it('get_unattributed_changes returns paginated envelope when no sheetName', async () => {
+    const result = await client.callTool({
+      name: 'get_unattributed_changes',
+      arguments: { fileMsId: 'file-1' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(text).toContain('Showing 1 of 1');
+    expect(text).toContain('Top sheets on this page: Sheet1 (1)');
+    expect(text).toContain('Sheet1!A1');
   });
 
   it('get_unattributed_changes surfaces API errors', async () => {

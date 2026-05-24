@@ -13,6 +13,30 @@ All notable changes to this project are documented here. Follows
   (`FileChat.message`) and version descriptions (`FileVersion.description`).
   Backed by [backend PR #472](https://github.com/Rockhopper-Co/backend/pull/472)
   / ENG-1383; behavior available once that merges. Closes KI-080.
+- **`get_unattributed_changes` cursor pagination + cap/summary (KI-097).**
+  File-wide mode now uses the dedicated paginated backend route
+  (`GET /unattributed-changes/paginated/:fileMsId`, added by
+  [backend PR #475](https://github.com/Rockhopper-Co/backend/pull/475) /
+  KI-102) instead of the legacy unpaginated route. The MCP tool gains an
+  optional `cursor` input for round-tripping the backend's cursor.
+  Responses are now capped at 200 displayed rows with a summary line
+  ("Showing X of Y change(s) on this page (Z total across the file)" +
+  top-sheets breakdown) and a pagination hint when more pages or hidden
+  rows are available. Audit measured one file at 12.5 MB / 28k rows on
+  the old route — context-blowing for AI clients; now bounded under
+  the 25k-token MCP limit. Sheet-filter mode (`sheetName` set) is
+  unchanged — it stays unpaginated since sheet size inherently bounds
+  it. Closes KI-097.
+
+### Changed
+- **`ApiClient.getUnattributedChanges` refactored into two methods**
+  (KI-097): `getUnattributedChangesBySheet(fileMsId, sheetName)` for
+  the sheet-filtered legacy route, and
+  `getUnattributedChangesPaginated(fileMsId, cursor?)` for the new
+  cursor-paginated route. The old combined method is removed. External
+  consumers of `ApiClient` (e.g. `mcp-gateway`) only use `createServer`
+  + `ApiClient` as types, not these methods directly, so the rename has
+  zero blast radius outside this repo.
 
 ### Changed (breaking)
 - **`update_file_description` renamed to `rename_file`.** The tool always

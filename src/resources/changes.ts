@@ -21,13 +21,21 @@ export function registerChangeResources(
       mimeType: 'application/json',
     },
     async (uri, { fileMsId }) => {
-      const changes = await api.getUnattributedChanges(fileMsId as string);
+      // KI-097: switched to cursor-paginated route. Resource returns the
+      // full envelope (`{changes, nextCursor, totalCount, snapshotId, ...}`)
+      // so consumers can paginate by re-reading the resource with a
+      // different cursor — though most clients will treat this as a
+      // single read. Resource shape is now the paginated envelope, not
+      // a bare array.
+      const page = await api.getUnattributedChangesPaginated(
+        fileMsId as string,
+      );
       return {
         contents: [
           {
             uri: uri.href,
             mimeType: 'application/json',
-            text: JSON.stringify(changes, null, 2),
+            text: JSON.stringify(page, null, 2),
           },
         ],
       };

@@ -89,4 +89,241 @@ describe('read tool handlers', () => {
       });
     }
   });
+
+  // KI-097: paginated/repointed get_unattributed_changes
+  describe('get_unattributed_changes (KI-097)', () => {
+    it('uses BySheet method when sheetName supplied', async () => {
+      const server = createMockMcpServer();
+      const api = createMockApiClient();
+      registerTools(server as any, api as any);
+
+      const call = server.registerTool.mock.calls.find(
+        (c) => c[0] === 'get_unattributed_changes',
+      );
+      const handler = call?.[2];
+      await handler({ fileMsId: 'file-1', sheetName: 'Sheet1' });
+
+      expect(api.getUnattributedChangesBySheet).toHaveBeenCalledWith(
+        'file-1',
+        'Sheet1',
+      );
+      expect(api.getUnattributedChangesPaginated).not.toHaveBeenCalled();
+    });
+
+    it('uses Paginated method when sheetName omitted', async () => {
+      const server = createMockMcpServer();
+      const api = createMockApiClient();
+      registerTools(server as any, api as any);
+
+      const call = server.registerTool.mock.calls.find(
+        (c) => c[0] === 'get_unattributed_changes',
+      );
+      const handler = call?.[2];
+      await handler({ fileMsId: 'file-1' });
+
+      expect(api.getUnattributedChangesPaginated).toHaveBeenCalledWith(
+        'file-1',
+        undefined,
+      );
+      expect(api.getUnattributedChangesBySheet).not.toHaveBeenCalled();
+    });
+
+    it('forwards cursor to Paginated method', async () => {
+      const server = createMockMcpServer();
+      const api = createMockApiClient();
+      registerTools(server as any, api as any);
+
+      const call = server.registerTool.mock.calls.find(
+        (c) => c[0] === 'get_unattributed_changes',
+      );
+      const handler = call?.[2];
+      await handler({ fileMsId: 'file-1', cursor: 'abc123' });
+
+      expect(api.getUnattributedChangesPaginated).toHaveBeenCalledWith(
+        'file-1',
+        'abc123',
+      );
+    });
+
+    it('renders paginated summary line with totals + top sheets', async () => {
+      const server = createMockMcpServer();
+      const api = createMockApiClient();
+      api.getUnattributedChangesPaginated.mockResolvedValue({
+        changes: [
+          {
+            id: 1,
+            changeType: 'update',
+            sheetName: 'Sheet1',
+            cellAddress: 'A1',
+            oldValue: 1,
+            newValue: 2,
+            byUserPlatformId: 'u-1',
+            byUserPlatformType: 'microsoft',
+            processingStatus: 'pending',
+            attributionDate: null,
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+          },
+          {
+            id: 2,
+            changeType: 'update',
+            sheetName: 'Sheet2',
+            cellAddress: 'B2',
+            oldValue: 'a',
+            newValue: 'b',
+            byUserPlatformId: null,
+            byUserPlatformType: null,
+            processingStatus: 'pending',
+            attributionDate: null,
+            createdAt: '2026-01-02T00:00:00Z',
+            updatedAt: '2026-01-02T00:00:00Z',
+          },
+        ],
+        nextCursor: null,
+        totalCount: 2,
+        snapshotId: '1700000000000',
+        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+      });
+      registerTools(server as any, api as any);
+
+      const call = server.registerTool.mock.calls.find(
+        (c) => c[0] === 'get_unattributed_changes',
+      );
+      const handler = call?.[2];
+      const result = await handler({ fileMsId: 'file-1' });
+
+      const text = result.content[0].text;
+      expect(text).toContain('Showing 2 of 2');
+      expect(text).toContain('Top sheets on this page: Sheet1 (1), Sheet2 (1)');
+      expect(text).toContain('Sheet1!A1');
+      expect(text).toContain('Sheet2!B2');
+      // No pagination hint when nextCursor is null + nothing hidden:
+      expect(text).not.toContain('cursor="');
+    });
+
+    it('caps displayed rows at 200 and shows hidden-row hint', async () => {
+      const server = createMockMcpServer();
+      const api = createMockApiClient();
+      const rows = Array.from({ length: 250 }, (_, i) => ({
+        id: i + 1,
+        changeType: 'update',
+        sheetName: 'Sheet1',
+        cellAddress: `A${i + 1}`,
+        oldValue: i,
+        newValue: i + 1,
+        byUserPlatformId: 'u-1',
+        byUserPlatformType: 'microsoft',
+        processingStatus: 'pending',
+        attributionDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      }));
+      api.getUnattributedChangesPaginated.mockResolvedValue({
+        changes: rows,
+        nextCursor: null,
+        totalCount: 250,
+        snapshotId: '1700000000000',
+        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+      });
+      registerTools(server as any, api as any);
+
+      const call = server.registerTool.mock.calls.find(
+        (c) => c[0] === 'get_unattributed_changes',
+      );
+      const handler = call?.[2];
+      const result = await handler({ fileMsId: 'file-1' });
+
+      const text = result.content[0].text;
+      expect(text).toContain('Showing 200 of 250');
+      expect(text).toContain('50 more row(s) on this page not shown');
+      expect(text).toContain('Sheet1!A1');
+      expect(text).toContain('Sheet1!A200');
+      expect(text).not.toContain('Sheet1!A201');
+    });
+
+    it('emits cursor pagination hint when nextCursor is non-null', async () => {
+      const server = createMockMcpServer();
+      const api = createMockApiClient();
+      api.getUnattributedChangesPaginated.mockResolvedValue({
+        changes: [
+          {
+            id: 1,
+            changeType: 'update',
+            sheetName: 'Sheet1',
+            cellAddress: 'A1',
+            oldValue: 1,
+            newValue: 2,
+            byUserPlatformId: null,
+            byUserPlatformType: null,
+            processingStatus: 'pending',
+            attributionDate: null,
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+          },
+        ],
+        nextCursor: 'next-cursor-xyz',
+        totalCount: 1500,
+        snapshotId: '1700000000000',
+        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+      });
+      registerTools(server as any, api as any);
+
+      const call = server.registerTool.mock.calls.find(
+        (c) => c[0] === 'get_unattributed_changes',
+      );
+      const handler = call?.[2];
+      const result = await handler({ fileMsId: 'file-1' });
+
+      const text = result.content[0].text;
+      expect(text).toContain('More pages available');
+      expect(text).toContain('cursor="next-cursor-xyz"');
+      expect(text).toContain('1500 total across the file');
+    });
+
+    it('returns end-of-pages message when changes is empty but totalCount > 0', async () => {
+      const server = createMockMcpServer();
+      const api = createMockApiClient();
+      api.getUnattributedChangesPaginated.mockResolvedValue({
+        changes: [],
+        nextCursor: null,
+        totalCount: 42,
+        snapshotId: '1700000000000',
+        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+      });
+      registerTools(server as any, api as any);
+
+      const call = server.registerTool.mock.calls.find(
+        (c) => c[0] === 'get_unattributed_changes',
+      );
+      const handler = call?.[2];
+      const result = await handler({ fileMsId: 'file-1' });
+
+      expect(result.content[0].text).toContain(
+        'End of pages reached (42 total across the file)',
+      );
+    });
+
+    it('returns no-changes message when file has no unattributed changes', async () => {
+      const server = createMockMcpServer();
+      const api = createMockApiClient();
+      api.getUnattributedChangesPaginated.mockResolvedValue({
+        changes: [],
+        nextCursor: null,
+        totalCount: 0,
+        snapshotId: '1700000000000',
+        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+      });
+      registerTools(server as any, api as any);
+
+      const call = server.registerTool.mock.calls.find(
+        (c) => c[0] === 'get_unattributed_changes',
+      );
+      const handler = call?.[2];
+      const result = await handler({ fileMsId: 'file-1' });
+
+      expect(result.content[0].text).toBe(
+        'No unattributed changes found for this file.',
+      );
+    });
+  });
 });
