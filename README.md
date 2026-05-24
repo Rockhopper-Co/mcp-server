@@ -6,17 +6,41 @@ MCP (Model Context Protocol) server for Rockhopper. Lets AI tools like Claude, C
 
 - Node.js 18+
 - A Rockhopper account with at least one enrolled file
-- A Personal Access Token (PAT) from Rockhopper
+- (Optional) A Personal Access Token — only required for headless / CI / scripted setups
+
+## Authentication
+
+The server supports two auth modes. **OAuth (recommended)** is the default — no token to copy and paste. **PAT** stays available for headless scenarios.
+
+### OAuth (recommended)
+
+On first launch, the server prints a short verification code to stderr and a URL to visit. Sign in once in your browser — the resulting bearer token is stored in your OS keychain (Keychain on macOS, Credential Manager on Windows, libsecret on Linux). Subsequent launches pick the token up silently.
+
+Nothing to configure — just launch the server with no `ROCKHOPPER_TOKEN` set:
+
+```bash
+npx @rockhopper-co/mcp-server
+```
+
+You'll see (on stderr):
+
+```
+Rockhopper — sign in to authorize this MCP client.
+Open: https://app.rockhopper.co/device?user_code=ABCD2345
+(or visit https://app.rockhopper.co/device and enter code: ABCD2345)
+```
+
+Tokens default to a 60-minute lifetime. When yours expires, the next launch silently re-runs the device flow.
+
+> **Linux**: requires `libsecret` to be installed (`apt-get install libsecret-1-dev` on Debian/Ubuntu, `dnf install libsecret` on Fedora). If unavailable, fall back to the PAT path below.
+
+### Personal Access Token (headless / CI)
+
+For non-interactive setups, generate a PAT in the Rockhopper web app under **Settings > Personal Access Tokens** (`read-only` or `read-write` scope) and set it as `ROCKHOPPER_TOKEN`. PATs take precedence over OAuth — if `ROCKHOPPER_TOKEN` is set, the device-grant flow is skipped.
 
 ## Setup
 
-### 1. Create a Personal Access Token
-
-In the Rockhopper web app, go to **Settings > Personal Access Tokens** and create a new token. Choose `read-only` scope for read access or `read-write` if you also want to add comments/reviews.
-
-Copy the token — it's shown only once.
-
-### 2. Install
+### 1. Install
 
 ```bash
 npm install -g @rockhopper-co/mcp-server
@@ -28,7 +52,7 @@ Or run directly with npx:
 npx @rockhopper-co/mcp-server
 ```
 
-### 3. Configure your AI tool
+### 2. Configure your AI tool
 
 #### Claude Desktop / Claude Code
 
@@ -41,13 +65,14 @@ Add to your MCP config (`~/.claude/mcp.json` or Claude Desktop settings):
       "command": "npx",
       "args": ["-y", "@rockhopper-co/mcp-server"],
       "env": {
-        "ROCKHOPPER_TOKEN": "rh_pat_your_token_here",
         "ROCKHOPPER_API_URL": "https://api.rockhopper.co"
       }
     }
   }
 }
 ```
+
+Leave `ROCKHOPPER_TOKEN` out to use OAuth (recommended). Set it if you want PAT auth instead.
 
 #### Cursor
 
@@ -60,7 +85,6 @@ Add to `.cursor/mcp.json` in your project:
       "command": "npx",
       "args": ["-y", "@rockhopper-co/mcp-server"],
       "env": {
-        "ROCKHOPPER_TOKEN": "rh_pat_your_token_here",
         "ROCKHOPPER_API_URL": "https://api.rockhopper.co"
       }
     }
@@ -72,7 +96,7 @@ Add to `.cursor/mcp.json` in your project:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ROCKHOPPER_TOKEN` | Yes | — | Personal Access Token (starts with `rh_pat_`) |
+| `ROCKHOPPER_TOKEN` | No | — | Personal Access Token (starts with `rh_pat_`). When unset, OAuth device-grant flow runs on first launch. |
 | `ROCKHOPPER_API_URL` | No | `https://api.rockhopper.co` | Rockhopper API base URL |
 
 ## Postman

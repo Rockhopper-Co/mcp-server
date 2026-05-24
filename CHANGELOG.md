@@ -13,6 +13,17 @@ All notable changes to this project are documented here. Follows
   (`FileChat.message`) and version descriptions (`FileVersion.description`).
   Backed by [backend PR #472](https://github.com/Rockhopper-Co/backend/pull/472)
   / ENG-1383; behavior available once that merges. Closes KI-080.
+- **OAuth device-grant flow (RFC 8628) as default auth.** First launch
+  with no `ROCKHOPPER_TOKEN` env var now prints a verification code +
+  URL to stderr, polls the backend's `/auth/device/{code,token}`
+  endpoints, and persists the resulting bearer token in the OS keychain
+  (Keychain on macOS, Credential Manager on Windows, libsecret on
+  Linux). Subsequent launches reuse the stored token silently. Tokens
+  default to a 60-minute lifetime; on expiry the next launch silently
+  re-runs the flow. `ROCKHOPPER_TOKEN` still takes precedence when set
+  — PAT path preserved for headless / CI scenarios. Backed by
+  [backend PR #473](https://github.com/Rockhopper-Co/backend/pull/473)
+  / ENG-1384. Closes KI-081 / ENG-1444.
 - **`get_unattributed_changes` cursor pagination + cap/summary (KI-097).**
   File-wide mode now uses the dedicated paginated backend route
   (`GET /unattributed-changes/paginated/:fileMsId`, added by
@@ -29,6 +40,8 @@ All notable changes to this project are documented here. Follows
   it. Closes KI-097.
 
 ### Changed
+- `ROCKHOPPER_TOKEN` is now **optional** (was required). Unset → OAuth.
+  Set → PAT auth path.
 - **`ApiClient.getUnattributedChanges` refactored into two methods**
   (KI-097): `getUnattributedChangesBySheet(fileMsId, sheetName)` for
   the sheet-filtered legacy route, and
@@ -37,6 +50,11 @@ All notable changes to this project are documented here. Follows
   consumers of `ApiClient` (e.g. `mcp-gateway`) only use `createServer`
   + `ApiClient` as types, not these methods directly, so the rename has
   zero blast radius outside this repo.
+
+### Dependencies
+- **`keytar`** (new runtime dep) — OS-native keychain wrapper. Linux
+  requires `libsecret` installed; otherwise the OAuth path errors with
+  a clear remediation message and you must fall back to PAT.
 
 ### Changed (breaking)
 - **`update_file_description` renamed to `rename_file`.** The tool always
