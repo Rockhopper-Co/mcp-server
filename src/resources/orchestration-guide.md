@@ -8,7 +8,7 @@ Rockhopper uses three distinct identifiers. Mixing them is the most common cause
 
 | ID | Type | Where it comes from | Where it goes |
 |----|------|---------------------|---------------|
-| `fileMsId` | string | `list_files` response, `rockhopper://files` resource | Tools that act on a file: `get_file_versions`, `get_file_comments`, `add_comment`, `create_version`, `discard_changes`, `get_cell_history`, `get_unattributed_changes`, `update_file_description` |
+| `fileMsId` | string | `list_files` response, `rockhopper://files` resource | Tools that act on a file: `get_file_versions`, `get_file_comments`, `add_comment`, `create_version`, `discard_changes`, `get_cell_history`, `get_unattributed_changes`, `rename_file` |
 | `versionId` | number | `get_file_versions` response (`internalId` field), `create_version` response | Tools that act on a specific version snapshot: `get_reviews`, `create_review_request`, `approve_review`, `cancel_review` |
 | `versionInternalId` | number | `get_file_comments` response (comments scope to a version) | Comment-thread tools: `add_comment`, `reply_to_comment`, `resolve_comment` |
 
