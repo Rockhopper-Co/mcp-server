@@ -101,6 +101,22 @@ export interface UnattributedChange {
   updatedAt: string;
 }
 
+/**
+ * Envelope returned by the backend's paginated unattributed-changes route
+ * (`GET /unattributed-changes/paginated/:fileMsId`). Cursor-based snapshot
+ * pagination with a 1k-row page cap + 30-minute snapshot TTL. See KI-102 in
+ * `knowledge-base/docs/known-issues.md` for the route history; the bare
+ * `:fileMsId/v2` route is shadowed in the controller, so this dedicated
+ * non-shadowable prefix is what mcp-server uses.
+ */
+export interface PaginatedUnattributedResponse {
+  changes: UnattributedChange[];
+  nextCursor: string | null;
+  totalCount: number;
+  snapshotId: string;
+  snapshotCreatedAt: string;
+}
+
 export interface CellHistoryEntry {
   versionId: number;
   value: unknown;

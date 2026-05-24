@@ -339,8 +339,7 @@ export function handleMockRockhopperRequest(
 
     if (
       method === 'GET' &&
-      (path === '/unattributed-changes/file-1' ||
-        path === '/unattributed-changes/file-1/Sheet1')
+      path === '/unattributed-changes/file-1/Sheet1'
     ) {
       sendJson(res, 200, [
         {
@@ -353,6 +352,31 @@ export function handleMockRockhopperRequest(
           byUserPlatformId: 'u-1',
         },
       ]);
+      return;
+    }
+
+    // KI-097: dedicated paginated route added by backend PR #475 (KI-102).
+    if (
+      method === 'GET' &&
+      path.startsWith('/unattributed-changes/paginated/file-1')
+    ) {
+      sendJson(res, 200, {
+        changes: [
+          {
+            sheetName: 'Sheet1',
+            cellAddress: 'A1',
+            oldValue: 100,
+            newValue: 200,
+            changeType: 'update',
+            createdAt: '2026-01-07T00:00:00Z',
+            byUserPlatformId: 'u-1',
+          },
+        ],
+        nextCursor: null,
+        totalCount: 1,
+        snapshotId: '1700000000000',
+        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+      });
       return;
     }
 

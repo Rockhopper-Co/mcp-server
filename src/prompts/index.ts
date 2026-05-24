@@ -14,10 +14,13 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
       },
     },
     async ({ fileMsId }) => {
-      const [file, versions, changes] = await Promise.all([
+      const [file, versions, changesPage] = await Promise.all([
         api.getEnrolledFile(fileMsId),
         api.getFileVersions(fileMsId),
-        api.getUnattributedChanges(fileMsId),
+        // KI-097: switched to cursor-paginated route. Top-of-prompt summary
+        // uses `totalCount` for the full file count; the per-cell preview
+        // uses up to 20 rows from this first page (sufficient for a recap).
+        api.getUnattributedChangesPaginated(fileMsId),
       ]);
 
       const recentVersions = versions.slice(0, 5);
@@ -28,8 +31,8 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
         )
         .join('\n');
 
-      const changeSummary = changes.length
-        ? changes
+      const changeSummary = changesPage.changes.length
+        ? changesPage.changes
             .slice(0, 20)
             .map(
               (c) =>
@@ -47,7 +50,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
               text:
                 `Summarize the recent activity on the file "${file.name}".\n\n` +
                 `## Recent Versions (last ${recentVersions.length} of ${versions.length})\n${versionSummary}\n\n` +
-                `## Unattributed Changes (${changes.length} total)\n${changeSummary}\n\n` +
+                `## Unattributed Changes (${changesPage.totalCount} total)\n${changeSummary}\n\n` +
                 `Provide a concise summary of what has changed recently, who made changes, and any notable patterns.`,
             },
           },
@@ -160,11 +163,14 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
       },
     },
     async ({ fileMsId }) => {
-      const [file, versions, comments, changes] = await Promise.all([
+      const [file, versions, comments, changesPage] = await Promise.all([
         api.getEnrolledFile(fileMsId),
         api.getFileVersions(fileMsId),
         api.getFileComments(fileMsId),
-        api.getUnattributedChanges(fileMsId),
+        // KI-097: switched to cursor-paginated route. The file-overview
+        // prompt only displays a total count, so we use `totalCount` from
+        // the first page — no need to fetch every row.
+        api.getUnattributedChangesPaginated(fileMsId),
       ]);
 
       const latestVersion = versions[0];
@@ -203,7 +209,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
                   : 'No versions yet.\n') +
                 `\n## Comments: ${comments.length} total, ${unresolvedComments.length} unresolved\n` +
                 `## Reviews: ${reviews.length} total, ${pendingReviews.length} pending\n` +
-                `## Unattributed Changes: ${changes.length}\n\n` +
+                `## Unattributed Changes: ${changesPage.totalCount}\n\n` +
                 `Provide a status report highlighting anything that needs attention.`,
             },
           },
