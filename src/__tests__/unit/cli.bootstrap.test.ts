@@ -7,14 +7,25 @@ describe('cli bootstrap', () => {
     vi.restoreAllMocks();
   });
 
-  it('should exit when ROCKHOPPER_TOKEN is missing', async () => {
-    vi.stubEnv('ROCKHOPPER_TOKEN', '');
+  it('should exit when ROCKHOPPER_TOKEN is malformed (ENG-1444)', async () => {
+    // Pre-ENG-1444 behavior was "missing ROCKHOPPER_TOKEN → immediate
+    // exit". Post-ENG-1444, missing token triggers the device-grant
+    // flow (no longer an exit), so this test instead exercises the
+    // adjacent "malformed PAT" failure mode: ROCKHOPPER_TOKEN set but
+    // not starting with `rh_pat_` → resolveAuth throws
+    // AuthResolutionError(pat_malformed) → cli.ts catches and exits.
+    // Uses a real failure mode rather than mocking resolveAuth to
+    // avoid vi.doMock module-registry pollution into sibling tests.
+    vi.stubEnv('ROCKHOPPER_TOKEN', 'not-a-valid-pat-token');
+
     const exitSpy = vi
       .spyOn(process, 'exit')
       .mockImplementation((() => {
         throw new Error('exit');
       }) as never);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
 
     await expect(import('../../cli.js')).rejects.toThrow('exit');
 

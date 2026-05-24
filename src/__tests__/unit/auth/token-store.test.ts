@@ -12,7 +12,12 @@ const { keytarMock } = vi.hoisted(() => ({
     findCredentials: vi.fn(),
   },
 }));
-vi.mock('keytar', () => ({ default: keytarMock }));
+// token-store dynamic-imports keytar (lazy load — see token-store.ts).
+// The mock factory must return the module-namespace shape — so the
+// keytar exports live at the top level AND under `default` (handles
+// both `await import('keytar')` namespace access and any
+// esModuleInterop-synthesized default import).
+vi.mock('keytar', () => ({ ...keytarMock, default: keytarMock }));
 
 import {
   clearTokens,

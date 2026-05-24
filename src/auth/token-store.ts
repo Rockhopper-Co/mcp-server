@@ -18,7 +18,46 @@
  * file storage. Encrypted file fallback may land in a follow-up.
  */
 
-import keytar from 'keytar';
+// keytar is loaded LAZILY via dynamic import. Reasons:
+//   1. The native binding calls `dlopen(libsecret)` on Linux at MODULE
+//      load. A top-level static import crashes the entire process the
+//      moment anything in the dependency graph touches token-store —
+//      including unit tests that only exercise the PAT auth path and
+//      never reach OAuth. Lazy load defers the dlopen until OAuth is
+//      actually attempted, so PAT-only users on bare Linux without
+//      libsecret are unaffected.
+//   2. `vi.mock('keytar', factory)` works for both static and dynamic
+//      imports, so existing tests aren't disturbed by the indirection.
+//
+// `_keytar` caches the resolved module across calls; `_keytarErr`
+// caches a load failure so we don't repeat the dlopen attempt on every
+// store call.
+
+// keytar's published types declare a flat module (`export function
+// getPassword`, etc.) with no `default`. The static `import keytar from
+// 'keytar'` works via tsconfig's `esModuleInterop` synthesizing a
+// default; for dynamic `import('keytar')` we keep the namespace shape.
+type KeytarModule = typeof import('keytar');
+let _keytar: KeytarModule | null = null;
+let _keytarErr: Error | null = null;
+
+async function loadKeytar(): Promise<KeytarModule> {
+  if (_keytar) return _keytar;
+  if (_keytarErr) throw _keytarErr;
+  try {
+    _keytar = await import('keytar');
+    return _keytar;
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    _keytarErr = new Error(
+      `OS keychain unavailable (${reason}). ` +
+        'On Linux, install libsecret (e.g. `apt-get install libsecret-1-dev` on Debian/Ubuntu, ' +
+        '`dnf install libsecret` on Fedora). Or set ROCKHOPPER_TOKEN to a Personal Access Token ' +
+        'to use PAT auth instead of OAuth.',
+    );
+    throw _keytarErr;
+  }
+}
 
 const KEYTAR_SERVICE = 'rockhopper-mcp';
 const KEYTAR_ACCOUNT = 'oauth-tokens';
@@ -37,6 +76,7 @@ export interface OAuthTokenBundle {
  * "no tokens" and let the CLI initiate a fresh device flow).
  */
 export async function getTokens(): Promise<OAuthTokenBundle | null> {
+  const keytar = await loadKeytar();
   const raw = await keytar.getPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT);
   if (!raw) return null;
   try {
@@ -60,6 +100,7 @@ export async function getTokens(): Promise<OAuthTokenBundle | null> {
  * Persist the OAuth bundle, overwriting any prior bundle.
  */
 export async function setTokens(bundle: OAuthTokenBundle): Promise<void> {
+  const keytar = await loadKeytar();
   await keytar.setPassword(
     KEYTAR_SERVICE,
     KEYTAR_ACCOUNT,
@@ -72,6 +113,7 @@ export async function setTokens(bundle: OAuthTokenBundle): Promise<void> {
  * (keytar returns false; we ignore the return).
  */
 export async function clearTokens(): Promise<void> {
+  const keytar = await loadKeytar();
   await keytar.deletePassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT);
 }
 
