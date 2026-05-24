@@ -244,4 +244,143 @@ describe('ApiClient', () => {
 
     vi.unstubAllGlobals();
   });
+
+  // KI-096: zod-parse opt-in pins backend↔mcp-server contract for the
+  // three previously-broken response shapes.
+  describe('KI-096 zod-parse opt-in', () => {
+    it('getCellHistory sends ?format=mcp', async () => {
+      const fetchSpy = mockFetch([
+        {
+          versionId: 'v1.0.0',
+          value: 'foo',
+          changedBy: 'A',
+          changedAt: '2026-01-01T00:00:00Z',
+        },
+      ]);
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await client.getCellHistory('file-1', 'Sheet1', 'A1');
+
+      const url = fetchSpy.mock.calls[0][0] as string;
+      expect(url).toContain('format=mcp');
+      expect(url).toContain('cell=A1');
+      expect(url).toContain('sheetName=Sheet1');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('getCellHistory accepts the normalized projection shape', async () => {
+      const fetchSpy = mockFetch([
+        {
+          versionId: 'v3.0.0',
+          value: '$18,500,000',
+          changedBy: 'Sebastian Perez Lawrence',
+          changedAt: '2026-05-12T15:42:56.676Z',
+        },
+      ]);
+      vi.stubGlobal('fetch', fetchSpy);
+
+      const result = await client.getCellHistory('file-1', 'Financing', 'B5');
+
+      expect(result).toEqual([
+        {
+          versionId: 'v3.0.0',
+          value: '$18,500,000',
+          changedBy: 'Sebastian Perez Lawrence',
+          changedAt: '2026-05-12T15:42:56.676Z',
+        },
+      ]);
+
+      vi.unstubAllGlobals();
+    });
+
+    it('getCellHistory throws a useful error when versionId is the wrong type (drift sentinel)', async () => {
+      // Simulates the original audit symptom: legacy raw-CTE response
+      // shape leaking through. With opt-in zod-parse the formatter would
+      // have caught this immediately instead of rendering `undefined`.
+      const fetchSpy = mockFetch([
+        {
+          versionId: 101,
+          value: 1234,
+          changedBy: 'Alice',
+          changedAt: '2026-01-04T00:00:00Z',
+        },
+      ]);
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await expect(
+        client.getCellHistory('file-1', 'Sheet1', 'A1'),
+      ).rejects.toThrow(/failed schema check at .*cell-history.*versionId/);
+
+      vi.unstubAllGlobals();
+    });
+
+    it('resolveComment accepts a valid FileChat response', async () => {
+      const fetchSpy = mockFetch({
+        internalId: 607,
+        message: 'smoke',
+        resolved: true,
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      const result = await client.resolveComment(607);
+
+      expect(result.internalId).toBe(607);
+      expect(result.resolved).toBe(true);
+
+      vi.unstubAllGlobals();
+    });
+
+    it('resolveComment throws when the response is the legacy UpdateResult shape (regression sentinel for KI-096)', async () => {
+      // Simulates the pre-fix backend response.
+      const fetchSpy = mockFetch({
+        affected: 1,
+        raw: [],
+        generatedMaps: [],
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await expect(client.resolveComment(607)).rejects.toThrow(
+        /failed schema check at .*\/file-chat\/607.*internalId/,
+      );
+
+      vi.unstubAllGlobals();
+    });
+
+    it('updateEnrolledFile accepts a valid EnrolledFile response', async () => {
+      const fetchSpy = mockFetch({
+        internalId: 1,
+        platformId: 'file-1',
+        name: 'Renamed.xlsx',
+        fileType: 'microsoft_xlsx',
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      const result = await client.updateEnrolledFile('file-1', {
+        name: 'Renamed.xlsx',
+      });
+
+      expect(result.platformId).toBe('file-1');
+      expect(result.name).toBe('Renamed.xlsx');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('updateEnrolledFile throws when the response is the legacy UpdateResult shape (regression sentinel for KI-096)', async () => {
+      const fetchSpy = mockFetch({
+        affected: 1,
+        raw: [],
+        generatedMaps: [],
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await expect(
+        client.updateEnrolledFile('file-1', { name: 'foo' }),
+      ).rejects.toThrow(
+        /failed schema check at .*\/enrolled-files\/file-1.*(platformId|name)/,
+      );
+
+      vi.unstubAllGlobals();
+    });
+  });
 });

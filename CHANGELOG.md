@@ -6,6 +6,34 @@ All notable changes to this project are documented here. Follows
 
 ## [Unreleased]
 
+### Fixed
+- **`get_cell_history`, `resolve_comment`, and `rename_file` no longer
+  render `undefined` for every field (KI-096).** Diagnosis revealed the
+  formatters were correct — the backend was returning the wrong shape
+  on all three endpoints. Backend PR
+  [#478](https://github.com/Rockhopper-Co/backend/pull/478) fixed the
+  shapes; this PR adopts them:
+  - `getCellHistory` passes `?format=mcp` to opt into the backend's
+    normalized projection (`{versionId, value, changedBy, changedAt}`).
+    Default `format` preserves the raw-CTE shape the frontend cell-
+    history popover consumes — we never call that path.
+  - `resolveComment` + `updateEnrolledFile` continue to call the same
+    URLs but now receive the updated `FileChat` / `EnrolledFile` entity
+    (was TypeORM `UpdateResult`).
+  - `CellHistoryEntry.versionId` retyped `number` → `string` (was a
+    contributing root cause of the `Version undefined` symptom — the
+    backend's semver string never coerced to the declared numeric type).
+- **`api-client.ts`: zod-parse opt-in for response validation
+  (KI-096).** `request<T>(path, init?, responseSchema?)` now accepts an
+  optional zod schema; when supplied, the response is parsed with
+  `safeParse` and any drift throws a useful diagnostic
+  (`Rockhopper API response failed schema check at <path>: <field> —
+  <message>`) instead of silently rendering `undefined` in formatters.
+  Three call sites opt in: `getCellHistory`, `resolveComment`,
+  `updateEnrolledFile`. Other methods stay unchanged; a sweep ticket
+  can migrate them later. New `src/zod-schemas.ts` module holds the
+  per-entity schemas.
+
 ### Added
 - **`search_files` `matchIn` parameter.** Optional enum (`name` |
   `comments` | `versions` | `all`); defaults to `name` for back-compat.
