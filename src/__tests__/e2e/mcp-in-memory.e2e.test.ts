@@ -74,10 +74,10 @@ describe('MCP in-memory protocol e2e', () => {
         'get_reviews',
         'get_unattributed_changes',
         'list_files',
+        'rename_file',
         'reply_to_comment',
         'resolve_comment',
         'search_files',
-        'update_file_description',
       ].sort(),
     );
 
@@ -313,8 +313,21 @@ describe('MCP in-memory protocol e2e', () => {
       arguments: { fileMsId: 'file-1', sheetName: 'EmptySheet' },
     });
     expect(JSON.stringify(result.content)).toContain(
-      'No unattributed changes found',
+      'No unattributed changes on sheet ',
     );
+    expect(JSON.stringify(result.content)).toContain('EmptySheet');
+  });
+
+  // KI-097: file-wide mode uses the cursor-paginated route.
+  it('get_unattributed_changes returns paginated envelope when no sheetName', async () => {
+    const result = await client.callTool({
+      name: 'get_unattributed_changes',
+      arguments: { fileMsId: 'file-1' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(text).toContain('Showing 1 of 1');
+    expect(text).toContain('Top sheets on this page: Sheet1 (1)');
+    expect(text).toContain('Sheet1!A1');
   });
 
   it('get_unattributed_changes surfaces API errors', async () => {
@@ -548,17 +561,17 @@ describe('MCP in-memory protocol e2e', () => {
     expect(JSON.stringify(result.content)).toContain('Failed to cancel review');
   });
 
-  it('update_file_description renames a file', async () => {
+  it('rename_file renames a file', async () => {
     const result = await client.callTool({
-      name: 'update_file_description',
+      name: 'rename_file',
       arguments: { fileMsId: 'file-1', name: 'Budget-final.xlsx' },
     });
     expect(JSON.stringify(result.content)).toContain('Budget-final.xlsx');
   });
 
-  it('update_file_description surfaces API errors', async () => {
+  it('rename_file surfaces API errors', async () => {
     const result = await client.callTool({
-      name: 'update_file_description',
+      name: 'rename_file',
       arguments: { fileMsId: 'does-not-exist', name: 'x' },
     });
     expect(result.isError).toBe(true);

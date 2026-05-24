@@ -61,7 +61,7 @@ const sampleReview = {
   id: 500,
   subject: 'Please review v1',
   description: 'Initial review',
-  status: 'pending',
+  status: 'PENDING',
   createdAt: '2026-01-03T00:00:00Z',
   requester: {
     internalId: 1,
@@ -165,12 +165,13 @@ export function handleMockRockhopperRequest(
       }
       sendJson(res, 200, [
         {
-          versionId: 101,
+          // KI-096: backend's `?format=mcp` projection returns
+          // versionId as a semver string ("v<major>.<minor>.<patch>"),
+          // not a number.
+          versionId: 'v1.0.1',
           value: 1234,
           changedBy: 'Alice',
           changedAt: '2026-01-04T00:00:00Z',
-          sheetName: params.get('sheetName'),
-          cellAddress: params.get('cell'),
         },
       ]);
       return;
@@ -280,14 +281,14 @@ export function handleMockRockhopperRequest(
         id: 501,
         subject: parsed.subject ?? 'Review',
         description: parsed.description,
-        status: 'pending',
+        status: 'PENDING',
         createdAt: '2026-01-06T00:00:00Z',
       });
       return;
     }
 
     if (method === 'POST' && path === '/reviews/requests/500/approve') {
-      sendJson(res, 200, { ...sampleReview, status: 'approved' });
+      sendJson(res, 200, { ...sampleReview, status: 'APPROVED' });
       return;
     }
 
@@ -339,8 +340,7 @@ export function handleMockRockhopperRequest(
 
     if (
       method === 'GET' &&
-      (path === '/unattributed-changes/file-1' ||
-        path === '/unattributed-changes/file-1/Sheet1')
+      path === '/unattributed-changes/file-1/Sheet1'
     ) {
       sendJson(res, 200, [
         {
@@ -353,6 +353,31 @@ export function handleMockRockhopperRequest(
           byUserPlatformId: 'u-1',
         },
       ]);
+      return;
+    }
+
+    // KI-097: dedicated paginated route added by backend PR #475 (KI-102).
+    if (
+      method === 'GET' &&
+      path.startsWith('/unattributed-changes/paginated/file-1')
+    ) {
+      sendJson(res, 200, {
+        changes: [
+          {
+            sheetName: 'Sheet1',
+            cellAddress: 'A1',
+            oldValue: 100,
+            newValue: 200,
+            changeType: 'update',
+            createdAt: '2026-01-07T00:00:00Z',
+            byUserPlatformId: 'u-1',
+          },
+        ],
+        nextCursor: null,
+        totalCount: 1,
+        snapshotId: '1700000000000',
+        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+      });
       return;
     }
 
