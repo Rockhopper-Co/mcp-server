@@ -117,8 +117,15 @@ export interface PaginatedUnattributedResponse {
   snapshotCreatedAt: string;
 }
 
+/**
+ * KI-096: matches the backend's `?format=mcp` projection on cell-history
+ * (`GET /file-versions/file/:fileMsId/cell-history?format=mcp`, added by
+ * backend PR #478). `versionId` is a semver string (`"v<major>.<minor>.<patch>"`),
+ * NOT a numeric internal id — was previously typed `number` which was
+ * one root cause of the audit's `Version undefined` symptom.
+ */
 export interface CellHistoryEntry {
-  versionId: number;
+  versionId: string;
   value: unknown;
   changedBy: string | null;
   changedAt: string;

@@ -165,12 +165,13 @@ export function handleMockRockhopperRequest(
       }
       sendJson(res, 200, [
         {
-          versionId: 101,
+          // KI-096: backend's `?format=mcp` projection returns
+          // versionId as a semver string ("v<major>.<minor>.<patch>"),
+          // not a number.
+          versionId: 'v1.0.1',
           value: 1234,
           changedBy: 'Alice',
           changedAt: '2026-01-04T00:00:00Z',
-          sheetName: params.get('sheetName'),
-          cellAddress: params.get('cell'),
         },
       ]);
       return;
