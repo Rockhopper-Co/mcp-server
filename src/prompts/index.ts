@@ -176,8 +176,13 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
       }
 
       const unresolvedComments = comments.filter((c) => !c.resolved);
+      // Backend's ReviewRequestStatus enum is uppercase (PENDING/APPROVED/CANCELLED).
+      // Prior code compared against lowercase 'approved' and a nonexistent 'rejected',
+      // so APPROVED + CANCELLED reviews were silently classified as pending (sibling
+      // of KI-099). Match positive intent — "pending = PENDING" — with defensive
+      // .toUpperCase() so the check survives future backend casing flips.
       const pendingReviews = reviews.filter(
-        (r) => r.status !== 'approved' && r.status !== 'rejected',
+        (r) => r.status?.toUpperCase() === 'PENDING',
       );
 
       return {

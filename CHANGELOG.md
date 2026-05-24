@@ -14,6 +14,52 @@ All notable changes to this project are documented here. Follows
   Backed by [backend PR #472](https://github.com/Rockhopper-Co/backend/pull/472)
   / ENG-1383; behavior available once that merges. Closes KI-080.
 
+### Changed (breaking)
+- **`update_file_description` renamed to `rename_file`.** The tool always
+  performed a rename (its `name` input wires to backend
+  `PATCH /enrolled-files/:fileMsId`); the old name described non-existent
+  "description" semantics. Customers using the npm-installed local server
+  should update any tool-name allowlists or prompts referencing
+  `update_file_description`. Closes KI-100 / ENG-1439.
+
+### Fixed
+- **`cancel_review` now actually cancels PENDING reviews.** The
+  pre-flight status check at `tools/write-reviews.ts` compared against
+  the lowercase string `'pending'`, but the backend's
+  `ReviewRequestStatus` enum is uppercase (`PENDING`/`APPROVED`/
+  `CANCELLED`). The check always failed → `api.cancelReview()` was never
+  invoked → every cancel returned "cannot be cancelled — status is
+  'PENDING'". Now uses a defensive `.toUpperCase()` comparison so the
+  fix survives future backend casing flips. Closes KI-099 / ENG-1438.
+
+### Internal
+- Test fixtures in `src/__tests__/unit/test-helpers.ts` and
+  `src/__tests__/e2e/fixtures/rockhopper-api-fixtures.ts` updated to use
+  the real backend's uppercase `ReviewRequestStatus` enum values. Prior
+  fixtures used lowercase, which masked KI-099 by being bug-symmetric
+  with the broken code.
+
+### Fixed (bundled — same casing-bug class as KI-099)
+- **`file-overview` prompt no longer mis-classifies APPROVED + CANCELLED
+  reviews as pending.** `prompts/index.ts:180` filtered with lowercase
+  `r.status !== 'approved' && r.status !== 'rejected'`, but
+  `ReviewRequestStatus` is uppercase and contains no `'rejected'` value
+  (`PENDING`/`APPROVED`/`CANCELLED` only). Result: all non-pending
+  reviews were silently counted as pending in the prompt output. Now
+  filters with positive intent — `r.status?.toUpperCase() === 'PENDING'`.
+  Sibling fix to KI-099; same casing-bug class but in a different
+  surface (prompt vs. tool).
+
+### Tooling
+- **`npm run lint` now works.** The `lint` script referenced
+  `eslint src/` but `eslint` was missing from `devDependencies`, so any
+  fresh install silently produced `sh: eslint: command not found`. Added
+  `@eslint/js`, `eslint`, `globals`, and `typescript-eslint` as devDeps
+  and shipped a flat-config `eslint.config.js` that mirrors the
+  `mcp-gateway` repo's setup. Test files relax
+  `@typescript-eslint/no-explicit-any` (mock-stub casts) while production
+  code keeps the rule on. Lint is clean across `src/`.
+
 ## [0.6.0] — 2026-05-13
 
 > Released to npm as `0.6.0`. The release branch was prepared with
