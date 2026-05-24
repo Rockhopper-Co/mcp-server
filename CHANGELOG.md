@@ -31,6 +31,27 @@ All notable changes to this project are documented here. Follows
   fixtures used lowercase, which masked KI-099 by being bug-symmetric
   with the broken code.
 
+### Fixed (bundled — same casing-bug class as KI-099)
+- **`file-overview` prompt no longer mis-classifies APPROVED + CANCELLED
+  reviews as pending.** `prompts/index.ts:180` filtered with lowercase
+  `r.status !== 'approved' && r.status !== 'rejected'`, but
+  `ReviewRequestStatus` is uppercase and contains no `'rejected'` value
+  (`PENDING`/`APPROVED`/`CANCELLED` only). Result: all non-pending
+  reviews were silently counted as pending in the prompt output. Now
+  filters with positive intent — `r.status?.toUpperCase() === 'PENDING'`.
+  Sibling fix to KI-099; same casing-bug class but in a different
+  surface (prompt vs. tool).
+
+### Tooling
+- **`npm run lint` now works.** The `lint` script referenced
+  `eslint src/` but `eslint` was missing from `devDependencies`, so any
+  fresh install silently produced `sh: eslint: command not found`. Added
+  `@eslint/js`, `eslint`, `globals`, and `typescript-eslint` as devDeps
+  and shipped a flat-config `eslint.config.js` that mirrors the
+  `mcp-gateway` repo's setup. Test files relax
+  `@typescript-eslint/no-explicit-any` (mock-stub casts) while production
+  code keeps the rule on. Lint is clean across `src/`.
+
 ## [0.6.0] — 2026-05-13
 
 > Released to npm as `0.6.0`. The release branch was prepared with
