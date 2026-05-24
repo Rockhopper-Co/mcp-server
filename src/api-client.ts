@@ -61,9 +61,11 @@ export class ApiClient {
 
   async listEnrolledFiles(params?: {
     search?: string;
+    matchIn?: 'name' | 'comments' | 'versions' | 'all';
   }): Promise<EnrolledFile[]> {
     const query = new URLSearchParams();
     if (params?.search) query.set('search', params.search);
+    if (params?.matchIn) query.set('matchIn', params.matchIn);
     const qs = query.toString();
     return this.request<EnrolledFile[]>(
       `/enrolled-files${qs ? `?${qs}` : ''}`,

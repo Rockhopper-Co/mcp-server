@@ -4,6 +4,16 @@ All notable changes to this project are documented here. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`search_files` `matchIn` parameter.** Optional enum (`name` |
+  `comments` | `versions` | `all`); defaults to `name` for back-compat.
+  Broadens search past file-name substring into comment text
+  (`FileChat.message`) and version descriptions (`FileVersion.description`).
+  Backed by [backend PR #472](https://github.com/Rockhopper-Co/backend/pull/472)
+  / ENG-1383; behavior available once that merges. Closes KI-080.
+
 ## [0.6.0] — 2026-05-13
 
 > Released to npm as `0.6.0`. The release branch was prepared with
