@@ -57,4 +57,36 @@ describe('read tool handlers', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('Search failed');
   });
+
+  it('search_files should call API with default name search when matchIn omitted (ENG-1383)', async () => {
+    const server = createMockMcpServer();
+    const api = createMockApiClient();
+    registerTools(server as any, api as any);
+
+    const call = server.registerTool.mock.calls.find((c) => c[0] === 'search_files');
+    const handler = call?.[2];
+    await handler({ query: 'Bud' });
+
+    expect(api.listEnrolledFiles).toHaveBeenCalledWith({
+      search: 'Bud',
+      matchIn: undefined,
+    });
+  });
+
+  it('search_files should forward matchIn to the API (ENG-1383)', async () => {
+    const server = createMockMcpServer();
+    const api = createMockApiClient();
+    registerTools(server as any, api as any);
+
+    const call = server.registerTool.mock.calls.find((c) => c[0] === 'search_files');
+    const handler = call?.[2];
+
+    for (const matchIn of ['name', 'comments', 'versions', 'all'] as const) {
+      await handler({ query: 'foo', matchIn });
+      expect(api.listEnrolledFiles).toHaveBeenCalledWith({
+        search: 'foo',
+        matchIn,
+      });
+    }
+  });
 });

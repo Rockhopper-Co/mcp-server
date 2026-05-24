@@ -11,19 +11,31 @@ export function registerSearchTool(
     {
       title: 'Search Files',
       description:
-        'Search enrolled files by name. Returns matching files with their ' +
-        'metadata including uncommitted change status.',
+        'Search enrolled files by name (default), comment text, version ' +
+        'descriptions, or all of the above. Returns matching files with ' +
+        'their metadata including uncommitted change status.',
       inputSchema: {
-        query: z.string().describe('Search query to match against file names'),
+        query: z.string().describe('Search query'),
+        matchIn: z
+          .enum(['name', 'comments', 'versions', 'all'])
+          .optional()
+          .describe(
+            'Where to search: "name" (default — file-name substring), ' +
+              '"comments" (comment text on the file), "versions" (committed ' +
+              'version descriptions), or "all" (any of the above).',
+          ),
       },
       annotations: {
         readOnlyHint: true,
         openWorldHint: false,
       },
     },
-    async ({ query }) => {
+    async ({ query, matchIn }) => {
       try {
-        const files = await api.listEnrolledFiles({ search: query });
+        const files = await api.listEnrolledFiles({
+          search: query,
+          matchIn,
+        });
         const summary = files
           .map(
             (f) =>
