@@ -134,4 +134,13 @@ describe('token-store (ENG-1444)', () => {
       ).toBe(true);
     });
   });
+
+  describe('underlying keytar call failure (keychain locked / OS denies)', () => {
+    it('propagates the error from getTokens', async () => {
+      keytarMock.getPassword.mockRejectedValue(
+        new Error('User canceled the operation.'),
+      );
+      await expect(getTokens()).rejects.toThrow(/canceled/);
+    });
+  });
 });

@@ -66,6 +66,7 @@ export class DeviceGrantError extends Error {
   }
 }
 
+/* v8 ignore next 2 -- trivial setTimeout wrapper; tests inject a sleep stub via `opts.sleep` */
 const DEFAULT_SLEEP = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 

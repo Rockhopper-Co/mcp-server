@@ -317,4 +317,83 @@ describe('device-grant-client (ENG-1444)', () => {
       expect(err).toBeInstanceOf(Error);
     });
   });
+
+  describe('uncovered branches (coverage tests)', () => {
+    it('default onUserCode writes to stderr when not overridden', async () => {
+      // Spy on process.stderr.write to confirm the default writer fires.
+      const stderrSpy = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      const fetchImpl = vi.fn();
+      fetchImpl.mockResolvedValueOnce(
+        jsonResponse({
+          deviceCode: 'dev-1',
+          userCode: 'ABCD2345',
+          verificationUri: 'https://example/device',
+          verificationUriComplete:
+            'https://example/device?user_code=ABCD2345',
+          expiresIn: 600,
+          interval: 5,
+        }),
+      );
+      fetchImpl.mockResolvedValueOnce(
+        jsonResponse({
+          accessToken: 'rh_pat_xyz',
+          tokenType: 'Bearer',
+          expiresIn: 3600,
+        }),
+      );
+
+      const sleep = vi.fn().mockResolvedValue(undefined);
+
+      // Intentionally do NOT pass onUserCode — exercise the default.
+      await runDeviceGrantFlow({
+        baseUrl: BASE,
+        clientId: CLIENT_ID,
+        fetchImpl,
+        sleep,
+      });
+
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining('ABCD2345'),
+      );
+      stderrSpy.mockRestore();
+    });
+
+    it('pollOnce wraps fetch failure as DeviceGrantError(network_error)', async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockRejectedValue(new Error('ECONNREFUSED'));
+      await expect(
+        pollOnce(
+          { baseUrl: BASE, clientId: CLIENT_ID, fetchImpl },
+          'dev-1',
+        ),
+      ).rejects.toMatchObject({
+        name: 'DeviceGrantError',
+        code: 'network_error',
+        message: expect.stringContaining('/auth/device/token'),
+      });
+    });
+
+    it('pollOnce falls through to unknown error when response body is non-JSON', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        json: async () => {
+          throw new Error('not json');
+        },
+      } as unknown as Response);
+
+      await expect(
+        pollOnce(
+          { baseUrl: BASE, clientId: CLIENT_ID, fetchImpl },
+          'dev-1',
+        ),
+      ).rejects.toMatchObject({
+        code: 'unknown',
+      });
+    });
+  });
 });

@@ -24,16 +24,22 @@ describe('resolve-auth (ENG-1444)', () => {
     log = vi.fn();
   });
 
-  function call(overrides: Parameters<typeof resolveAuth>[0] = { baseUrl: BASE }) {
+  function call(
+    overrides: Partial<Parameters<typeof resolveAuth>[0]> = {},
+  ) {
+    // Destructure baseUrl out of overrides so we don't have BOTH an
+    // explicit `baseUrl: BASE` AND a spread that might also include
+    // it (TS2783 "specified more than once" under TS 5+).
+    const { baseUrl = BASE, ...rest } = overrides;
     return resolveAuth({
-      baseUrl: BASE,
+      baseUrl,
       tokenStoreGet,
       tokenStoreSet,
       tokenStoreClear,
       isExpiredFn,
       deviceGrantFlow,
       log,
-      ...overrides,
+      ...rest,
     });
   }
 
@@ -222,5 +228,28 @@ describe('resolve-auth (ENG-1444)', () => {
       expect(err.name).toBe('AuthResolutionError');
       expect(err).toBeInstanceOf(Error);
     });
+  });
+
+  it('swallows tokenStoreClear errors when clearing an expired bundle', async () => {
+    // Covers the inner try/catch around tokenStoreClear: if clearing
+    // fails (e.g. keychain locked), the flow continues into device-grant
+    // rather than aborting. The clear is treated as best-effort because
+    // the subsequent setTokens will overwrite anyway.
+    tokenStoreGet.mockResolvedValue({
+      accessToken: 'rh_pat_stale',
+      expiresAt: 1,
+    });
+    isExpiredFn.mockReturnValue(true);
+    tokenStoreClear.mockRejectedValue(new Error('keychain locked'));
+    deviceGrantFlow.mockResolvedValue({
+      accessToken: 'rh_pat_fresh',
+      tokenType: 'Bearer',
+      expiresIn: 3600,
+    });
+
+    const res = await call();
+
+    expect(res.source).toBe('device-grant');
+    expect(tokenStoreClear).toHaveBeenCalled();
   });
 });

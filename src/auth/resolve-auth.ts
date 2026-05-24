@@ -74,6 +74,7 @@ export class AuthResolutionError extends Error {
   }
 }
 
+/* v8 ignore next -- trivial stderr wrapper; tests inject a log stub via `opts.log` */
 const DEFAULT_LOG = (msg: string) => process.stderr.write(`${msg}\n`);
 
 export async function resolveAuth(

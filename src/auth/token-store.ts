@@ -43,11 +43,13 @@ let _keytarErr: Error | null = null;
 
 async function loadKeytar(): Promise<KeytarModule> {
   if (_keytar) return _keytar;
+  /* v8 ignore next */
   if (_keytarErr) throw _keytarErr;
   try {
     _keytar = await import('keytar');
     return _keytar;
   } catch (e) {
+    /* v8 ignore next 9 -- runtime dlopen failure (Linux without libsecret); the catch can't be reached via vi.mock since the mock factory always resolves successfully. Behavior is covered by the CLI's end-to-end behavior on platforms where the import genuinely fails. */
     const reason = e instanceof Error ? e.message : String(e);
     _keytarErr = new Error(
       `OS keychain unavailable (${reason}). ` +
