@@ -171,14 +171,74 @@ describe('ApiClient', () => {
     vi.unstubAllGlobals();
   });
 
-  it('omits trailing slash for getUnattributedChanges sheet path', async () => {
+  it('uses sheet-filter path for getUnattributedChangesBySheet', async () => {
     const fetchSpy = mockFetch([]);
     vi.stubGlobal('fetch', fetchSpy);
 
-    await client.getUnattributedChanges('file123', { sheetName: 'Sheet1' });
+    await client.getUnattributedChangesBySheet('file123', 'Sheet1');
 
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://api.rockhopper.co/unattributed-changes/file123/Sheet1',
+      expect.anything(),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('URL-encodes sheet name with special characters', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await client.getUnattributedChangesBySheet('file123', 'My Sheet/Tab');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/unattributed-changes/file123/My%20Sheet%2FTab',
+      expect.anything(),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  // KI-097: mcp-server now uses the dedicated `/paginated/:fileMsId` route
+  // added by backend PR #475 (KI-102). The legacy `:fileMsId/v2` route is
+  // shadowed by `:fileMsId/:sheetName` and unusable.
+  it('hits paginated route for getUnattributedChangesPaginated (no cursor)', async () => {
+    const fetchSpy = mockFetch({
+      changes: [],
+      nextCursor: null,
+      totalCount: 0,
+      snapshotId: '1700000000000',
+      snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await client.getUnattributedChangesPaginated('file123');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/unattributed-changes/paginated/file123',
+      expect.anything(),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('passes URL-encoded cursor as query param for getUnattributedChangesPaginated', async () => {
+    const fetchSpy = mockFetch({
+      changes: [],
+      nextCursor: null,
+      totalCount: 0,
+      snapshotId: '1700000000000',
+      snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await client.getUnattributedChangesPaginated(
+      'file123',
+      'cursor+/with=special',
+    );
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/unattributed-changes/paginated/file123?cursor=cursor%2B%2Fwith%3Dspecial',
       expect.anything(),
     );
 

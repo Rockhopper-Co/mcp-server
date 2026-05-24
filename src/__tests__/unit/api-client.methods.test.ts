@@ -130,7 +130,7 @@ describe('ApiClient method coverage', () => {
   it('should build unattributed changes path with sheetName', async () => {
     const fetchSpy = mockFetch({});
     vi.stubGlobal('fetch', fetchSpy);
-    await client.getUnattributedChanges('file-1', { sheetName: 'Sheet1' });
+    await client.getUnattributedChangesBySheet('file-1', 'Sheet1');
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://api.rockhopper.co/unattributed-changes/file-1/Sheet1',
       expect.anything(),

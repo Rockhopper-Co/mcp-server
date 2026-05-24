@@ -3,6 +3,7 @@ import type {
   EnrolledFile,
   FileChat,
   FileVersion,
+  PaginatedUnattributedResponse,
   ReviewActivity,
   ReviewRequest,
   Team,
@@ -195,15 +196,43 @@ export class ApiClient {
 
   // --- Unattributed Changes ---
 
-  async getUnattributedChanges(
+  /**
+   * Sheet-filtered unattributed changes. Returns ALL rows for the given
+   * sheet on the file (no pagination — sheet filter inherently bounds
+   * result size). Use this when the caller already knows which sheet to
+   * inspect; use {@link getUnattributedChangesPaginated} for the file-wide
+   * view.
+   */
+  async getUnattributedChangesBySheet(
     fileMsId: string,
-    params?: { sheetName?: string; status?: string },
+    sheetName: string,
   ): Promise<UnattributedChange[]> {
-    let path = `/unattributed-changes/${fileMsId}`;
-    if (params?.sheetName) {
-      path += `/${params.sheetName}`;
-    }
+    const path = `/unattributed-changes/${fileMsId}/${encodeURIComponent(
+      sheetName,
+    )}`;
     return this.request<UnattributedChange[]>(path);
+  }
+
+  /**
+   * Cursor-paginated file-wide unattributed changes (KI-097).
+   *
+   * Hits the non-shadowable `GET /unattributed-changes/paginated/:fileMsId`
+   * route added by backend PR #475 (KI-102). The legacy `:fileMsId/v2`
+   * route is shadowed by `:fileMsId/:sheetName` route ordering and returns
+   * an empty array; do not call it from here.
+   *
+   * Pass `cursor` returned by a previous call to fetch the next page.
+   * Snapshot TTL is 30 minutes — older cursors cause the backend to return
+   * HTTP 410 GONE with `{ resyncRequired: { code: 'SNAPSHOT_EXPIRED' } }`,
+   * which surfaces here as a thrown RockhopperApiError.
+   */
+  async getUnattributedChangesPaginated(
+    fileMsId: string,
+    cursor?: string,
+  ): Promise<PaginatedUnattributedResponse> {
+    const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+    const path = `/unattributed-changes/paginated/${fileMsId}${qs}`;
+    return this.request<PaginatedUnattributedResponse>(path);
   }
 
   // --- Version lifecycle ---

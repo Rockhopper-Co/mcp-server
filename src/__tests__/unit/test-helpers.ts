@@ -110,7 +110,7 @@ export function createMockApiClient() {
       status: 'PENDING',
     }),
     approveReview: vi.fn().mockResolvedValue({ id: 402 }),
-    getUnattributedChanges: vi.fn().mockResolvedValue([
+    getUnattributedChangesBySheet: vi.fn().mockResolvedValue([
       {
         id: 501,
         changeType: 'update',
@@ -126,6 +126,28 @@ export function createMockApiClient() {
         updatedAt: '2026-01-01T00:00:00Z',
       },
     ]),
+    getUnattributedChangesPaginated: vi.fn().mockResolvedValue({
+      changes: [
+        {
+          id: 501,
+          changeType: 'update',
+          sheetName: 'Sheet1',
+          cellAddress: 'A1',
+          oldValue: 1,
+          newValue: 2,
+          byUserPlatformId: 'ms-user-1',
+          byUserPlatformType: 'microsoft',
+          processingStatus: 'pending',
+          attributionDate: null,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      nextCursor: null,
+      totalCount: 1,
+      snapshotId: '1700000000000',
+      snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+    }),
     updateEnrolledFile: vi.fn().mockResolvedValue({
       platformId: 'file-1',
       name: 'Renamed.xlsx',

@@ -30,7 +30,7 @@ describe('prompt registrations', () => {
 
     expect(api.getEnrolledFile).toHaveBeenCalledWith('file-1');
     expect(api.getFileVersions).toHaveBeenCalledWith('file-1');
-    expect(api.getUnattributedChanges).toHaveBeenCalledWith('file-1');
+    expect(api.getUnattributedChangesPaginated).toHaveBeenCalledWith('file-1');
     expect(result.messages[0].content.text).toContain('Recent Versions');
     expect(result.messages[0].content.text).toContain('Unattributed Changes');
   });
