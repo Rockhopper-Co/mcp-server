@@ -144,7 +144,9 @@ export function registerWriteReviewTools(
     async ({ reviewId }) => {
       try {
         const review = await api.getReview(reviewId);
-        if (review.status !== 'pending') {
+        // Backend's ReviewRequestStatus enum is uppercase (PENDING/APPROVED/CANCELLED).
+        // Defensive .toUpperCase() survives future backend casing changes.
+        if (review.status?.toUpperCase() !== 'PENDING') {
           return {
             content: [
               {

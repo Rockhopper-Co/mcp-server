@@ -145,7 +145,7 @@ describe('ApiClient', () => {
   });
 
   it('sends versionId + reviewerIds in createReviewRequest body', async () => {
-    const fetchSpy = mockFetch({ id: 5, subject: 'Review me', status: 'pending' });
+    const fetchSpy = mockFetch({ id: 5, subject: 'Review me', status: 'PENDING' });
     vi.stubGlobal('fetch', fetchSpy);
 
     await client.createReviewRequest({

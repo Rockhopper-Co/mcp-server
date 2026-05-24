@@ -7,14 +7,14 @@ export function registerWriteFileTool(
   api: ApiClient,
 ): void {
   server.registerTool(
-    'update_file_description',
+    'rename_file',
     {
-      title: 'Update File Metadata',
+      title: 'Rename File',
       description:
-        'Update the display name of an enrolled file.',
+        'Rename an enrolled file. The new name is the display name shown across Rockhopper.',
       inputSchema: {
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
-        name: z.string().min(1).max(255).describe('New display name for the file'),
+        name: z.string().min(1).max(255).describe('New name for the file'),
       },
       annotations: {
         readOnlyHint: false,

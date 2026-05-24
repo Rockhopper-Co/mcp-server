@@ -61,7 +61,7 @@ const sampleReview = {
   id: 500,
   subject: 'Please review v1',
   description: 'Initial review',
-  status: 'pending',
+  status: 'PENDING',
   createdAt: '2026-01-03T00:00:00Z',
   requester: {
     internalId: 1,
@@ -280,14 +280,14 @@ export function handleMockRockhopperRequest(
         id: 501,
         subject: parsed.subject ?? 'Review',
         description: parsed.description,
-        status: 'pending',
+        status: 'PENDING',
         createdAt: '2026-01-06T00:00:00Z',
       });
       return;
     }
 
     if (method === 'POST' && path === '/reviews/requests/500/approve') {
-      sendJson(res, 200, { ...sampleReview, status: 'approved' });
+      sendJson(res, 200, { ...sampleReview, status: 'APPROVED' });
       return;
     }
 
