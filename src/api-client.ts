@@ -1,14 +1,21 @@
+import type { ZodType } from 'zod';
 import type {
   CellHistoryEntry,
   EnrolledFile,
   FileChat,
   FileVersion,
+  PaginatedUnattributedResponse,
   ReviewActivity,
   ReviewRequest,
   Team,
   UnattributedChange,
   UserSummary,
 } from './types.js';
+import {
+  CellHistoryEntryArraySchema,
+  EnrolledFileSchema,
+  FileChatSchema,
+} from './zod-schemas.js';
 
 export interface ApiClientConfig {
   baseUrl: string;
@@ -24,7 +31,19 @@ export class ApiClient {
     this.token = config.token;
   }
 
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+  /**
+   * KI-096: optional `responseSchema` validates the response shape with
+   * zod. When supplied, drift between backend's actual response and the
+   * mcp-server's declared type fails LOUDLY with a `ZodError` (wrapped
+   * here in an Error with the path that drifted) instead of silently
+   * rendering `undefined` in tool formatters. Opt-in per call site so
+   * existing methods stay untouched until a sweep migrates them.
+   */
+  private async request<T>(
+    path: string,
+    init?: RequestInit,
+    responseSchema?: ZodType<T>,
+  ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const response = await fetch(url, {
       ...init,
@@ -42,7 +61,23 @@ export class ApiClient {
       );
     }
 
-    return response.json() as Promise<T>;
+    const json = await response.json();
+    if (responseSchema) {
+      const parsed = responseSchema.safeParse(json);
+      if (!parsed.success) {
+        // Surface a useful diagnostic — the formatter would otherwise show
+        // `undefined`, hiding the contract break. Include the path of the
+        // first issue so the cause is obvious from the error message.
+        const first = parsed.error.issues[0];
+        throw new Error(
+          `Rockhopper API response failed schema check at ${path}: ` +
+            `${first?.path.join('.') || '<root>'} — ${first?.message} ` +
+            `(${parsed.error.issues.length} issue(s) total)`,
+        );
+      }
+      return parsed.data;
+    }
+    return json as T;
   }
 
   // --- Users ---
@@ -61,9 +96,11 @@ export class ApiClient {
 
   async listEnrolledFiles(params?: {
     search?: string;
+    matchIn?: 'name' | 'comments' | 'versions' | 'all';
   }): Promise<EnrolledFile[]> {
     const query = new URLSearchParams();
     if (params?.search) query.set('search', params.search);
+    if (params?.matchIn) query.set('matchIn', params.matchIn);
     const qs = query.toString();
     return this.request<EnrolledFile[]>(
       `/enrolled-files${qs ? `?${qs}` : ''}`,
@@ -86,14 +123,28 @@ export class ApiClient {
     );
   }
 
+  /**
+   * KI-096: passes `?format=mcp` to opt into the backend's normalized
+   * projection `{versionId, value, changedBy, changedAt}` (added by
+   * backend PR #478). Default `format` (omitted) returns the raw CTE
+   * row shape the frontend cell-history popover consumes — we never
+   * call that path. Zod-parses the response so future drift between
+   * backend and mcp-server contracts fails loudly.
+   */
   async getCellHistory(
     fileMsId: string,
     sheetName: string,
     cellAddress: string,
   ): Promise<CellHistoryEntry[]> {
-    const query = new URLSearchParams({ cell: cellAddress, sheetName });
+    const query = new URLSearchParams({
+      cell: cellAddress,
+      sheetName,
+      format: 'mcp',
+    });
     return this.request<CellHistoryEntry[]>(
       `/file-versions/file/${fileMsId}/cell-history?${query}`,
+      undefined,
+      CellHistoryEntryArraySchema as unknown as ZodType<CellHistoryEntry[]>,
     );
   }
 
@@ -129,11 +180,23 @@ export class ApiClient {
     });
   }
 
+  /**
+   * KI-096: zod-parses the response. Backend PR #478 fixed
+   * `PATCH /file-chat/:chatId` to return the updated entity (was
+   * UpdateResult) AND to persist `resolved` (was silently dropped).
+   * The schema check pins both fixes — if either regresses, the parse
+   * fails with a clear message instead of the formatter rendering
+   * `Comment undefined marked as resolved.`
+   */
   async resolveComment(chatId: number): Promise<FileChat> {
-    return this.request<FileChat>(`/file-chat/${chatId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ resolved: true }),
-    });
+    return this.request<FileChat>(
+      `/file-chat/${chatId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ resolved: true }),
+      },
+      FileChatSchema as unknown as ZodType<FileChat>,
+    );
   }
 
   // --- Reviews ---
@@ -193,15 +256,43 @@ export class ApiClient {
 
   // --- Unattributed Changes ---
 
-  async getUnattributedChanges(
+  /**
+   * Sheet-filtered unattributed changes. Returns ALL rows for the given
+   * sheet on the file (no pagination — sheet filter inherently bounds
+   * result size). Use this when the caller already knows which sheet to
+   * inspect; use {@link getUnattributedChangesPaginated} for the file-wide
+   * view.
+   */
+  async getUnattributedChangesBySheet(
     fileMsId: string,
-    params?: { sheetName?: string; status?: string },
+    sheetName: string,
   ): Promise<UnattributedChange[]> {
-    let path = `/unattributed-changes/${fileMsId}`;
-    if (params?.sheetName) {
-      path += `/${params.sheetName}`;
-    }
+    const path = `/unattributed-changes/${fileMsId}/${encodeURIComponent(
+      sheetName,
+    )}`;
     return this.request<UnattributedChange[]>(path);
+  }
+
+  /**
+   * Cursor-paginated file-wide unattributed changes (KI-097).
+   *
+   * Hits the non-shadowable `GET /unattributed-changes/paginated/:fileMsId`
+   * route added by backend PR #475 (KI-102). The legacy `:fileMsId/v2`
+   * route is shadowed by `:fileMsId/:sheetName` route ordering and returns
+   * an empty array; do not call it from here.
+   *
+   * Pass `cursor` returned by a previous call to fetch the next page.
+   * Snapshot TTL is 30 minutes — older cursors cause the backend to return
+   * HTTP 410 GONE with `{ resyncRequired: { code: 'SNAPSHOT_EXPIRED' } }`,
+   * which surfaces here as a thrown RockhopperApiError.
+   */
+  async getUnattributedChangesPaginated(
+    fileMsId: string,
+    cursor?: string,
+  ): Promise<PaginatedUnattributedResponse> {
+    const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+    const path = `/unattributed-changes/paginated/${fileMsId}${qs}`;
+    return this.request<PaginatedUnattributedResponse>(path);
   }
 
   // --- Version lifecycle ---
@@ -245,13 +336,25 @@ export class ApiClient {
 
   // --- File metadata update ---
 
+  /**
+   * KI-096: zod-parses the response. Backend PR #478 fixed
+   * `PATCH /enrolled-files/:fileMsId` to return the updated entity
+   * (was UpdateResult typed as Promise<any>). The schema check pins
+   * the entity contract — if it regresses, the parse fails with a
+   * clear message instead of `rename_file` rendering
+   * `File renamed to 'undefined' (id: undefined).`
+   */
   async updateEnrolledFile(
     fileMsId: string,
     body: { name?: string },
   ): Promise<EnrolledFile> {
-    return this.request<EnrolledFile>(`/enrolled-files/${fileMsId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    });
+    return this.request<EnrolledFile>(
+      `/enrolled-files/${fileMsId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      },
+      EnrolledFileSchema as unknown as ZodType<EnrolledFile>,
+    );
   }
 }

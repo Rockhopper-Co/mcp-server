@@ -63,7 +63,9 @@ describe('ApiClient method coverage', () => {
   });
 
   it('should call comment endpoints', async () => {
-    const fetchSpy = mockFetch({});
+    // KI-096: `resolveComment` now zod-parses the response, so the fixture
+    // must satisfy `FileChatSchema` (minimum: `internalId`).
+    const fetchSpy = mockFetch({ internalId: 5, message: 'r', resolved: true });
     vi.stubGlobal('fetch', fetchSpy);
     await client.getComment(5);
     await client.replyToComment(5, { message: 'reply', versionInternalId: 42 });
@@ -75,7 +77,11 @@ describe('ApiClient method coverage', () => {
   });
 
   it('should call write endpoints with payload', async () => {
-    const fetchSpy = mockFetch({});
+    // KI-096: `updateEnrolledFile` now zod-parses the response, so the
+    // shared fixture must satisfy `EnrolledFileSchema` (required:
+    // `platformId` + `name`). The other two calls have no schema and
+    // accept anything.
+    const fetchSpy = mockFetch({ platformId: 'file-1', name: 'New' });
     vi.stubGlobal('fetch', fetchSpy);
     await client.createReviewRequest({
       versionId: 1,
@@ -130,7 +136,7 @@ describe('ApiClient method coverage', () => {
   it('should build unattributed changes path with sheetName', async () => {
     const fetchSpy = mockFetch({});
     vi.stubGlobal('fetch', fetchSpy);
-    await client.getUnattributedChanges('file-1', { sheetName: 'Sheet1' });
+    await client.getUnattributedChangesBySheet('file-1', 'Sheet1');
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://api.rockhopper.co/unattributed-changes/file-1/Sheet1',
       expect.anything(),

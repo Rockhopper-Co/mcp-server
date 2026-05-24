@@ -4,6 +4,132 @@ All notable changes to this project are documented here. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`get_cell_history`, `resolve_comment`, and `rename_file` no longer
+  render `undefined` for every field (KI-096).** Diagnosis revealed the
+  formatters were correct — the backend was returning the wrong shape
+  on all three endpoints. Backend PR
+  [#478](https://github.com/Rockhopper-Co/backend/pull/478) fixed the
+  shapes; this PR adopts them:
+  - `getCellHistory` passes `?format=mcp` to opt into the backend's
+    normalized projection (`{versionId, value, changedBy, changedAt}`).
+    Default `format` preserves the raw-CTE shape the frontend cell-
+    history popover consumes — we never call that path.
+  - `resolveComment` + `updateEnrolledFile` continue to call the same
+    URLs but now receive the updated `FileChat` / `EnrolledFile` entity
+    (was TypeORM `UpdateResult`).
+  - `CellHistoryEntry.versionId` retyped `number` → `string` (was a
+    contributing root cause of the `Version undefined` symptom — the
+    backend's semver string never coerced to the declared numeric type).
+- **`api-client.ts`: zod-parse opt-in for response validation
+  (KI-096).** `request<T>(path, init?, responseSchema?)` now accepts an
+  optional zod schema; when supplied, the response is parsed with
+  `safeParse` and any drift throws a useful diagnostic
+  (`Rockhopper API response failed schema check at <path>: <field> —
+  <message>`) instead of silently rendering `undefined` in formatters.
+  Three call sites opt in: `getCellHistory`, `resolveComment`,
+  `updateEnrolledFile`. Other methods stay unchanged; a sweep ticket
+  can migrate them later. New `src/zod-schemas.ts` module holds the
+  per-entity schemas.
+
+### Added
+- **`search_files` `matchIn` parameter.** Optional enum (`name` |
+  `comments` | `versions` | `all`); defaults to `name` for back-compat.
+  Broadens search past file-name substring into comment text
+  (`FileChat.message`) and version descriptions (`FileVersion.description`).
+  Backed by [backend PR #472](https://github.com/Rockhopper-Co/backend/pull/472)
+  / ENG-1383; behavior available once that merges. Closes KI-080.
+- **OAuth device-grant flow (RFC 8628) as default auth.** First launch
+  with no `ROCKHOPPER_TOKEN` env var now prints a verification code +
+  URL to stderr, polls the backend's `/auth/device/{code,token}`
+  endpoints, and persists the resulting bearer token in the OS keychain
+  (Keychain on macOS, Credential Manager on Windows, libsecret on
+  Linux). Subsequent launches reuse the stored token silently. Tokens
+  default to a 60-minute lifetime; on expiry the next launch silently
+  re-runs the flow. `ROCKHOPPER_TOKEN` still takes precedence when set
+  — PAT path preserved for headless / CI scenarios. Backed by
+  [backend PR #473](https://github.com/Rockhopper-Co/backend/pull/473)
+  / ENG-1384. Closes KI-081 / ENG-1444.
+- **`get_unattributed_changes` cursor pagination + cap/summary (KI-097).**
+  File-wide mode now uses the dedicated paginated backend route
+  (`GET /unattributed-changes/paginated/:fileMsId`, added by
+  [backend PR #475](https://github.com/Rockhopper-Co/backend/pull/475) /
+  KI-102) instead of the legacy unpaginated route. The MCP tool gains an
+  optional `cursor` input for round-tripping the backend's cursor.
+  Responses are now capped at 200 displayed rows with a summary line
+  ("Showing X of Y change(s) on this page (Z total across the file)" +
+  top-sheets breakdown) and a pagination hint when more pages or hidden
+  rows are available. Audit measured one file at 12.5 MB / 28k rows on
+  the old route — context-blowing for AI clients; now bounded under
+  the 25k-token MCP limit. Sheet-filter mode (`sheetName` set) is
+  unchanged — it stays unpaginated since sheet size inherently bounds
+  it. Closes KI-097.
+
+### Changed
+- `ROCKHOPPER_TOKEN` is now **optional** (was required). Unset → OAuth.
+  Set → PAT auth path.
+- **`ApiClient.getUnattributedChanges` refactored into two methods**
+  (KI-097): `getUnattributedChangesBySheet(fileMsId, sheetName)` for
+  the sheet-filtered legacy route, and
+  `getUnattributedChangesPaginated(fileMsId, cursor?)` for the new
+  cursor-paginated route. The old combined method is removed. External
+  consumers of `ApiClient` (e.g. `mcp-gateway`) only use `createServer`
+  + `ApiClient` as types, not these methods directly, so the rename has
+  zero blast radius outside this repo.
+
+### Dependencies
+- **`keytar`** (new runtime dep) — OS-native keychain wrapper. Linux
+  requires `libsecret` installed; otherwise the OAuth path errors with
+  a clear remediation message and you must fall back to PAT.
+
+### Changed (breaking)
+- **`update_file_description` renamed to `rename_file`.** The tool always
+  performed a rename (its `name` input wires to backend
+  `PATCH /enrolled-files/:fileMsId`); the old name described non-existent
+  "description" semantics. Customers using the npm-installed local server
+  should update any tool-name allowlists or prompts referencing
+  `update_file_description`. Closes KI-100 / ENG-1439.
+
+### Fixed
+- **`cancel_review` now actually cancels PENDING reviews.** The
+  pre-flight status check at `tools/write-reviews.ts` compared against
+  the lowercase string `'pending'`, but the backend's
+  `ReviewRequestStatus` enum is uppercase (`PENDING`/`APPROVED`/
+  `CANCELLED`). The check always failed → `api.cancelReview()` was never
+  invoked → every cancel returned "cannot be cancelled — status is
+  'PENDING'". Now uses a defensive `.toUpperCase()` comparison so the
+  fix survives future backend casing flips. Closes KI-099 / ENG-1438.
+
+### Internal
+- Test fixtures in `src/__tests__/unit/test-helpers.ts` and
+  `src/__tests__/e2e/fixtures/rockhopper-api-fixtures.ts` updated to use
+  the real backend's uppercase `ReviewRequestStatus` enum values. Prior
+  fixtures used lowercase, which masked KI-099 by being bug-symmetric
+  with the broken code.
+
+### Fixed (bundled — same casing-bug class as KI-099)
+- **`file-overview` prompt no longer mis-classifies APPROVED + CANCELLED
+  reviews as pending.** `prompts/index.ts:180` filtered with lowercase
+  `r.status !== 'approved' && r.status !== 'rejected'`, but
+  `ReviewRequestStatus` is uppercase and contains no `'rejected'` value
+  (`PENDING`/`APPROVED`/`CANCELLED` only). Result: all non-pending
+  reviews were silently counted as pending in the prompt output. Now
+  filters with positive intent — `r.status?.toUpperCase() === 'PENDING'`.
+  Sibling fix to KI-099; same casing-bug class but in a different
+  surface (prompt vs. tool).
+
+### Tooling
+- **`npm run lint` now works.** The `lint` script referenced
+  `eslint src/` but `eslint` was missing from `devDependencies`, so any
+  fresh install silently produced `sh: eslint: command not found`. Added
+  `@eslint/js`, `eslint`, `globals`, and `typescript-eslint` as devDeps
+  and shipped a flat-config `eslint.config.js` that mirrors the
+  `mcp-gateway` repo's setup. Test files relax
+  `@typescript-eslint/no-explicit-any` (mock-stub casts) while production
+  code keeps the rule on. Lint is clean across `src/`.
+
 ## [0.6.0] — 2026-05-13
 
 > Released to npm as `0.6.0`. The release branch was prepared with

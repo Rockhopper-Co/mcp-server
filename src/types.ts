@@ -101,8 +101,31 @@ export interface UnattributedChange {
   updatedAt: string;
 }
 
+/**
+ * Envelope returned by the backend's paginated unattributed-changes route
+ * (`GET /unattributed-changes/paginated/:fileMsId`). Cursor-based snapshot
+ * pagination with a 1k-row page cap + 30-minute snapshot TTL. See KI-102 in
+ * `knowledge-base/docs/known-issues.md` for the route history; the bare
+ * `:fileMsId/v2` route is shadowed in the controller, so this dedicated
+ * non-shadowable prefix is what mcp-server uses.
+ */
+export interface PaginatedUnattributedResponse {
+  changes: UnattributedChange[];
+  nextCursor: string | null;
+  totalCount: number;
+  snapshotId: string;
+  snapshotCreatedAt: string;
+}
+
+/**
+ * KI-096: matches the backend's `?format=mcp` projection on cell-history
+ * (`GET /file-versions/file/:fileMsId/cell-history?format=mcp`, added by
+ * backend PR #478). `versionId` is a semver string (`"v<major>.<minor>.<patch>"`),
+ * NOT a numeric internal id — was previously typed `number` which was
+ * one root cause of the audit's `Version undefined` symptom.
+ */
 export interface CellHistoryEntry {
-  versionId: number;
+  versionId: string;
   value: unknown;
   changedBy: string | null;
   changedAt: string;

@@ -145,7 +145,7 @@ describe('ApiClient', () => {
   });
 
   it('sends versionId + reviewerIds in createReviewRequest body', async () => {
-    const fetchSpy = mockFetch({ id: 5, subject: 'Review me', status: 'pending' });
+    const fetchSpy = mockFetch({ id: 5, subject: 'Review me', status: 'PENDING' });
     vi.stubGlobal('fetch', fetchSpy);
 
     await client.createReviewRequest({
@@ -171,11 +171,11 @@ describe('ApiClient', () => {
     vi.unstubAllGlobals();
   });
 
-  it('omits trailing slash for getUnattributedChanges sheet path', async () => {
+  it('uses sheet-filter path for getUnattributedChangesBySheet', async () => {
     const fetchSpy = mockFetch([]);
     vi.stubGlobal('fetch', fetchSpy);
 
-    await client.getUnattributedChanges('file123', { sheetName: 'Sheet1' });
+    await client.getUnattributedChangesBySheet('file123', 'Sheet1');
 
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://api.rockhopper.co/unattributed-changes/file123/Sheet1',
@@ -183,5 +183,204 @@ describe('ApiClient', () => {
     );
 
     vi.unstubAllGlobals();
+  });
+
+  it('URL-encodes sheet name with special characters', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await client.getUnattributedChangesBySheet('file123', 'My Sheet/Tab');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/unattributed-changes/file123/My%20Sheet%2FTab',
+      expect.anything(),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  // KI-097: mcp-server now uses the dedicated `/paginated/:fileMsId` route
+  // added by backend PR #475 (KI-102). The legacy `:fileMsId/v2` route is
+  // shadowed by `:fileMsId/:sheetName` and unusable.
+  it('hits paginated route for getUnattributedChangesPaginated (no cursor)', async () => {
+    const fetchSpy = mockFetch({
+      changes: [],
+      nextCursor: null,
+      totalCount: 0,
+      snapshotId: '1700000000000',
+      snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await client.getUnattributedChangesPaginated('file123');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/unattributed-changes/paginated/file123',
+      expect.anything(),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('passes URL-encoded cursor as query param for getUnattributedChangesPaginated', async () => {
+    const fetchSpy = mockFetch({
+      changes: [],
+      nextCursor: null,
+      totalCount: 0,
+      snapshotId: '1700000000000',
+      snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await client.getUnattributedChangesPaginated(
+      'file123',
+      'cursor+/with=special',
+    );
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/unattributed-changes/paginated/file123?cursor=cursor%2B%2Fwith%3Dspecial',
+      expect.anything(),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  // KI-096: zod-parse opt-in pins backend↔mcp-server contract for the
+  // three previously-broken response shapes.
+  describe('KI-096 zod-parse opt-in', () => {
+    it('getCellHistory sends ?format=mcp', async () => {
+      const fetchSpy = mockFetch([
+        {
+          versionId: 'v1.0.0',
+          value: 'foo',
+          changedBy: 'A',
+          changedAt: '2026-01-01T00:00:00Z',
+        },
+      ]);
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await client.getCellHistory('file-1', 'Sheet1', 'A1');
+
+      const url = fetchSpy.mock.calls[0][0] as string;
+      expect(url).toContain('format=mcp');
+      expect(url).toContain('cell=A1');
+      expect(url).toContain('sheetName=Sheet1');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('getCellHistory accepts the normalized projection shape', async () => {
+      const fetchSpy = mockFetch([
+        {
+          versionId: 'v3.0.0',
+          value: '$18,500,000',
+          changedBy: 'Sebastian Perez Lawrence',
+          changedAt: '2026-05-12T15:42:56.676Z',
+        },
+      ]);
+      vi.stubGlobal('fetch', fetchSpy);
+
+      const result = await client.getCellHistory('file-1', 'Financing', 'B5');
+
+      expect(result).toEqual([
+        {
+          versionId: 'v3.0.0',
+          value: '$18,500,000',
+          changedBy: 'Sebastian Perez Lawrence',
+          changedAt: '2026-05-12T15:42:56.676Z',
+        },
+      ]);
+
+      vi.unstubAllGlobals();
+    });
+
+    it('getCellHistory throws a useful error when versionId is the wrong type (drift sentinel)', async () => {
+      // Simulates the original audit symptom: legacy raw-CTE response
+      // shape leaking through. With opt-in zod-parse the formatter would
+      // have caught this immediately instead of rendering `undefined`.
+      const fetchSpy = mockFetch([
+        {
+          versionId: 101,
+          value: 1234,
+          changedBy: 'Alice',
+          changedAt: '2026-01-04T00:00:00Z',
+        },
+      ]);
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await expect(
+        client.getCellHistory('file-1', 'Sheet1', 'A1'),
+      ).rejects.toThrow(/failed schema check at .*cell-history.*versionId/);
+
+      vi.unstubAllGlobals();
+    });
+
+    it('resolveComment accepts a valid FileChat response', async () => {
+      const fetchSpy = mockFetch({
+        internalId: 607,
+        message: 'smoke',
+        resolved: true,
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      const result = await client.resolveComment(607);
+
+      expect(result.internalId).toBe(607);
+      expect(result.resolved).toBe(true);
+
+      vi.unstubAllGlobals();
+    });
+
+    it('resolveComment throws when the response is the legacy UpdateResult shape (regression sentinel for KI-096)', async () => {
+      // Simulates the pre-fix backend response.
+      const fetchSpy = mockFetch({
+        affected: 1,
+        raw: [],
+        generatedMaps: [],
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await expect(client.resolveComment(607)).rejects.toThrow(
+        /failed schema check at .*\/file-chat\/607.*internalId/,
+      );
+
+      vi.unstubAllGlobals();
+    });
+
+    it('updateEnrolledFile accepts a valid EnrolledFile response', async () => {
+      const fetchSpy = mockFetch({
+        internalId: 1,
+        platformId: 'file-1',
+        name: 'Renamed.xlsx',
+        fileType: 'microsoft_xlsx',
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      const result = await client.updateEnrolledFile('file-1', {
+        name: 'Renamed.xlsx',
+      });
+
+      expect(result.platformId).toBe('file-1');
+      expect(result.name).toBe('Renamed.xlsx');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('updateEnrolledFile throws when the response is the legacy UpdateResult shape (regression sentinel for KI-096)', async () => {
+      const fetchSpy = mockFetch({
+        affected: 1,
+        raw: [],
+        generatedMaps: [],
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await expect(
+        client.updateEnrolledFile('file-1', { name: 'foo' }),
+      ).rejects.toThrow(
+        /failed schema check at .*\/enrolled-files\/file-1.*(platformId|name)/,
+      );
+
+      vi.unstubAllGlobals();
+    });
   });
 });
