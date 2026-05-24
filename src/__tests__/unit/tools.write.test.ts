@@ -11,7 +11,7 @@ const WRITE_TOOL_NAMES = [
   'cancel_review',
   'create_version',
   'discard_changes',
-  'update_file_description',
+  'rename_file',
 ];
 
 const READ_TOOL_NAMES = [
@@ -166,13 +166,16 @@ describe('write tool handlers', () => {
     expect(result.content[0].text).toContain('Changes discarded');
   });
 
-  it('cancel_review should pre-check status and call API', async () => {
+  // KI-099: backend's ReviewRequestStatus enum is uppercase (PENDING/APPROVED/CANCELLED).
+  // Pre-flight check at write-reviews.ts:147 must compare against uppercase to actually invoke
+  // the cancel API. Prior test fixtures used lowercase, masking the bug.
+  it('cancel_review should pre-check status (PENDING uppercase) and call API', async () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
     api.getReview.mockResolvedValue({
       id: 401,
       subject: 'Review Q1',
-      status: 'pending',
+      status: 'PENDING',
     });
     registerTools(server as any, api as any);
 
@@ -184,13 +187,13 @@ describe('write tool handlers', () => {
     expect(result.content[0].text).toContain('Review 401 cancelled');
   });
 
-  it('cancel_review should reject non-pending reviews', async () => {
+  it('cancel_review should reject APPROVED reviews', async () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
     api.getReview.mockResolvedValue({
       id: 401,
       subject: 'Review Q1',
-      status: 'approved',
+      status: 'APPROVED',
     });
     registerTools(server as any, api as any);
 
@@ -201,5 +204,82 @@ describe('write tool handlers', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('cannot be cancelled');
     expect(api.cancelReview).not.toHaveBeenCalled();
+  });
+
+  it('cancel_review should reject CANCELLED reviews', async () => {
+    const server = createMockMcpServer();
+    const api = createMockApiClient();
+    api.getReview.mockResolvedValue({
+      id: 401,
+      subject: 'Review Q1',
+      status: 'CANCELLED',
+    });
+    registerTools(server as any, api as any);
+
+    const call = server.registerTool.mock.calls.find((c) => c[0] === 'cancel_review');
+    const handler = call?.[2];
+    const result = await handler({ reviewId: 401 });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('cannot be cancelled');
+    expect(api.cancelReview).not.toHaveBeenCalled();
+  });
+
+  // Defensive: handle a missing/null status without throwing.
+  it('cancel_review should reject reviews with missing status', async () => {
+    const server = createMockMcpServer();
+    const api = createMockApiClient();
+    api.getReview.mockResolvedValue({
+      id: 401,
+      subject: 'Review Q1',
+    } as any);
+    registerTools(server as any, api as any);
+
+    const call = server.registerTool.mock.calls.find((c) => c[0] === 'cancel_review');
+    const handler = call?.[2];
+    const result = await handler({ reviewId: 401 });
+
+    expect(result.isError).toBe(true);
+    expect(api.cancelReview).not.toHaveBeenCalled();
+  });
+
+  // KI-100: tool renamed from `update_file_description` to `rename_file`.
+  it('rename_file should call updateEnrolledFile and format success', async () => {
+    const server = createMockMcpServer();
+    const api = createMockApiClient();
+    registerTools(server as any, api as any);
+
+    const call = server.registerTool.mock.calls.find((c) => c[0] === 'rename_file');
+    expect(call).toBeDefined();
+    const handler = call?.[2];
+    const result = await handler({
+      fileMsId: 'file-1',
+      name: 'Renamed.xlsx',
+    });
+
+    expect(api.updateEnrolledFile).toHaveBeenCalledWith('file-1', { name: 'Renamed.xlsx' });
+    expect(result.content[0].text).toContain('File renamed to');
+  });
+
+  it('rename_file tool description mentions "rename", not "description"', () => {
+    const server = createMockMcpServer();
+    const api = createMockApiClient();
+    registerTools(server as any, api as any);
+
+    const call = server.registerTool.mock.calls.find((c) => c[0] === 'rename_file');
+    expect(call).toBeDefined();
+    const description = call?.[1]?.description ?? '';
+    expect(description.toLowerCase()).toContain('rename');
+    expect(description.toLowerCase()).not.toContain('description');
+  });
+
+  // Regression guard: the old name must NOT be advertised after the rename.
+  it('update_file_description (old name) should NOT be registered', () => {
+    const server = createMockMcpServer();
+    const api = createMockApiClient();
+    registerTools(server as any, api as any);
+
+    const toolNames = server.registerTool.mock.calls.map((c) => c[0]);
+    expect(toolNames).not.toContain('update_file_description');
   });
 });

@@ -27,7 +27,7 @@ export function createServer(
           'versions, comments, reviews, or cell history. Write operations ' +
           '(add_comment, reply_to_comment, resolve_comment, create_review_request, ' +
           'approve_review, cancel_review, create_version, discard_changes, ' +
-          'update_file_description) require a read-write scoped token. ' +
+          'rename_file) require a read-write scoped token. ' +
           'File IDs use the platformId field (e.g. from list_files output).',
     },
   );

@@ -4,6 +4,33 @@ All notable changes to this project are documented here. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-05-24
+
+### Changed (breaking)
+- **`update_file_description` renamed to `rename_file`.** The tool always
+  performed a rename (its `name` input wires to backend
+  `PATCH /enrolled-files/:fileMsId`); the old name described non-existent
+  "description" semantics. Customers using the npm-installed local server
+  should update any tool-name allowlists or prompts referencing
+  `update_file_description`. Closes KI-100 / ENG-1439.
+
+### Fixed
+- **`cancel_review` now actually cancels PENDING reviews.** The
+  pre-flight status check at `tools/write-reviews.ts` compared against
+  the lowercase string `'pending'`, but the backend's
+  `ReviewRequestStatus` enum is uppercase (`PENDING`/`APPROVED`/
+  `CANCELLED`). The check always failed → `api.cancelReview()` was never
+  invoked → every cancel returned "cannot be cancelled — status is
+  'PENDING'". Now uses a defensive `.toUpperCase()` comparison so the
+  fix survives future backend casing flips. Closes KI-099 / ENG-1438.
+
+### Internal
+- Test fixtures in `src/__tests__/unit/test-helpers.ts` and
+  `src/__tests__/e2e/fixtures/rockhopper-api-fixtures.ts` updated to use
+  the real backend's uppercase `ReviewRequestStatus` enum values. Prior
+  fixtures used lowercase, which masked KI-099 by being bug-symmetric
+  with the broken code.
+
 ## [0.6.0] — 2026-05-13
 
 > Released to npm as `0.6.0`. The release branch was prepared with
