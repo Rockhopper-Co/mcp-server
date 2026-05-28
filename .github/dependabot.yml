@@ -1,0 +1,49 @@
+# Dependabot configuration.
+#
+# Every PR Dependabot opens is an untrusted proposal — see
+# knowledge-base/docs/conventions/dependabot-review.md for how they are reviewed
+# (read the lockfile diff, verify strict `npm ci`, never auto-merge).
+#
+# Goal of this config: fewer, higher-signal PRs. Low-risk bumps are bundled into
+# a couple of grouped PRs; major bumps are deliberately left ungrouped so each
+# surfaces on its own and gets the NEEDS-REVIEW treatment (release notes /
+# breaking changes) the runbook requires. Majors are NOT ignored — that would
+# hide major-version security fixes.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      dev-minor-patch:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+      prod-patch:
+        dependency-type: "production"
+        update-types:
+          - "patch"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "ci(deps)"
