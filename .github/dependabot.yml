@@ -18,6 +18,13 @@ updates:
       day: "monday"
     open-pull-requests-limit: 5
     groups:
+      # Version-coupled family — bump together to avoid ERESOLVE peer conflicts
+      # (vitest + @vitest/coverage-v8 must match exactly). Before the catch-all
+      # group so family members are claimed here first (Dependabot = first match).
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
       dev-minor-patch:
         dependency-type: "development"
         update-types:
