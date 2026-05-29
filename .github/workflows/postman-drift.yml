@@ -2,8 +2,12 @@ name: Postman drift
 
 on:
   pull_request:
-  push:
-    branches: [main, staging, dev]
+    branches: [dev, staging, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   generated-artifacts:
