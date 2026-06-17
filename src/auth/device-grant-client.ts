@@ -151,7 +151,9 @@ export async function pollOnce(
   // memory `project_backend_badrequest_unwraps_payload`).
   let body: { error?: string; error_description?: string } = {};
   try {
-    body = await res.json();
+    // TS 6.0 types `Response.json()` as `Promise<unknown>`; the body shape is
+    // validated structurally by the `switch (body.error)` below.
+    body = (await res.json()) as { error?: string; error_description?: string };
   } catch {
     // Non-JSON error body — fall through to 'unknown'.
   }
