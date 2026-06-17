@@ -2,26 +2,49 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeviceGrantError } from '../../../auth/device-grant-client.js';
 import {
   AuthResolutionError,
+  type ResolveAuthOptions,
   resolveAuth,
 } from '../../../auth/resolve-auth.js';
 
 const BASE = 'https://api.test.rockhopper.co';
 
 describe('resolve-auth (ENG-1444)', () => {
-  let tokenStoreGet: ReturnType<typeof vi.fn>;
-  let tokenStoreSet: ReturnType<typeof vi.fn>;
-  let tokenStoreClear: ReturnType<typeof vi.fn>;
-  let isExpiredFn: ReturnType<typeof vi.fn>;
-  let deviceGrantFlow: ReturnType<typeof vi.fn>;
-  let log: ReturnType<typeof vi.fn>;
+  let tokenStoreGet: ReturnType<
+    typeof vi.fn<NonNullable<ResolveAuthOptions['tokenStoreGet']>>
+  >;
+  let tokenStoreSet: ReturnType<
+    typeof vi.fn<NonNullable<ResolveAuthOptions['tokenStoreSet']>>
+  >;
+  let tokenStoreClear: ReturnType<
+    typeof vi.fn<NonNullable<ResolveAuthOptions['tokenStoreClear']>>
+  >;
+  let isExpiredFn: ReturnType<
+    typeof vi.fn<NonNullable<ResolveAuthOptions['isExpiredFn']>>
+  >;
+  let deviceGrantFlow: ReturnType<
+    typeof vi.fn<NonNullable<ResolveAuthOptions['deviceGrantFlow']>>
+  >;
+  let log: ReturnType<typeof vi.fn<NonNullable<ResolveAuthOptions['log']>>>;
 
   beforeEach(() => {
-    tokenStoreGet = vi.fn().mockResolvedValue(null);
-    tokenStoreSet = vi.fn().mockResolvedValue(undefined);
-    tokenStoreClear = vi.fn().mockResolvedValue(undefined);
-    isExpiredFn = vi.fn().mockReturnValue(false);
-    deviceGrantFlow = vi.fn();
-    log = vi.fn();
+    tokenStoreGet =
+      vi.fn<NonNullable<ResolveAuthOptions['tokenStoreGet']>>().mockResolvedValue(
+        null,
+      );
+    tokenStoreSet =
+      vi.fn<NonNullable<ResolveAuthOptions['tokenStoreSet']>>().mockResolvedValue(
+        undefined,
+      );
+    tokenStoreClear =
+      vi
+        .fn<NonNullable<ResolveAuthOptions['tokenStoreClear']>>()
+        .mockResolvedValue(undefined);
+    isExpiredFn = vi
+      .fn<NonNullable<ResolveAuthOptions['isExpiredFn']>>()
+      .mockReturnValue(false);
+    deviceGrantFlow =
+      vi.fn<NonNullable<ResolveAuthOptions['deviceGrantFlow']>>();
+    log = vi.fn<NonNullable<ResolveAuthOptions['log']>>();
   });
 
   function call(

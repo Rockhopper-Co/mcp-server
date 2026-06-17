@@ -5,6 +5,7 @@ import { ApiClient } from './api-client.js';
 import {
   AuthResolutionError,
   resolveAuth,
+  type ResolvedAuth,
 } from './auth/resolve-auth.js';
 import { createServer } from './server.js';
 
@@ -15,7 +16,7 @@ const ROCKHOPPER_API_URL =
 //   1. ROCKHOPPER_TOKEN env var (Personal Access Token — headless / CI)
 //   2. Stored OAuth bundle in the OS keychain (prior device-grant flow)
 //   3. Device-grant flow (prints code to stderr, polls for approval)
-let resolved;
+let resolved: ResolvedAuth | undefined;
 try {
   resolved = await resolveAuth({
     baseUrl: ROCKHOPPER_API_URL,
@@ -41,6 +42,13 @@ try {
       `Error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+  process.exit(1);
+}
+
+// Every catch branch above ends in `process.exit(1)`, so `resolved` is always
+// assigned past this point. TS 6.0's stricter control-flow analysis can't prove
+// that across the implicit-typed `let`, so narrow it explicitly here.
+if (!resolved) {
   process.exit(1);
 }
 
