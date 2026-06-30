@@ -6,6 +6,28 @@ All notable changes to this project are documented here. Follows
 
 ## [Unreleased]
 
+### Added
+- **Local rotating diagnostic logfile (KI-225).** The server now writes a
+  local diagnostic log to `~/.rockhopper/mcp-server/` (rotated via
+  `pino-roll`, ~5 MB × 5 files). It captures request latency plus the
+  client-side failures the backend never sees — network-unreachable
+  (`api_unreachable`), local auth rejection (`auth_failed`), response schema
+  drift (`schema_validation_failed`), per-tool-call timing (`tool_call` /
+  `tool_call_failed`), and uncaught crashes (`uncaught_exception` /
+  `unhandled_rejection`). Every line auto-carries the Phase 1.1
+  `correlationId`.
+  - **File only — never stdout** (stdout is the MCP stdio transport). On any
+    failure to open the file, logging degrades to a no-op; the server never
+    crashes and never writes to stdout.
+  - **No remote transmission.** The file stays on the customer's machine and
+    can be handed to support.
+  - **Redacted.** Tokens, `Authorization` headers, request/response bodies,
+    tool arguments, and cell data are never logged — only event, method, URL
+    pathname (no query), status, durationMs, tool name, correlationId,
+    version, and error type/message.
+  - Configurable via `ROCKHOPPER_MCP_LOG_DIR` / `ROCKHOPPER_MCP_LOG_LEVEL`;
+    disable with `ROCKHOPPER_MCP_LOG_DISABLE`.
+
 ### Fixed
 - **`get_cell_history`, `resolve_comment`, and `rename_file` no longer
   render `undefined` for every field (KI-096).** Diagnosis revealed the

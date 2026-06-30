@@ -98,6 +98,29 @@ Add to `.cursor/mcp.json` in your project:
 |----------|----------|---------|-------------|
 | `ROCKHOPPER_TOKEN` | No | — | Personal Access Token (starts with `rh_pat_`). When unset, OAuth device-grant flow runs on first launch. |
 | `ROCKHOPPER_API_URL` | No | `https://api.rockhopper.co` | Rockhopper API base URL |
+| `ROCKHOPPER_MCP_LOG_DIR` | No | `~/.rockhopper/mcp-server/` | Directory for the local diagnostic logfile (see below). |
+| `ROCKHOPPER_MCP_LOG_DISABLE` | No | — | Set truthy (`1` / `true`) to disable local diagnostic logging entirely. |
+| `ROCKHOPPER_MCP_LOG_LEVEL` | No | `info` | Diagnostic log level (`fatal` / `error` / `warn` / `info` / `debug` / `trace` / `silent`). |
+
+## Diagnostic Logging
+
+The server writes a **local diagnostic logfile** to `~/.rockhopper/mcp-server/`
+(rotated, size-capped at ~5 MB × 5 files, named `mcp-server.<n>.log`). It
+records request latency and the client-side failures the API never sees —
+network-unreachable errors, local auth rejections, response schema drift, and
+uncaught crashes — so you can hand the file to Rockhopper support when
+something misbehaves.
+
+- **Local only.** Nothing is transmitted anywhere — the file stays on your
+  machine. There is no remote telemetry.
+- **Redacted.** Tokens, the `Authorization` header, request/response bodies,
+  tool arguments, and cell data are **never** written. Lines carry only
+  event name, HTTP method, URL pathname (no query string), status code,
+  duration, tool name, a correlation id, and error type/message.
+- **Configurable.** Point it elsewhere with `ROCKHOPPER_MCP_LOG_DIR`, change
+  verbosity with `ROCKHOPPER_MCP_LOG_LEVEL`, or turn it off with
+  `ROCKHOPPER_MCP_LOG_DISABLE=1`. If the file can't be opened, logging
+  silently disables — it never interferes with the server.
 
 ## Postman
 

@@ -1,19 +1,25 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ApiClient } from './api-client.js';
 import { runWithCorrelationId } from './correlation.js';
+import { log } from './logger.js';
 import { registerPrompts } from './prompts/index.js';
 import { registerResources } from './resources/index.js';
 import { registerTools, type RegisterToolsOptions } from './tools/index.js';
 
 /**
- * Phase 1.1 / KI-226 — wrap every tool handler in a per-tool-call correlation
- * scope. Intercepting `registerTool` once here (vs. wrapping each of the ~16
- * handlers) means all current and future tools are covered automatically: the
- * handler body runs inside {@link runWithCorrelationId}, so every outbound
- * `ApiClient` call it makes — including multi-call fan-outs like search —
- * shares one `X-Correlation-Id`. The handler callback is always the last
- * positional argument to `registerTool`; the loose casts insulate this seam
- * from the SDK's generic `ToolCallback` union without changing behavior.
+ * Phase 1.1 / KI-226 + Phase 1.5 / KI-225 — wrap every tool handler once.
+ * Intercepting `registerTool` here (vs. wrapping each of the ~16 handlers)
+ * means all current and future tools are covered automatically. The wrapper:
+ *   - runs the handler inside {@link runWithCorrelationId}, so every outbound
+ *     `ApiClient` call it makes — including multi-call fan-outs like search —
+ *     shares one `X-Correlation-Id` (1.1), and
+ *   - times the handler and logs a `tool_call` / `tool_call_failed` line to
+ *     the local diagnostic file (1.5). Only the tool NAME is logged — never
+ *     the tool arguments, which may carry file refs / PII.
+ * The handler callback is always the last positional argument to
+ * `registerTool`; the loose casts insulate this seam from the SDK's generic
+ * `ToolCallback` union. On a handler throw we log then re-throw — behavior
+ * (the error surfacing to the SDK) is preserved.
  */
 function installCorrelationScope(server: McpServer): void {
   const baseRegisterTool = server.registerTool.bind(server);
@@ -24,7 +30,23 @@ function installCorrelationScope(server: McpServer): void {
   ): ReturnType<typeof baseRegisterTool> => {
     const handler = cb as (...args: unknown[]) => unknown;
     const wrapped = (...args: unknown[]): unknown =>
-      runWithCorrelationId(() => handler(...args));
+      runWithCorrelationId(async () => {
+        const start = Date.now();
+        try {
+          const result = await handler(...args);
+          log.info(
+            { event: 'tool_call', tool: name, durationMs: Date.now() - start, outcome: 'ok' },
+            'tool_call',
+          );
+          return result;
+        } catch (err) {
+          log.error(
+            { event: 'tool_call_failed', tool: name, durationMs: Date.now() - start, err },
+            'tool_call_failed',
+          );
+          throw err;
+        }
+      });
     return (
       baseRegisterTool as (
         name: string,
