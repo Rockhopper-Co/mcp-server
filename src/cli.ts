@@ -7,10 +7,34 @@ import {
   resolveAuth,
   type ResolvedAuth,
 } from './auth/resolve-auth.js';
+import {
+  flushLoggerSync,
+  initLogger,
+  log,
+  serviceVersion,
+} from './logger.js';
 import { createServer } from './server.js';
 
 const ROCKHOPPER_API_URL =
   process.env.ROCKHOPPER_API_URL || 'https://api.rockhopper.co';
+
+// KI-225: start the local rotating diagnostic logfile before anything else,
+// so startup-path failures (auth, preflight, crashes) are captured. Never
+// throws and never writes to stdout — falls back to a no-op logger.
+await initLogger();
+
+// Capture client-side crashes that would otherwise vanish (the backend can't
+// see them). Registering these handlers suppresses Node's default crash, so
+// uncaughtException re-exits 1 to PRESERVE the existing exit behavior; the
+// fatal line is flushed to disk synchronously first.
+process.on('uncaughtException', (err) => {
+  log.fatal({ event: 'uncaught_exception', err }, 'uncaught_exception');
+  flushLoggerSync();
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  log.error({ event: 'unhandled_rejection', err: reason }, 'unhandled_rejection');
+});
 
 // ENG-1444: auth resolution order is
 //   1. ROCKHOPPER_TOKEN env var (Personal Access Token — headless / CI)
@@ -24,6 +48,8 @@ try {
   });
 } catch (err) {
   if (err instanceof AuthResolutionError) {
+    // KI-225: local auth failure before any API call (bad token / sign-in).
+    log.warn({ event: 'auth_failed', reason: err.code }, 'auth_failed');
     if (err.code === 'pat_malformed') {
       console.error(`Error: ${err.message}`);
       console.error(
@@ -62,6 +88,14 @@ try {
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes('401') || msg.includes('403')) {
+    // KI-225: preflight token rejection — the local auth-fail signal.
+    log.warn(
+      {
+        event: 'auth_failed',
+        reason: resolved.source === 'pat' ? 'pat_invalid' : 'oauth_invalid',
+      },
+      'auth_failed',
+    );
     if (resolved.source === 'pat') {
       console.error(
         'Error: ROCKHOPPER_TOKEN is invalid or expired.\n' +
@@ -83,6 +117,9 @@ try {
 }
 
 const server = createServer(apiClient);
+
+// KI-225: one line per launch — anchors a session in the file.
+log.info({ event: 'mcp_server_start', version: serviceVersion }, 'mcp_server_start');
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
