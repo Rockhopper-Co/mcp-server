@@ -4,7 +4,7 @@ const registerResourcesMock = vi.fn();
 const registerToolsMock = vi.fn();
 const registerPromptsMock = vi.fn();
 
-const mcpServerInstance = { _type: 'mockServer' };
+const mcpServerInstance = { _type: 'mockServer', registerTool: vi.fn() };
 // vitest 4 invokes a mock's implementation with `new` when the mock is used as
 // a constructor; an arrow function can't be constructed, so use a function
 // expression. Returning an object from a constructor yields that object.
