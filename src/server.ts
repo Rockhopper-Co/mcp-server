@@ -1,8 +1,39 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ApiClient } from './api-client.js';
+import { runWithCorrelationId } from './correlation.js';
 import { registerPrompts } from './prompts/index.js';
 import { registerResources } from './resources/index.js';
 import { registerTools, type RegisterToolsOptions } from './tools/index.js';
+
+/**
+ * Phase 1.1 / KI-226 — wrap every tool handler in a per-tool-call correlation
+ * scope. Intercepting `registerTool` once here (vs. wrapping each of the ~16
+ * handlers) means all current and future tools are covered automatically: the
+ * handler body runs inside {@link runWithCorrelationId}, so every outbound
+ * `ApiClient` call it makes — including multi-call fan-outs like search —
+ * shares one `X-Correlation-Id`. The handler callback is always the last
+ * positional argument to `registerTool`; the loose casts insulate this seam
+ * from the SDK's generic `ToolCallback` union without changing behavior.
+ */
+function installCorrelationScope(server: McpServer): void {
+  const baseRegisterTool = server.registerTool.bind(server);
+  server.registerTool = ((
+    name: string,
+    config: unknown,
+    cb: unknown,
+  ): ReturnType<typeof baseRegisterTool> => {
+    const handler = cb as (...args: unknown[]) => unknown;
+    const wrapped = (...args: unknown[]): unknown =>
+      runWithCorrelationId(() => handler(...args));
+    return (
+      baseRegisterTool as (
+        name: string,
+        config: unknown,
+        cb: unknown,
+      ) => ReturnType<typeof baseRegisterTool>
+    )(name, config, wrapped);
+  }) as typeof server.registerTool;
+}
 
 export function createServer(
   apiClient: ApiClient,
@@ -32,6 +63,7 @@ export function createServer(
     },
   );
 
+  installCorrelationScope(server);
   registerResources(server, apiClient);
   registerTools(server, apiClient, options);
   registerPrompts(server, apiClient);

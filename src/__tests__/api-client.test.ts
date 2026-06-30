@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ApiClient } from '../api-client.js';
+import { runWithCorrelationId } from '../correlation.js';
 
 function mockFetch(data: unknown, status = 200) {
   return vi.fn().mockResolvedValue({
@@ -382,5 +383,93 @@ describe('ApiClient', () => {
 
       vi.unstubAllGlobals();
     });
+  });
+});
+
+// Phase 1.1 / KI-226 — correlation id on the outbound `X-Correlation-Id`
+// header. One non-sensitive UUID per tool call, shared across the tool's
+// fan-out of API calls; the gateway can override via the config seam.
+const UUID_V4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function corrIdOf(
+  fetchSpy: ReturnType<typeof mockFetch>,
+  call = 0,
+): string {
+  return fetchSpy.mock.calls[call][1].headers['X-Correlation-Id'];
+}
+
+describe('ApiClient correlation id (Phase 1.1 / KI-226)', () => {
+  function makeClient(correlationId?: string): ApiClient {
+    return new ApiClient({
+      baseUrl: 'https://api.rockhopper.co',
+      token: 'rh_pat_test',
+      correlationId,
+    });
+  }
+
+  it('stamps an X-Correlation-Id (UUID v4) on every request when no scope is active', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await makeClient().listEnrolledFiles();
+
+    expect(corrIdOf(fetchSpy)).toMatch(UUID_V4);
+    vi.unstubAllGlobals();
+  });
+
+  it('reuses one id across every API call inside a single runWithCorrelationId scope', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+    const client = makeClient();
+
+    await runWithCorrelationId(async () => {
+      await client.listEnrolledFiles();
+      await client.getEnrolledFile('file-1');
+    });
+
+    expect(corrIdOf(fetchSpy, 0)).toMatch(UUID_V4);
+    expect(corrIdOf(fetchSpy, 0)).toBe(corrIdOf(fetchSpy, 1));
+    vi.unstubAllGlobals();
+  });
+
+  it('uses a different id for a separate scope / invocation', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+    const client = makeClient();
+
+    await runWithCorrelationId(() => client.listEnrolledFiles());
+    await runWithCorrelationId(() => client.listEnrolledFiles());
+
+    expect(corrIdOf(fetchSpy, 0)).not.toBe(corrIdOf(fetchSpy, 1));
+    vi.unstubAllGlobals();
+  });
+
+  it('honors an explicit id passed to runWithCorrelationId', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await runWithCorrelationId(
+      () => makeClient().listEnrolledFiles(),
+      'fixed-scope-id',
+    );
+
+    expect(corrIdOf(fetchSpy)).toBe('fixed-scope-id');
+    vi.unstubAllGlobals();
+  });
+
+  it('forwards a config correlationId (gateway path) and prefers it over the ALS scope', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+    const client = makeClient('gateway-req-id');
+
+    // config > ALS: even inside a scope, the gateway-forwarded id wins.
+    await runWithCorrelationId(
+      () => client.listEnrolledFiles(),
+      'als-id-should-lose',
+    );
+
+    expect(corrIdOf(fetchSpy)).toBe('gateway-req-id');
+    vi.unstubAllGlobals();
   });
 });

@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
+import { getCorrelationId } from './correlation.js';
 import type {
   CellHistoryEntry,
   EnrolledFile,
@@ -20,15 +22,27 @@ import {
 export interface ApiClientConfig {
   baseUrl: string;
   token: string;
+  /**
+   * Phase 1.1 / KI-226 — optional fixed correlation id stamped on every
+   * outbound request's `X-Correlation-Id` header. The mcp-gateway sets this
+   * to forward its own per-request id onto tool-call traffic (it constructs a
+   * fresh `ApiClient` per request). Precedence for the header value:
+   * an explicit per-call `init.headers['X-Correlation-Id']` >
+   * this config value > the per-tool-call ALS id (`getCorrelationId()`) >
+   * a freshly minted UUID v4.
+   */
+  correlationId?: string;
 }
 
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly token: string;
+  private readonly correlationId?: string;
 
   constructor(config: ApiClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, '');
     this.token = config.token;
+    this.correlationId = config.correlationId;
   }
 
   /**
@@ -50,6 +64,12 @@ export class ApiClient {
       headers: {
         Authorization: `Bearer ${this.token}`,
         'Content-Type': 'application/json',
+        // KI-226: trace this request in backend logs. Placed BEFORE the
+        // `...init?.headers` spread so a per-call header still wins but the
+        // id can't be dropped. Precedence: per-call > config > ALS > mint.
+        // Non-sensitive UUID — never co-logged with the bearer token above.
+        'X-Correlation-Id':
+          this.correlationId ?? getCorrelationId() ?? randomUUID(),
         ...init?.headers,
       },
     });
