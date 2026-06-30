@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 import { getCorrelationId } from './correlation.js';
+import { log } from './logger.js';
 import type {
   CellHistoryEntry,
   EnrolledFile,
@@ -59,27 +60,69 @@ export class ApiClient {
     responseSchema?: ZodType<T>,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const response = await fetch(url, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
-        // KI-226: trace this request in backend logs. Placed BEFORE the
-        // `...init?.headers` spread so a per-call header still wins but the
-        // id can't be dropped. Precedence: per-call > config > ALS > mint.
-        // Non-sensitive UUID — never co-logged with the bearer token above.
-        'X-Correlation-Id':
-          this.correlationId ?? getCorrelationId() ?? randomUUID(),
-        ...init?.headers,
-      },
-    });
+    // KI-225: log only the URL pathname (drop the query string) — query may
+    // carry search terms / cell refs; it never carries the token (header
+    // only), but it's not a safe field to persist.
+    const pathname = path.split('?')[0];
+    const method = (init?.method ?? 'GET').toUpperCase();
+    const start = Date.now();
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+          // KI-226: trace this request in backend logs. Placed BEFORE the
+          // `...init?.headers` spread so a per-call header still wins but the
+          // id can't be dropped. Precedence: per-call > config > ALS > mint.
+          // Non-sensitive UUID — never co-logged with the bearer token above.
+          'X-Correlation-Id':
+            this.correlationId ?? getCorrelationId() ?? randomUUID(),
+          ...init?.headers,
+        },
+      });
+    } catch (err) {
+      // KI-225: the can't-reach-the-API case — a thrown fetch is a network
+      // failure, the class of error that NEVER reaches the backend log.
+      log.error(
+        { event: 'api_unreachable', method, path: pathname, durationMs: Date.now() - start, err },
+        'api_unreachable',
+      );
+      throw err;
+    }
+
+    const durationMs = Date.now() - start;
 
     if (!response.ok) {
+      // KI-225: classify auth rejections (401/403) so they're greppable
+      // separately from generic HTTP errors.
+      const classification =
+        response.status === 401 || response.status === 403
+          ? 'auth_failed'
+          : 'http_error';
+      log.warn(
+        {
+          event: 'api_request_failed',
+          method,
+          path: pathname,
+          status: response.status,
+          durationMs,
+          classification,
+        },
+        'api_request_failed',
+      );
       const body = await response.text().catch(() => '');
       throw new Error(
         `Rockhopper API ${response.status}: ${response.statusText} — ${body}`,
       );
     }
+
+    log.info(
+      { event: 'api_request', method, path: pathname, status: response.status, durationMs },
+      'api_request',
+    );
 
     const json = await response.json();
     if (responseSchema) {
@@ -89,6 +132,18 @@ export class ApiClient {
         // `undefined`, hiding the contract break. Include the path of the
         // first issue so the cause is obvious from the error message.
         const first = parsed.error.issues[0];
+        // KI-225: schema drift is a client-side detection the backend can't
+        // see. Log the issue path + message ONLY — never the raw payload
+        // (`json`), which may contain file/cell data.
+        log.warn(
+          {
+            event: 'schema_validation_failed',
+            endpoint: pathname,
+            issue: first?.path.join('.') || '<root>',
+            err: first?.message,
+          },
+          'schema_validation_failed',
+        );
         throw new Error(
           `Rockhopper API response failed schema check at ${path}: ` +
             `${first?.path.join('.') || '<root>'} — ${first?.message} ` +
