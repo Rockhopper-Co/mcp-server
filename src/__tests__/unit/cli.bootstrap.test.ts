@@ -40,7 +40,13 @@ describe('cli bootstrap', () => {
     const connectMock = vi.fn().mockResolvedValue(undefined);
     const createServerMock = vi.fn().mockReturnValue({ connect: connectMock });
     const getMeMock = vi.fn().mockResolvedValue({ internalId: 1 });
-    const apiClientMock = vi.fn().mockImplementation(() => ({ getMe: getMeMock }));
+    // vitest 4 invokes a mock's implementation with `new` when used as a
+    // constructor; an arrow fn can't be constructed, so use a function expr.
+    const apiClientMock = vi
+      .fn()
+      .mockImplementation(function () {
+        return { getMe: getMeMock };
+      });
     const transportMock = vi.fn();
 
     vi.doMock('../../server.js', () => ({
@@ -67,7 +73,13 @@ describe('cli bootstrap', () => {
     const getMeMock = vi.fn().mockRejectedValue(
       new Error('Rockhopper API 401: Unauthorized — Invalid or expired token'),
     );
-    const apiClientMock = vi.fn().mockImplementation(() => ({ getMe: getMeMock }));
+    // vitest 4 invokes a mock's implementation with `new` when used as a
+    // constructor; an arrow fn can't be constructed, so use a function expr.
+    const apiClientMock = vi
+      .fn()
+      .mockImplementation(function () {
+        return { getMe: getMeMock };
+      });
 
     vi.doMock('../../api-client.js', () => ({
       ApiClient: apiClientMock,
@@ -101,7 +113,13 @@ describe('cli bootstrap', () => {
     const getMeMock = vi.fn().mockRejectedValue(
       new Error('fetch failed: ECONNREFUSED'),
     );
-    const apiClientMock = vi.fn().mockImplementation(() => ({ getMe: getMeMock }));
+    // vitest 4 invokes a mock's implementation with `new` when used as a
+    // constructor; an arrow fn can't be constructed, so use a function expr.
+    const apiClientMock = vi
+      .fn()
+      .mockImplementation(function () {
+        return { getMe: getMeMock };
+      });
 
     vi.doMock('../../api-client.js', () => ({
       ApiClient: apiClientMock,
@@ -192,7 +210,9 @@ describe('cli bootstrap', () => {
     );
     const apiClientMock = vi
       .fn()
-      .mockImplementation(() => ({ getMe: getMeMock }));
+      .mockImplementation(function () {
+        return { getMe: getMeMock };
+      });
 
     vi.doMock('../../api-client.js', () => ({
       ApiClient: apiClientMock,
