@@ -205,6 +205,14 @@ export class ApiClient {
    * row shape the frontend cell-history popover consumes — we never
    * call that path. Zod-parses the response so future drift between
    * backend and mcp-server contracts fails loudly.
+   *
+   * ENG-1638 (P3-2) remainder: the backend now routes this read through the
+   * SAME ledger read-decision choke point as the webapp/add-in popovers
+   * (cross-surface parity). An eligible file serves the WIDENED entries
+   * (+ formula, provenance, actorKind, drivingHuman, formatted — including
+   * live events with versionId 'uncommitted'); a not-eligible file, a Google
+   * file, or an older backend serves the four-field legacy projection. The
+   * schema accepts both.
    */
   async getCellHistory(
     fileMsId: string,

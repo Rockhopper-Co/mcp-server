@@ -33,12 +33,18 @@ export function registerGetCellHistoryTool(
           cellAddress,
         );
 
+        // ENG-1638 (P3-2): a ledger-served entry carries a backend-rendered
+        // `formatted` line — 'vX.Y.Z: <value> — <provenance> (driven by
+        // <human>) — <ts>' — print it verbatim. The legacy normalized
+        // fallback (not-eligible file / Google / old backend) has only the
+        // four core fields; keep the original rendering for it.
         const summary = history
-          .map(
-            (h) =>
-              `- Version ${h.versionId}: **${JSON.stringify(h.value)}**` +
-              (h.changedBy ? ` — by ${h.changedBy}` : '') +
-              ` — ${h.changedAt}`,
+          .map((h) =>
+            h.formatted
+              ? `- ${h.formatted}`
+              : `- Version ${h.versionId}: **${JSON.stringify(h.value)}**` +
+                (h.changedBy ? ` — by ${h.changedBy}` : '') +
+                ` — ${h.changedAt}`,
           )
           .join('\n');
 

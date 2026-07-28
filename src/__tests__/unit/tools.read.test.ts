@@ -31,6 +31,65 @@ describe('read tool handlers', () => {
     expect(result.content[0].text).toContain('Found');
   });
 
+  // ENG-1638 (P3-2) remainder — the widened cell-history rendering.
+  describe('get_cell_history widened entries', () => {
+    const getHandler = (api: ReturnType<typeof createMockApiClient>) => {
+      const server = createMockMcpServer();
+      registerTools(server as any, api as any);
+      return server.registerTool.mock.calls.find(
+        (c) => c[0] === 'get_cell_history',
+      )?.[2];
+    };
+
+    it('prints the backend-formatted line verbatim when present', async () => {
+      const api = createMockApiClient();
+      api.getCellHistory.mockResolvedValue([
+        {
+          versionId: 'v1.2.3',
+          value: 42,
+          formula: null,
+          provenance: 'ai_auto',
+          actorKind: 'agent',
+          changedBy: 'Agent X',
+          drivingHuman: 'Grace Hopper',
+          changedAt: '2026-07-01T10:00:00.000Z',
+          formatted:
+            'v1.2.3: 42 — ai_auto (driven by Grace Hopper) — 2026-07-01T10:00:00.000Z',
+        },
+      ]);
+      const handler = getHandler(api);
+      const result = await handler({
+        fileMsId: 'file-1',
+        sheetName: 'Sheet1',
+        cellAddress: 'A1',
+      });
+      expect(result.content[0].text).toContain(
+        '- v1.2.3: 42 — ai_auto (driven by Grace Hopper) — 2026-07-01T10:00:00.000Z',
+      );
+    });
+
+    it('falls back to the legacy rendering for a narrow (pre-widening) entry', async () => {
+      const api = createMockApiClient();
+      api.getCellHistory.mockResolvedValue([
+        {
+          versionId: 'v3.0.0',
+          value: '$18,500,000',
+          changedBy: 'Sebastian Perez Lawrence',
+          changedAt: '2026-05-12T15:42:56.676Z',
+        },
+      ]);
+      const handler = getHandler(api);
+      const result = await handler({
+        fileMsId: 'file-1',
+        sheetName: 'Financing',
+        cellAddress: 'B5',
+      });
+      expect(result.content[0].text).toContain('v3.0.0');
+      expect(result.content[0].text).toContain('"$18,500,000"');
+      expect(result.content[0].text).toContain('Sebastian Perez Lawrence');
+    });
+  });
+
   it('get_reviews should error when neither versionId nor fileMsId provided', async () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();

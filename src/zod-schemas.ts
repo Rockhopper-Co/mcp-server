@@ -60,6 +60,14 @@ export const CellHistoryEntrySchema = z.object({
   value: z.unknown(),
   changedBy: z.string().nullable(),
   changedAt: z.string(),
+  // ENG-1638 (P3-2) remainder: the widened ledger-served projection. Optional —
+  // the legacy normalized fallback (not-eligible file / Google / old backend)
+  // carries only the four core fields.
+  formula: z.string().nullable().optional(),
+  provenance: z.string().optional(),
+  actorKind: z.string().nullable().optional(),
+  drivingHuman: z.string().nullable().optional(),
+  formatted: z.string().optional(),
 });
 
 export const CellHistoryEntryArraySchema = z.array(CellHistoryEntrySchema);
