@@ -84,7 +84,13 @@ const apiClient = new ApiClient({
 });
 
 try {
-  await apiClient.getMe();
+  const me = await apiClient.getMe();
+  // ENG-1756 (plan §9 decision 15): the PAT owner IS the human driving this
+  // local agent — reuse the preflight to declare them, so every write carries
+  // `X-Driving-Human` and the backend's anonymous-agent-write admission
+  // never fires for this client. Best-effort: while unset, the backend
+  // resolves the PAT owner server-side (same human).
+  apiClient.setDrivingHuman(me?.msId ?? me?.googleId ?? null);
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes('401') || msg.includes('403')) {

@@ -33,17 +33,56 @@ export interface ApiClientConfig {
    * a freshly minted UUID v4.
    */
   correlationId?: string;
+  /**
+   * ENG-1756 (plan §9 decision 15) — provenance-context EMIT config. Every
+   * WRITE call carries `X-Rockhopper-Surface` + `X-Rockhopper-Session-Id`
+   * (and `X-Driving-Human` once known) so the backend's decision-15
+   * admission never 403s a well-behaved agent client and the capture
+   * sidecar (`cell_change_provenance_context`) gets its surface/session.
+   * Defaults: surface `'mcp'`, a per-client-instance UUID session id, no
+   * driving human until {@link ApiClient.setDrivingHuman} is called (the
+   * backend then falls back to the PAT owner — the same human).
+   */
+  provenanceContext?: {
+    /** `'mcp'` (local server, default) | `'gateway'` (remote gateway). */
+    surface?: string;
+    /** Session correlation id for the sidecar; default: per-instance UUID. */
+    sessionId?: string;
+    /** Platform id (msId/googleId) of the human driving this agent. */
+    drivingHumanPlatformId?: string;
+  };
 }
+
+/** HTTP methods the decision-15 admission treats as agent writes. */
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly token: string;
   private readonly correlationId?: string;
+  private readonly surface: string;
+  private readonly sessionId: string;
+  private drivingHumanPlatformId: string | null;
 
   constructor(config: ApiClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, '');
     this.token = config.token;
     this.correlationId = config.correlationId;
+    this.surface = config.provenanceContext?.surface ?? 'mcp';
+    this.sessionId = config.provenanceContext?.sessionId ?? randomUUID();
+    this.drivingHumanPlatformId =
+      config.provenanceContext?.drivingHumanPlatformId ?? null;
+  }
+
+  /**
+   * ENG-1756: declare (or clear) the human driving this agent. The CLI sets
+   * it from the `/users/me` preflight (`msId`/`googleId` — the PAT owner);
+   * subsequent writes then carry `X-Driving-Human`. While unset, the backend
+   * resolves the driving human as the PAT owner server-side, so writes keep
+   * working — this header is the explicit, forward-compatible form.
+   */
+  setDrivingHuman(platformId: string | null): void {
+    this.drivingHumanPlatformId = platformId;
   }
 
   /**
@@ -80,6 +119,20 @@ export class ApiClient {
           // Non-sensitive UUID — never co-logged with the bearer token above.
           'X-Correlation-Id':
             this.correlationId ?? getCorrelationId() ?? randomUUID(),
+          // ENG-1756 (decision 15): agent writes carry the provenance
+          // context so the backend's anonymous-agent-write admission never
+          // fires for this well-behaved client and the capture sidecar gets
+          // its surface/session. Reads carry none (no admission on reads).
+          // Placed before the spread so a per-call header still wins.
+          ...(WRITE_METHODS.has(method)
+            ? {
+                'X-Rockhopper-Surface': this.surface,
+                'X-Rockhopper-Session-Id': this.sessionId,
+                ...(this.drivingHumanPlatformId
+                  ? { 'X-Driving-Human': this.drivingHumanPlatformId }
+                  : {}),
+              }
+            : {}),
           ...init?.headers,
         },
       });

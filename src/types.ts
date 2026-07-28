@@ -20,6 +20,13 @@ export interface UserSummary {
   lastName: string | null;
   email: string;
   username: string | null;
+  /**
+   * ENG-1756: platform identity of the user — msId (Microsoft) / googleId
+   * (Google). `/users/me` serializes both; the CLI uses whichever is set as
+   * the `X-Driving-Human` value on agent writes (decision 15).
+   */
+  msId?: string | null;
+  googleId?: string | null;
 }
 
 export interface Workspace {
