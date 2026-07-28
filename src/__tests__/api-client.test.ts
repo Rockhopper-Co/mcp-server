@@ -295,6 +295,29 @@ describe('ApiClient', () => {
       vi.unstubAllGlobals();
     });
 
+    it('getCellHistory accepts the ENG-1638 widened ledger-served shape', async () => {
+      const widened = {
+        versionId: 'uncommitted',
+        value: 6,
+        changedBy: 'Ada Lovelace',
+        changedAt: '2026-07-01T10:00:00.000Z',
+        formula: '=SUM(A1:A3)',
+        provenance: 'ai_auto',
+        actorKind: 'agent',
+        drivingHuman: 'Grace Hopper',
+        formatted:
+          'uncommitted: 6 [=SUM(A1:A3)] — ai_auto (driven by Grace Hopper) — 2026-07-01T10:00:00.000Z',
+      };
+      const fetchSpy = mockFetch([widened]);
+      vi.stubGlobal('fetch', fetchSpy);
+
+      const result = await client.getCellHistory('file-1', 'Sheet1', 'A1');
+
+      expect(result).toEqual([widened]);
+
+      vi.unstubAllGlobals();
+    });
+
     it('getCellHistory throws a useful error when versionId is the wrong type (drift sentinel)', async () => {
       // Simulates the original audit symptom: legacy raw-CTE response
       // shape leaking through. With opt-in zod-parse the formatter would

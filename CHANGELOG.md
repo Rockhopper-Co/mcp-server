@@ -7,6 +7,19 @@ All notable changes to this project are documented here. Follows
 ## [Unreleased]
 
 ### Added
+- **Provenance-context emit on agent writes (ENG-1756 / decision 15).** Every
+  write call (`POST`/`PUT`/`PATCH`/`DELETE`) now carries
+  `X-Rockhopper-Surface` (`mcp`), a stable per-client-instance
+  `X-Rockhopper-Session-Id`, and — once the driving human is known —
+  `X-Driving-Human`. The CLI declares the PAT owner as the driving human from
+  its existing `/users/me` preflight. Reads are unchanged (no headers).
+  This satisfies the backend's decision-15 accountability invariant, which
+  rejects (403) an agent-surface write with no resolvable driving human, and
+  populates the `cell_change_provenance_context` sidecar for etymology reads.
+  New public API: `ApiClient` config `provenanceContext` +
+  `ApiClient.setDrivingHuman()` (used by `mcp-gateway` to declare the
+  `gateway` surface and its OAuth session id).
+
 - **Local rotating diagnostic logfile (KI-225).** The server now writes a
   local diagnostic log to `~/.rockhopper/mcp-server/` (rotated via
   `pino-roll`, ~5 MB × 5 files). It captures request latency plus the

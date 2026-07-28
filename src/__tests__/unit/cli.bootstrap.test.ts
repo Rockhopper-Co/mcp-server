@@ -39,13 +39,18 @@ describe('cli bootstrap', () => {
 
     const connectMock = vi.fn().mockResolvedValue(undefined);
     const createServerMock = vi.fn().mockReturnValue({ connect: connectMock });
-    const getMeMock = vi.fn().mockResolvedValue({ internalId: 1 });
+    const getMeMock = vi
+      .fn()
+      .mockResolvedValue({ internalId: 1, msId: 'ms-oid-1' });
+    // ENG-1756: the CLI declares the PAT owner as the driving human off the
+    // getMe preflight.
+    const setDrivingHumanMock = vi.fn();
     // vitest 4 invokes a mock's implementation with `new` when used as a
     // constructor; an arrow fn can't be constructed, so use a function expr.
     const apiClientMock = vi
       .fn()
       .mockImplementation(function () {
-        return { getMe: getMeMock };
+        return { getMe: getMeMock, setDrivingHuman: setDrivingHumanMock };
       });
     const transportMock = vi.fn();
 
@@ -62,6 +67,7 @@ describe('cli bootstrap', () => {
     await import('../../cli.js');
 
     expect(getMeMock).toHaveBeenCalledTimes(1);
+    expect(setDrivingHumanMock).toHaveBeenCalledWith('ms-oid-1');
     expect(createServerMock).toHaveBeenCalledTimes(1);
     expect(connectMock).toHaveBeenCalledTimes(1);
   });
