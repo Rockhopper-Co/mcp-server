@@ -74,7 +74,7 @@ Two distinct concepts. Tools work with one or the other; do not mix.
 - **Committed history** — version snapshots created by `create_version`. Surfaced by `get_file_versions`, `get_cell_history`. Immutable.
 - **Uncommitted changes** — cell edits the user has made since the last `create_version`. Surfaced by `get_unattributed_changes`. Mutable; consumed by the next `create_version` or `discard_changes` call.
 
-Common mistake: calling `get_cell_history` to inspect a recent edit before it has been committed. `get_cell_history` only returns committed values — use `get_unattributed_changes` for pending edits.
+Note: on files served from the change ledger (most Microsoft files), `get_cell_history` also includes live edits not yet captured by a committed version — those entries carry the literal versionId `uncommitted`. On files still served from the legacy store, only committed values appear; use `get_unattributed_changes` for pending edits there.
 
 ## 7. Cross-cloud differences
 
