@@ -20,6 +20,13 @@ export interface UserSummary {
   lastName: string | null;
   email: string;
   username: string | null;
+  /**
+   * ENG-1756: platform identity of the user — msId (Microsoft) / googleId
+   * (Google). `/users/me` serializes both; the CLI uses whichever is set as
+   * the `X-Driving-Human` value on agent writes (decision 15).
+   */
+  msId?: string | null;
+  googleId?: string | null;
 }
 
 export interface Workspace {
@@ -129,6 +136,20 @@ export interface CellHistoryEntry {
   value: unknown;
   changedBy: string | null;
   changedAt: string;
+  // ENG-1638 (P3-2) remainder — widened fields served when the backend's
+  // read decision routes the MCP read to the Model-B ledger. All optional:
+  // the legacy normalized fallback (not-eligible file, Google provider, old
+  // backend) omits them entirely.
+  /** Post-change formula (the ledger `f` facet). */
+  formula?: string | null;
+  /** Raw ledger provenance (`human_direct`, `ai_auto`, `reconcile_repair`…). */
+  provenance?: string;
+  /** Raw actor kind (`human`, `agent`, …). */
+  actorKind?: string | null;
+  /** Resolved human who drove an agent edit (P1-8). */
+  drivingHuman?: string | null;
+  /** Backend-rendered line: `vX.Y.Z: <value> — <provenance> (driven by <human>) — <ts>`. */
+  formatted?: string;
 }
 
 export interface ReviewActivity {

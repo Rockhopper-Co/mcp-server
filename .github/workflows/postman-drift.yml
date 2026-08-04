@@ -1,8 +1,11 @@
 name: Postman drift
 
 on:
+  # PROD ELEVATIONS ONLY (David, 2026-07-31): CI budget. Gated at the
+  # trigger, not per-job — a job-level `if:` still creates the run and posts
+  # skipped checks. Run validation locally; workflow_dispatch runs on demand.
   pull_request:
-    branches: [dev, staging, main]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
