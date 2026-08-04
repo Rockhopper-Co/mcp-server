@@ -154,6 +154,20 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    // Plan 02 ruling 5 — the completeness probe every change-history surface
+    // consults before serving a row. `file-fold-pending` is the strict-refusal
+    // fixture; every other known file is complete.
+    if (method === 'GET' && /^\/file-versions\/file\/[^/]+\/fold-status$/.test(path)) {
+      const pending = path.includes('file-fold-pending');
+      sendJson(res, 200, {
+        fileMsId: path.split('/')[3],
+        foldPending: pending,
+        foldTargetVersionId: pending ? 909 : null,
+        checkedAt: '2026-08-04T00:00:00.000Z',
+      });
+      return;
+    }
+
     if (
       method === 'GET' &&
       path === '/file-versions/file/file-1/cell-history'

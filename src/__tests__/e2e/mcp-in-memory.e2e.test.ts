@@ -339,6 +339,29 @@ describe('MCP in-memory protocol e2e', () => {
     expect(JSON.stringify(result.content)).toContain('Failed to get changes');
   });
 
+  // Plan 02 ruling 5 — the strict refusal, proven over the real JSON-RPC
+  // transport rather than a handler call: this is the shape Claude Desktop and
+  // Cursor actually receive.
+  it('refuses change history over the protocol while a fold is pending', async () => {
+    const result = await client.callTool({
+      name: 'get_unattributed_changes',
+      arguments: { fileMsId: 'file-fold-pending' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBe(true);
+    expect(text).toContain('CHANGE_HISTORY_NOT_READY');
+    expect(text).toContain('change_history_incomplete');
+    expect(text).not.toContain('No unattributed changes');
+  });
+
+  it('errors the changes resource while a fold is pending', async () => {
+    await expect(
+      client.readResource({
+        uri: 'rockhopper://files/file-fold-pending/changes',
+      }),
+    ).rejects.toThrow('CHANGE_HISTORY_NOT_READY');
+  });
+
   it('add_comment creates a new comment', async () => {
     const result = await client.callTool({
       name: 'add_comment',
