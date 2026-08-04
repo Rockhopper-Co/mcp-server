@@ -7,6 +7,7 @@ import type {
   EnrolledFile,
   FileChat,
   FileVersion,
+  FoldStatus,
   PaginatedUnattributedResponse,
   ReviewActivity,
   ReviewRequest,
@@ -18,7 +19,30 @@ import {
   CellHistoryEntryArraySchema,
   EnrolledFileSchema,
   FileChatSchema,
+  FoldStatusSchema,
 } from './zod-schemas.js';
+import {
+  ChangeHistoryNotReadyError,
+  DEFAULT_RETRY_AFTER_SECONDS,
+} from './not-ready.js';
+
+/**
+ * Plan 02 ruling 5 — the poll hint comes from the SERVER's `Retry-After`
+ * (the produce ETA), never from a local guess. A missing/garbage header falls
+ * back to the shared default rather than inventing a shorter interval: a hint
+ * that is too short turns one waiting client into the herd the parser lease
+ * exists to prevent (SP02 adversarial S6).
+ */
+function parseRetryAfterSeconds(response: {
+  headers?: { get(name: string): string | null };
+}): number {
+  const raw = response.headers?.get('Retry-After');
+  if (!raw) return DEFAULT_RETRY_AFTER_SECONDS;
+  const seconds = Number.parseInt(raw, 10);
+  return Number.isFinite(seconds) && seconds > 0
+    ? seconds
+    : DEFAULT_RETRY_AFTER_SECONDS;
+}
 
 export interface ApiClientConfig {
   baseUrl: string;
@@ -51,6 +75,23 @@ export interface ApiClientConfig {
     /** Platform id (msId/googleId) of the human driving this agent. */
     drivingHumanPlatformId?: string;
   };
+}
+
+/**
+ * A non-OK HTTP answer, carrying its status so callers can tell a DEFINITIVE
+ * rejection (404 the file is not there, 403 no access) from an ambiguous one
+ * (5xx, transport). The strict no-partial gate needs that distinction: failing
+ * closed on an ambiguous probe is right, but reporting "retry later" for a file
+ * that does not exist would be a fabricated capacity signal. Message text is
+ * unchanged from the previous plain `Error` — callers render it verbatim.
+ */
+export class RockhopperApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'RockhopperApiError';
+    this.status = status;
+  }
 }
 
 /** HTTP methods the decision-15 admission treats as agent writes. */
@@ -151,10 +192,19 @@ export class ApiClient {
     if (!response.ok) {
       // KI-225: classify auth rejections (401/403) so they're greppable
       // separately from generic HTTP errors.
+      // Plan 02 ruling 5: 429/503 on a read lane is the backend's "outputs
+      // still producing" answer (SP02 maps the typed not-ready to 429 +
+      // Retry-After). It must NOT reach a formatter as a generic error string —
+      // an assistant reading `Rockhopper API 429: …` has no reliable way to
+      // tell a capacity signal from a real failure, and either way it is not
+      // data. Classified here, at the one place every call passes through.
+      const notReady = response.status === 429 || response.status === 503;
       const classification =
         response.status === 401 || response.status === 403
           ? 'auth_failed'
-          : 'http_error';
+          : notReady
+            ? 'not_ready'
+            : 'http_error';
       log.warn(
         {
           event: 'api_request_failed',
@@ -167,7 +217,15 @@ export class ApiClient {
         'api_request_failed',
       );
       const body = await response.text().catch(() => '');
-      throw new Error(
+      if (notReady) {
+        throw new ChangeHistoryNotReadyError({
+          reason: 'still_producing',
+          retryAfterSeconds: parseRetryAfterSeconds(response),
+          detail: `${response.status} ${response.statusText} at ${pathname}`,
+        });
+      }
+      throw new RockhopperApiError(
+        response.status,
         `Rockhopper API ${response.status}: ${response.statusText} — ${body}`,
       );
     }
@@ -248,6 +306,20 @@ export class ApiClient {
   async getFileVersion(versionInternalId: number): Promise<FileVersion> {
     return this.request<FileVersion>(
       `/file-versions/file/version/${versionInternalId}`,
+    );
+  }
+
+  /**
+   * Plan 02 ruling 5 — the completeness probe for every change-history
+   * surface. `foldPending: true` means a commit-diff fold is queued, retrying
+   * or running, i.e. the change-log window is mid-rewrite: incomplete.
+   * Consumed by `assertChangeHistoryComplete`, never rendered to the user.
+   */
+  async getFoldStatus(fileMsId: string): Promise<FoldStatus> {
+    return this.request<FoldStatus>(
+      `/file-versions/file/${fileMsId}/fold-status`,
+      undefined,
+      FoldStatusSchema as unknown as ZodType<FoldStatus>,
     );
   }
 
