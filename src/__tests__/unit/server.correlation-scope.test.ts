@@ -17,7 +17,7 @@ const logMock = {
   fatal: vi.fn(),
 };
 
-vi.mock('../../logger.js', () => ({ log: logMock }));
+vi.mock('../../logger.js', () => ({ log: logMock, serviceVersion: '0.0.0-test' }));
 vi.mock('../../resources/index.js', () => ({ registerResources: vi.fn() }));
 vi.mock('../../tools/index.js', () => ({ registerTools: vi.fn() }));
 vi.mock('../../prompts/index.js', () => ({ registerPrompts: vi.fn() }));

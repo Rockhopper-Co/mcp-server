@@ -7,6 +7,22 @@ All notable changes to this project are documented here. Follows
 ## [Unreleased]
 
 ### Added
+- **Strict no-partial change history (`src/not-ready.ts`).** `get_cell_history`,
+  `search` and the `changes` resource refuse to answer while a file's change
+  history is still being built, instead of returning the fraction that happens
+  to be ready. Callers get an explicit not-ready answer they can retry.
+
+### Fixed
+- **The server announced version `0.1.0` to every client, at every release
+  (ENG-1955).** `createServer` passed a string literal to `McpServer`, so the
+  version in the MCP `initialize` response was `0.1.0` — unchanged since the
+  initial commit, so every published version (0.2.0 through 0.8.0) announced
+  itself as 0.1.0, both for the locally installed server and for every web
+  client reaching the same tools through `mcp-gateway`. It now reports
+  `package.json`'s version, which is what makes two builds distinguishable
+  at all.
+
+### Added
 - **Provenance-context emit on agent writes (ENG-1756 / decision 15).** Every
   write call (`POST`/`PUT`/`PATCH`/`DELETE`) now carries
   `X-Rockhopper-Surface` (`mcp`), a stable per-client-instance
