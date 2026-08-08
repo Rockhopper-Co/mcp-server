@@ -32,6 +32,18 @@ Standard sequence to inspect a file:
    - Reviews → `get_reviews(versionId)`. Pass a `versionId` from step 2.
    - Uncommitted changes → `get_unattributed_changes(fileMsId)` (only useful if `hasUncommittedChanges === true`).
 
+### `CHANGE_HISTORY_NOT_READY` — never report it as "no changes"
+
+`get_cell_history`, `get_unattributed_changes`, the `rockhopper://files/{id}/changes`
+resource and the change prompts all serve change history strictly: while Rockhopper is
+still computing a file's history they refuse, and the refusal carries
+`{"status":"not_ready", "reason": …, "retryAfterSeconds": N}` with `isError: true`
+(the resource and prompts throw).
+
+A refusal means **nothing is known yet**. It is not an empty history, not zero changes,
+and not evidence that the file is unmodified. Wait `retryAfterSeconds` and ask again;
+never answer a user's question about what changed from a not-ready response.
+
 ## 3. Commenting workflow
 
 Comments are scoped to a version. The default version is the latest **committed** one.

@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import { assertChangeHistoryComplete } from '../not-ready.js';
 
 export function registerPrompts(server: McpServer, api: ApiClient): void {
   server.registerPrompt(
@@ -14,6 +15,11 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
       },
     },
     async ({ fileMsId }) => {
+      // Plan 02 ruling 5 (STRICT) — a prompt is the highest-risk surface: its
+      // whole product is a model narrating these rows as fact. Refuse before
+      // assembling anything; a prompt has no error channel but its own throw.
+      await assertChangeHistoryComplete(api, fileMsId);
+
       const [file, versions, changesPage] = await Promise.all([
         api.getEnrolledFile(fileMsId),
         api.getFileVersions(fileMsId),
@@ -163,6 +169,10 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
       },
     },
     async ({ fileMsId }) => {
+      // Plan 02 ruling 5 (STRICT) — this prompt reports a change COUNT, which
+      // is the same factual claim in one number instead of many rows.
+      await assertChangeHistoryComplete(api, fileMsId);
+
       const [file, versions, comments, changesPage] = await Promise.all([
         api.getEnrolledFile(fileMsId),
         api.getFileVersions(fileMsId),

@@ -71,3 +71,20 @@ export const CellHistoryEntrySchema = z.object({
 });
 
 export const CellHistoryEntryArraySchema = z.array(CellHistoryEntrySchema);
+
+/**
+ * Backend `GET /file-versions/file/:fileMsId/fold-status` (KI-1399) — the
+ * authoritative queue read the strict no-partial gate consults before any
+ * change-history surface serves a row (plan 02 ruling 5). Schema-parsed
+ * because a drifted/absent `foldPending` must fail loudly: silently
+ * `undefined` would coerce falsy and serve partial rows, which is the exact
+ * failure the gate exists to prevent.
+ */
+export const FoldStatusSchema = z
+  .object({
+    fileMsId: z.string().optional(),
+    foldPending: z.boolean(),
+    foldTargetVersionId: z.number().int().nullable(),
+    checkedAt: z.string().optional(),
+  })
+  .passthrough();

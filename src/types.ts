@@ -158,3 +158,17 @@ export interface ReviewActivity {
   createdAt: string;
   user?: UserSummary;
 }
+
+/**
+ * `GET /file-versions/file/:fileMsId/fold-status` (KI-1399) — the backend's
+ * authoritative queue read. Plan 02 ruling 5 uses it as the completeness
+ * precondition for every change-history surface here.
+ */
+export interface FoldStatus {
+  fileMsId?: string;
+  /** True while a commit-diff fold is queued, retrying or running. */
+  foldPending: boolean;
+  /** Version the pending fold will rewrite the window for; null when none. */
+  foldTargetVersionId: number | null;
+  checkedAt?: string;
+}

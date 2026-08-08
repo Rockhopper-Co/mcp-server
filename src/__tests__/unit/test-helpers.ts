@@ -56,6 +56,15 @@ export function createMockApiClient() {
       byUserPlatformId: 'ms-user-1',
       byUserPlatformType: 'microsoft',
     }),
+    // Plan 02 ruling 5 — the completeness probe every change-history surface
+    // consults. Default: complete, so existing specs keep asserting the serve
+    // path; the strict-no-partial specs override it to a pending fold.
+    getFoldStatus: vi.fn().mockResolvedValue({
+      fileMsId: 'file-1',
+      foldPending: false,
+      foldTargetVersionId: null,
+      checkedAt: '2026-08-04T00:00:00.000Z',
+    }),
     getCellHistory: vi.fn().mockResolvedValue([
       {
         versionId: 101,

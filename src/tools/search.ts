@@ -1,6 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import {
+  assertChangeHistoryComplete,
+  isNotReady,
+  notReadyToolResult,
+} from '../not-ready.js';
 
 export function registerSearchTool(
   server: McpServer,
@@ -78,7 +83,12 @@ export function registerSearchTool(
         'every change on a single worksheet (no pagination — bounded by ' +
         'sheet size); (2) omit `sheetName` for the file-wide cursor-paginated ' +
         'view (rows are capped per response with a summary line; pass `cursor` ' +
-        'returned by the previous call to fetch the next page).',
+        'returned by the previous call to fetch the next page). ' +
+        // Plan 02 ruling 5 — "No unattributed changes" is a factual claim, and
+        // it is only made after completeness is proven.
+        'Answers CHANGE_HISTORY_NOT_READY (isError) while Rockhopper is still ' +
+        "computing this file's changes. That is NOT \"no changes\" — retry " +
+        'after the stated interval instead of reporting an absence.',
       inputSchema: {
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         sheetName: z
@@ -106,6 +116,11 @@ export function registerSearchTool(
     },
     async ({ fileMsId, sheetName, cursor }) => {
       try {
+        // Plan 02 ruling 5 (STRICT): gate BOTH modes. The commit-diff fold
+        // retracts and rewrites the uncommitted window, so a pending fold
+        // means this list is mid-rewrite in either shape.
+        await assertChangeHistoryComplete(api, fileMsId);
+
         if (sheetName) {
           // Sheet-filtered mode: bounded by sheet size, no pagination needed.
           // Audit (2026-05-23) measured: `Summary` sheet on a 12 MB file
@@ -197,6 +212,7 @@ export function registerSearchTool(
           ],
         };
       } catch (error) {
+        if (isNotReady(error)) return notReadyToolResult(error);
         return {
           content: [
             {
