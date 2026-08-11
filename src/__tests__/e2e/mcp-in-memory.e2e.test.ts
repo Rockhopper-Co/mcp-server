@@ -457,6 +457,76 @@ describe('MCP in-memory protocol e2e', () => {
     );
   });
 
+  // ENG-2230 — the schema runs inside the SDK, on the customer's machine, so
+  // these cases exercise the surface a customer actually hits rather than the
+  // zod object in isolation.
+  it('advertises reviewerIds as integer-or-uuid in tools/list (ENG-2230)', async () => {
+    const tools = await client.listTools();
+    const tool = tools.tools.find((t) => t.name === 'create_review_request');
+    const items = (
+      tool?.inputSchema.properties as {
+        reviewerIds: { items: { anyOf: { type: string; pattern?: string }[] } };
+      }
+    ).reviewerIds.items;
+    expect(items.anyOf.map((b) => b.type).sort()).toEqual([
+      'integer',
+      'string',
+    ]);
+    // JSON Schema `pattern` has no case-insensitivity flag, so the advertised
+    // pattern must spell both hex cases out — otherwise a client that
+    // pre-validates against this schema refuses an uppercase uuid that the
+    // server accepts, which is this ticket's defect in a narrower form.
+    const pattern = items.anyOf.find((b) => b.type === 'string')?.pattern;
+    expect(pattern).toBeDefined();
+    expect(new RegExp(pattern as string).test('0198F3A1-2B4C-7D8E-9F01-23456789ABCD')).toBe(true);
+    expect(new RegExp(pattern as string).test('0198f3a1-2b4c-7d8e-9f01-23456789abcd')).toBe(true);
+    expect(new RegExp(pattern as string).test('alice@example.com')).toBe(false);
+  });
+
+  it('create_review_request accepts uuid reviewer ids (ENG-2230)', async () => {
+    const result = await client.callTool({
+      name: 'create_review_request',
+      arguments: {
+        versionId: 101,
+        subject: 'Please review',
+        reviewerIds: [
+          '0198f3a1-2b4c-7d8e-9f01-0000000000a1',
+          '0198f3a1-2b4c-7d8e-9f01-0000000000a2',
+        ],
+      },
+    });
+    expect(JSON.stringify(result.content)).toContain('Review request created');
+  });
+
+  it('create_review_request accepts uuid and numeric ids mixed (ENG-2230)', async () => {
+    const result = await client.callTool({
+      name: 'create_review_request',
+      arguments: {
+        versionId: 101,
+        subject: 'Please review',
+        reviewerIds: [7, '0198f3a1-2b4c-7d8e-9f01-0000000000a1'],
+      },
+    });
+    expect(JSON.stringify(result.content)).toContain('Review request created');
+  });
+
+  it('create_review_request still refuses a non-identifier string (ENG-2230)', async () => {
+    const result = await client.callTool({
+      name: 'create_review_request',
+      arguments: {
+        versionId: 101,
+        subject: 'Please review',
+        reviewerIds: ['alice@example.com'],
+      },
+    });
+    expect(result.isError).toBe(true);
+    // The refusal must name BOTH accepted spellings — it is what the AI client
+    // reads before deciding what to retry with.
+    expect(JSON.stringify(result.content)).toContain(
+      'either a uuid (preferred) or a positive integer internal id',
+    );
+  });
+
   it('create_review_request surfaces API errors', async () => {
     const result = await client.callTool({
       name: 'create_review_request',
@@ -652,6 +722,13 @@ describe('MCP in-memory protocol e2e', () => {
   it('reads rockhopper://teams/{teamId}', async () => {
     const result = await client.readResource({
       uri: 'rockhopper://teams/10',
+    });
+    expect(textOf(result.contents[0])).toContain('Finance');
+  });
+
+  it('reads rockhopper://teams/{teamId} by uuid (ENG-2230)', async () => {
+    const result = await client.readResource({
+      uri: 'rockhopper://teams/0198f3a1-2b4c-7d8e-9f01-23456789abcd',
     });
     expect(textOf(result.contents[0])).toContain('Finance');
   });

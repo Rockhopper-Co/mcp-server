@@ -11,6 +11,7 @@ import type {
   PaginatedUnattributedResponse,
   ReviewActivity,
   ReviewRequest,
+  RockhopperId,
   Team,
   UnattributedChange,
   UserSummary,
@@ -274,7 +275,13 @@ export class ApiClient {
 
   // --- Teams ---
 
-  async getTeam(teamId: number): Promise<Team> {
+  /**
+   * ENG-2230 — `teamId` is either spelling: the version-7 uuid or the legacy
+   * numeric internal id. Both are interpolated into the path unchanged and
+   * both name the same row (backend #1717). Widened from `number`, so no
+   * existing caller changes.
+   */
+  async getTeam(teamId: RockhopperId): Promise<Team> {
     return this.request<Team>(`/teams/${teamId}`);
   }
 
@@ -437,11 +444,18 @@ export class ApiClient {
     );
   }
 
+  /**
+   * ENG-2230 — `reviewerIds` accepts either spelling of a user id (uuid or
+   * legacy numeric internal id), mixed freely. Values are serialised
+   * verbatim; the backend resolves both (`@AcceptsResourceId({ reviewerIds:
+   * 'user' })` on `POST|PUT /reviews/requests`). `versionId` is a FILE
+   * VERSION id and is NOT re-keyed — it stays numeric.
+   */
   async createReviewRequest(body: {
     versionId: number;
     subject: string;
     description?: string;
-    reviewerIds: number[];
+    reviewerIds: RockhopperId[];
   }): Promise<ReviewRequest> {
     return this.request<ReviewRequest>('/reviews/requests', {
       method: 'POST',
