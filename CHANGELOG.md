@@ -7,6 +7,23 @@ All notable changes to this project are documented here. Follows
 ## [Unreleased]
 
 ### Added
+- **User and team ids are accepted as uuids (ENG-2230).** `reviewerIds` on
+  `create_review_request` and `{teamId}` in `rockhopper://teams/{teamId}` now
+  take either the version-7 uuid or the legacy numeric internal id, mixed
+  freely. Rockhopper re-keyed `user`, `team` and `workspace` onto uuids
+  (ENG-1966); until this release the published tool schema validated
+  `reviewerIds` as `z.array(z.number().int().positive())`, so a uuid was
+  refused **on your machine** before any request was sent — every version from
+  0.2.0 through 0.10.0 is affected, and no server-side change could fix it.
+  `UserSummary`, `Team` and `Workspace` gained the optional `id` (uuid) field
+  the API already returns, and `ApiClient.getTeam()` /
+  `ApiClient.createReviewRequest()` widened from `number` to `number | string`
+  (exported as the new `RockhopperId` type).
+
+  **Nothing that works today stops working.** The numeric form is accepted
+  until **2027-09-14** and removed after that date; migrate to the uuid before
+  then. Version, comment and review ids are unaffected and stay numeric.
+
 - **Strict no-partial change history (`src/not-ready.ts`).** `get_cell_history`,
   `search` and the `changes` resource refuse to answer while a file's change
   history is still being built, instead of returning the fraction that happens
