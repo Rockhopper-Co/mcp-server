@@ -4,6 +4,38 @@ All notable changes to this project are documented here. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] — 2026-08-10
+
+**No code changed between `0.10.0` and `1.0.0`.** This release exists to fix a
+versioning trap, and states a compatibility promise that was already true.
+
+### Why 1.0.0
+
+On a `0.x` version npm reads a caret range as **minor-locked**: `^0.9.0` means
+`>=0.9.0 <0.10.0`, not `<1.0.0`. Nobody reads it that way. It cost two releases
+— `mcp-gateway` sat on `^0.9.0` and could not receive `0.10.0`, the very release
+it was waiting for, and before that on the same coupling one release earlier
+(ENG-2165, ENG-2233). At `1.x` a caret finally means "any compatible version".
+
+### The compatibility promise
+
+From `1.0.0`, a breaking change to any of the following requires a major bump:
+
+- **Tool names and their input schemas.** These are the load-bearing ones. The
+  schemas are runtime `zod` validators that execute **on the caller's machine**,
+  before any request is sent, so narrowing one breaks that caller no matter how
+  compatible the backend is. Widening a schema is not breaking; narrowing it is.
+- **Resource URIs and templates**, and the prompts the server registers.
+- **The CLI's flags and its stdio contract.**
+
+Explicitly **not** covered, and free to change in a minor: internal modules, the
+`dist/` layout, anything reachable only by deep-importing a path this package
+does not document, and log output.
+
+### Note for consumers
+
+Move a `^0.x` range to `^1.0.0`. A `0.x` range will not pick this up.
+
 ## [Unreleased]
 
 ### Added
