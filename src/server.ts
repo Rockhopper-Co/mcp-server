@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ApiClient } from './api-client.js';
 import { runWithCorrelationId } from './correlation.js';
-import { log } from './logger.js';
+import { log, serviceVersion } from './logger.js';
 import { registerPrompts } from './prompts/index.js';
 import { registerResources } from './resources/index.js';
 import { registerTools, type RegisterToolsOptions } from './tools/index.js';
@@ -66,7 +66,9 @@ export function createServer(
   const server = new McpServer(
     {
       name: 'rockhopper',
-      version: '0.1.0',
+      // ENG-1955: read from package.json (see logger.ts) so the version a
+      // client sees in `initialize` is the version it is actually running.
+      version: serviceVersion,
     },
     {
       instructions: readOnly

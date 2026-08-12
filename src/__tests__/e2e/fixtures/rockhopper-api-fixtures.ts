@@ -85,6 +85,31 @@ export function handleMockRockhopperRequest(
     }
 
     // --- Teams ---
+    // ENG-2230: a team is keyed on a version-7 uuid. The pre-fix resource
+    // handler did `Number(teamId)`, which requested `/teams/NaN` — this route
+    // only answers the uuid spelled correctly, so the e2e read fails if the
+    // coercion ever comes back.
+    if (
+      method === 'GET' &&
+      path === '/teams/0198f3a1-2b4c-7d8e-9f01-23456789abcd'
+    ) {
+      sendJson(res, 200, {
+        id: '0198f3a1-2b4c-7d8e-9f01-23456789abcd',
+        internalId: 10,
+        name: 'Finance',
+        members: [
+          {
+            id: '0198f3a1-2b4c-7d8e-9f01-0000000000a1',
+            internalId: 1,
+            firstName: 'Alice',
+            lastName: 'Liddell',
+            role: 'owner',
+          },
+        ],
+      });
+      return;
+    }
+
     if (method === 'GET' && path === '/teams/10') {
       sendJson(res, 200, {
         internalId: 10,

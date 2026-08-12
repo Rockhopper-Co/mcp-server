@@ -183,6 +183,14 @@ npm run generate:postman
 | `cancel_review` | Cancel a pending review request (requester only) |
 | `update_file_description` | Update the display name of an enrolled file |
 
+## Identifiers
+
+Users and teams are named by a **uuid** (`id`) — for example `0198f3a1-2b4c-7d8e-9f01-23456789abcd`. This is the identifier to send as a `reviewerIds` entry on `create_review_request`, and as `{teamId}` in `rockhopper://teams/{teamId}`. Read it from the team resource, where every record carries both an `id` (uuid) and an `internalId` (number).
+
+The legacy numeric `internalId` is **also accepted** for users and teams, and the two spellings can be mixed in one `reviewerIds` array — nothing you have written today stops working. It is accepted until **2027-09-14** and removed after, so migrate to the uuid before then.
+
+Everything else keeps its existing type: `fileMsId` is a string, and version and comment ids stay numeric.
+
 ## Development
 
 ```bash

@@ -1,4 +1,26 @@
+/**
+ * An identifier naming a `user`, `team` or `workspace` row — the three tables
+ * ENG-1966 re-keyed onto time-ordered (version 7) uuids.
+ *
+ * Both spellings name the same row on the wire, and both are accepted by the
+ * backend (`resource-identifier.ts` / `ResourceIdResolver`, backend #1717).
+ * David decided on 2026-08-10 that the numeric form is accepted for **400
+ * days** and dropped **on or after 2027-09-14** — a window set by token
+ * lifetime (the JWT `sub` claim IS the numeric user id and personal access
+ * tokens run to 365 days), not by how fast anything deploys.
+ *
+ * Prefer the uuid in new code. The numeric form stays typed here because this
+ * package ships to customers over npm and we do not control when they upgrade:
+ * narrowing it would break every caller written against a published version.
+ */
+export type RockhopperId = number | string;
+
 export interface Team {
+  /**
+   * Version-7 uuid (ENG-1966). Optional only because a backend older than the
+   * re-key does not serve it; it is the identifier to migrate onto.
+   */
+  id?: string;
   internalId: number;
   name: string;
   description: string | null;
@@ -15,6 +37,11 @@ export interface TeamMember {
 }
 
 export interface UserSummary {
+  /**
+   * Version-7 uuid (ENG-1966) — the spelling to pass as a reviewer id.
+   * Optional only because a backend older than the re-key does not serve it.
+   */
+  id?: string;
   internalId: number;
   firstName: string | null;
   lastName: string | null;
@@ -30,6 +57,8 @@ export interface UserSummary {
 }
 
 export interface Workspace {
+  /** Version-7 uuid (ENG-1966). Optional: older backends do not serve it. */
+  id?: string;
   internalId: number;
   workspaceDescription: string | null;
   enrolledFiles: EnrolledFile[];

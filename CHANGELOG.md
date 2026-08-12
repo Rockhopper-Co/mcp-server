@@ -4,7 +4,72 @@ All notable changes to this project are documented here. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] — 2026-08-10
+
+**No code changed between `0.10.0` and `1.0.0`.** This release exists to fix a
+versioning trap, and states a compatibility promise that was already true.
+
+### Why 1.0.0
+
+On a `0.x` version npm reads a caret range as **minor-locked**: `^0.9.0` means
+`>=0.9.0 <0.10.0`, not `<1.0.0`. Nobody reads it that way. It cost two releases
+— `mcp-gateway` sat on `^0.9.0` and could not receive `0.10.0`, the very release
+it was waiting for, and before that on the same coupling one release earlier
+(ENG-2165, ENG-2233). At `1.x` a caret finally means "any compatible version".
+
+### The compatibility promise
+
+From `1.0.0`, a breaking change to any of the following requires a major bump:
+
+- **Tool names and their input schemas.** These are the load-bearing ones. The
+  schemas are runtime `zod` validators that execute **on the caller's machine**,
+  before any request is sent, so narrowing one breaks that caller no matter how
+  compatible the backend is. Widening a schema is not breaking; narrowing it is.
+- **Resource URIs and templates**, and the prompts the server registers.
+- **The CLI's flags and its stdio contract.**
+
+Explicitly **not** covered, and free to change in a minor: internal modules, the
+`dist/` layout, anything reachable only by deep-importing a path this package
+does not document, and log output.
+
+### Note for consumers
+
+Move a `^0.x` range to `^1.0.0`. A `0.x` range will not pick this up.
+
 ## [Unreleased]
+
+### Added
+- **User and team ids are accepted as uuids (ENG-2230).** `reviewerIds` on
+  `create_review_request` and `{teamId}` in `rockhopper://teams/{teamId}` now
+  take either the version-7 uuid or the legacy numeric internal id, mixed
+  freely. Rockhopper re-keyed `user`, `team` and `workspace` onto uuids
+  (ENG-1966); until this release the published tool schema validated
+  `reviewerIds` as `z.array(z.number().int().positive())`, so a uuid was
+  refused **on your machine** before any request was sent — every version from
+  0.2.0 through 0.10.0 is affected, and no server-side change could fix it.
+  `UserSummary`, `Team` and `Workspace` gained the optional `id` (uuid) field
+  the API already returns, and `ApiClient.getTeam()` /
+  `ApiClient.createReviewRequest()` widened from `number` to `number | string`
+  (exported as the new `RockhopperId` type).
+
+  **Nothing that works today stops working.** The numeric form is accepted
+  until **2027-09-14** and removed after that date; migrate to the uuid before
+  then. Version, comment and review ids are unaffected and stay numeric.
+
+- **Strict no-partial change history (`src/not-ready.ts`).** `get_cell_history`,
+  `search` and the `changes` resource refuse to answer while a file's change
+  history is still being built, instead of returning the fraction that happens
+  to be ready. Callers get an explicit not-ready answer they can retry.
+
+### Fixed
+- **The server announced version `0.1.0` to every client, at every release
+  (ENG-1955).** `createServer` passed a string literal to `McpServer`, so the
+  version in the MCP `initialize` response was `0.1.0` — unchanged since the
+  initial commit, so every published version (0.2.0 through 0.8.0) announced
+  itself as 0.1.0, both for the locally installed server and for every web
+  client reaching the same tools through `mcp-gateway`. It now reports
+  `package.json`'s version, which is what makes two builds distinguishable
+  at all.
 
 ### Added
 - **Provenance-context emit on agent writes (ENG-1756 / decision 15).** Every

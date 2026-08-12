@@ -4,19 +4,27 @@ This guide explains how to combine Rockhopper's MCP tools and resources correctl
 
 ## 1. Identity and IDs
 
-Rockhopper uses three distinct identifiers. Mixing them is the most common cause of tool-call errors.
+Rockhopper uses four distinct identifiers. Mixing them is the most common cause of tool-call errors.
 
 | ID | Type | Where it comes from | Where it goes |
 |----|------|---------------------|---------------|
 | `fileMsId` | string | `list_files` response, `rockhopper://files` resource | Tools that act on a file: `get_file_versions`, `get_file_comments`, `add_comment`, `create_version`, `discard_changes`, `get_cell_history`, `get_unattributed_changes`, `rename_file` |
 | `versionId` | number | `get_file_versions` response (`internalId` field), `create_version` response | Tools that act on a specific version snapshot: `get_reviews`, `create_review_request`, `approve_review`, `cancel_review` |
 | `versionInternalId` | number | `get_file_comments` response (comments scope to a version) | Comment-thread tools: `add_comment`, `reply_to_comment`, `resolve_comment` |
+| user / team id | uuid string **or** number | `rockhopper://teams/{teamId}` resource — each record carries an `id` (uuid) and an `internalId` (number) | `reviewerIds` on `create_review_request`; the `{teamId}` in `rockhopper://teams/{teamId}` |
 
 Decision tree:
 
 - **Reading file metadata** → `fileMsId`.
 - **Writing a comment** → `fileMsId` (the server auto-resolves the latest version) OR `versionInternalId` if commenting on a historical version.
 - **Acting on a review** → `versionId`.
+- **Naming a person or a team** → their `id` (uuid).
+
+### Users and teams take two spellings; send the uuid
+
+A user or team can be named by its `id` (a uuid, e.g. `0198f3a1-2b4c-7d8e-9f01-23456789abcd`) or by its legacy `internalId` (a number). Both are accepted and both name the same record, and the two can be mixed inside one `reviewerIds` array.
+
+**Send the uuid.** The numeric form is accepted until **2027-09-14** and is removed after that date. Nothing else in this guide takes a uuid — `versionId`, `versionInternalId` and comment ids stay numeric.
 
 If a tool returns an error like "expected versionId but received fileMsId", you used the wrong identifier — check the tool description for which type it accepts.
 
@@ -61,7 +69,7 @@ Comments on historical versions:
 
 Reviews follow a strict state machine: **`pending` → `approved`** or **`pending` → `cancelled`**. No other transitions are valid.
 
-1. `create_review_request({ versionId, reviewerEmails, subject, description? })` — creates a `pending` review. Only the file owner / workspace member with edit rights can create.
+1. `create_review_request({ versionId, reviewerIds, subject, description? })` — creates a `pending` review. Only the file owner / workspace member with edit rights can create. `reviewerIds` is an array of user ids, **not** email addresses; read them from `rockhopper://teams/{teamId}` and send each member's `id` (uuid).
 2. `approve_review({ reviewId })` — moves `pending` → `approved`. **Only** assigned reviewers can approve.
 3. `cancel_review({ reviewId })` — moves `pending` → `cancelled`. **Only** the requester can cancel.
 
