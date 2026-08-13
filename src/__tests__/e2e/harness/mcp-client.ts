@@ -24,7 +24,16 @@ export class McpStdioClient {
     }
   >();
 
-  async start(env: Record<string, string>): Promise<void> {
+  /**
+   * The `initialize` result the server returned, kept so a test can assert on
+   * the negotiated protocol version without re-initializing the session.
+   */
+  initializeResponse: JsonRpcResponse | null = null;
+
+  async start(
+    env: Record<string, string>,
+    protocolVersion = '2024-11-05',
+  ): Promise<void> {
     const currentDir = dirname(fileURLToPath(import.meta.url));
     const projectRoot = resolve(currentDir, '../../../..');
     const tsxBin = resolve(
@@ -60,7 +69,7 @@ export class McpStdioClient {
       this.pending.clear();
     });
 
-    await this.initialize();
+    await this.initialize(protocolVersion);
   }
 
   async stop(): Promise<void> {
@@ -69,14 +78,15 @@ export class McpStdioClient {
     this.process = null;
   }
 
-  async initialize(): Promise<JsonRpcResponse> {
+  async initialize(protocolVersion = '2024-11-05'): Promise<JsonRpcResponse> {
     const response = await this.request('initialize', {
-      protocolVersion: '2024-11-05',
+      protocolVersion,
       capabilities: {},
       clientInfo: { name: 'mcp-server-test-client', version: '1.0.0' },
     });
 
     this.notify('notifications/initialized', {});
+    this.initializeResponse = response;
     return response;
   }
 

@@ -47,7 +47,7 @@ describe('cli observability (#78 / KI-225)', () => {
     });
     vi.doMock('../../server.js', () => ({ createServer: createServerMock }));
     vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
-    vi.doMock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
       StdioServerTransport: vi.fn(),
     }));
 
@@ -98,7 +98,7 @@ describe('cli observability (#78 / KI-225)', () => {
     vi.doUnmock('../../logger.js');
     vi.doUnmock('../../server.js');
     vi.doUnmock('../../api-client.js');
-    vi.doUnmock('@modelcontextprotocol/sdk/server/stdio.js');
+    vi.doUnmock('@modelcontextprotocol/server/stdio');
   });
 
   it('prints the generic message for an AuthResolutionError with an unmapped code, then the !resolved guard re-exits (line 78)', async () => {

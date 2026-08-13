@@ -41,7 +41,9 @@ const BACKEND_LEGAL_UUIDS = [
 ];
 
 interface RegisteredTool {
-  inputSchema: Record<string, z.ZodTypeAny>;
+  // MCP SDK v2: `inputSchema` is a Zod object, not the raw `{ field: schema }`
+  // shape v1 accepted. Per-field schemas are read off `.shape`.
+  inputSchema: z.ZodObject<Record<string, z.ZodTypeAny>>;
   description?: string;
 }
 
@@ -55,8 +57,7 @@ function toolConfig(name: string): RegisteredTool {
 }
 
 describe('ENG-2230: create_review_request reviewerIds accepts both spellings', () => {
-  const schema = () =>
-    z.object(toolConfig('create_review_request').inputSchema);
+  const schema = () => toolConfig('create_review_request').inputSchema;
 
   it('still accepts the numeric internal id — every installed version sends this', () => {
     expect(
@@ -124,7 +125,7 @@ describe('ENG-2230: create_review_request reviewerIds accepts both spellings', (
   it('describes both spellings — the description is what the AI client reads', () => {
     const config = toolConfig('create_review_request');
     const described = (
-      config.inputSchema.reviewerIds as { description?: string }
+      config.inputSchema.shape.reviewerIds as { description?: string }
     ).description;
     expect(described).toBeDefined();
     expect(described).toMatch(/uuid/i);

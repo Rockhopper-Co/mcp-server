@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 
@@ -31,7 +31,7 @@ export function registerWriteVersionTools(
         'The tool auto-computes the next semver number from the latest committed version. ' +
         'The file must have uncommitted changes (hasUncommittedChanges = true). ' +
         'Use get_file_versions first to confirm uncommitted changes exist.',
-      inputSchema: {
+      inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         versionType: z
           .enum(['major', 'minor', 'patch'])
@@ -41,7 +41,7 @@ export function registerWriteVersionTools(
           .min(1)
           .max(5000)
           .describe('Commit message describing what changed'),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -120,14 +120,14 @@ export function registerWriteVersionTools(
         'committed version. This is destructive — the uncommitted edits are lost (though ' +
         'preserved in version history for audit). The file must have uncommitted changes. ' +
         'Cannot discard while other users have the file open.',
-      inputSchema: {
+      inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         description: z
           .string()
           .min(1)
           .max(5000)
           .describe('Reason for discarding changes'),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,

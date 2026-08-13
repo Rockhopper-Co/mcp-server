@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 
@@ -14,7 +14,7 @@ export function registerWriteCommentTools(
         'Add a new comment to an enrolled file. Every comment is scoped to a ' +
         'specific file version — typically the latest (live) version unless ' +
         'the user explicitly wants to comment on a historical version.',
-      inputSchema: {
+      inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         message: z.string().min(1).max(5000).describe('Comment text'),
         versionInternalId: z
@@ -29,7 +29,7 @@ export function registerWriteCommentTools(
           .string()
           .optional()
           .describe('Cell reference (e.g. "Sheet1!A1")'),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -79,7 +79,7 @@ export function registerWriteCommentTools(
       description:
         'Reply to an existing comment thread. Replies are scoped to a file version ' +
         '— pass the same versionInternalId as the parent thread or the current live version.',
-      inputSchema: {
+      inputSchema: z.object({
         chatId: z.number().describe('Internal ID of the parent comment'),
         message: z.string().min(1).max(5000).describe('Reply text'),
         versionInternalId: z
@@ -90,7 +90,7 @@ export function registerWriteCommentTools(
             'Required. Internal ID of the file version the reply is scoped to. ' +
               'Typically the live version or the same version as the parent comment.',
           ),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -132,9 +132,9 @@ export function registerWriteCommentTools(
       title: 'Resolve Comment',
       description:
         'Mark a comment as resolved. Only the comment author can resolve it.',
-      inputSchema: {
+      inputSchema: z.object({
         chatId: z.number().describe('Internal ID of the comment to resolve'),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,

@@ -22,7 +22,9 @@ import { registerPrompts } from '../src/prompts/index.js';
 import { registerResources } from '../src/resources/index.js';
 import { registerTools } from '../src/tools/index.js';
 
-type SchemaMap = Record<string, z.ZodTypeAny>;
+// MCP SDK v2: `inputSchema` / `argsSchema` are Zod objects, not the raw
+// `{ field: schema }` record v1 accepted. Only the names are read here.
+type ToolSchema = z.ZodTypeAny;
 
 interface CapturedResource {
   name: string;
@@ -36,7 +38,7 @@ class CapturingServer {
 
   readonly promptNames: string[] = [];
 
-  registerTool(name: string, _config: { inputSchema?: SchemaMap }, _handler: unknown): void {
+  registerTool(name: string, _config: { inputSchema?: ToolSchema }, _handler: unknown): void {
     this.toolNames.push(name);
   }
 
@@ -56,7 +58,7 @@ class CapturingServer {
 
   registerPrompt(
     name: string,
-    _config: { argsSchema?: SchemaMap },
+    _config: { argsSchema?: ToolSchema },
     _handler: unknown,
   ): void {
     this.promptNames.push(name);

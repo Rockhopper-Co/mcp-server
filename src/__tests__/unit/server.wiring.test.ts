@@ -31,7 +31,7 @@ vi.mock('../../prompts/index.js', () => ({
   registerPrompts: registerPromptsMock,
 }));
 
-vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+vi.mock('@modelcontextprotocol/server', () => ({
   McpServer: mcpServerConstructor,
 }));
 
