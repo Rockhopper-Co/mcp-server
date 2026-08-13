@@ -35,16 +35,17 @@
     "test:watch": "vitest",
     "generate:postman": "tsx scripts/generate-postman-collection.ts && tsx scripts/generate-postman-environments.ts",
     "generate:postman:check": "npm run generate:postman && git diff --exit-code -- postman/",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run build",
     "release:patch": "npm version patch -m 'release: v%s' && git push && git push --tags",
     "release:minor": "npm version minor -m 'release: v%s' && git push && git push --tags",
     "release:major": "npm version major -m 'release: v%s' && git push && git push --tags"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/server": "^2.0.0",
     "keytar": "^7.9.0",
     "pino": "^10.3.1",
     "pino-roll": "^4.0.0",
@@ -52,6 +53,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.0.0",
     "@types/node": "^26.1.1",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.7.0",

@@ -60,7 +60,7 @@ describe('cli bootstrap', () => {
     vi.doMock('../../api-client.js', () => ({
       ApiClient: apiClientMock,
     }));
-    vi.doMock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
       StdioServerTransport: transportMock,
     }));
 
@@ -93,7 +93,7 @@ describe('cli bootstrap', () => {
     vi.doMock('../../server.js', () => ({
       createServer: vi.fn(),
     }));
-    vi.doMock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
       StdioServerTransport: vi.fn(),
     }));
 
@@ -133,7 +133,7 @@ describe('cli bootstrap', () => {
     vi.doMock('../../server.js', () => ({
       createServer: vi.fn(),
     }));
-    vi.doMock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
       StdioServerTransport: vi.fn(),
     }));
 
@@ -226,7 +226,7 @@ describe('cli bootstrap', () => {
     vi.doMock('../../server.js', () => ({
       createServer: vi.fn(),
     }));
-    vi.doMock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
       StdioServerTransport: vi.fn(),
     }));
 

@@ -28,7 +28,7 @@ vi.mock('../../prompts/index.js', () => ({ registerPrompts: vi.fn() }));
 // `__recorded[i].cb` is the wrapper we then invoke directly. A fresh instance
 // per call avoids the "wrapper wraps the previous wrapper" trap a shared
 // singleton would hit across `createServer` calls.
-vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+vi.mock('@modelcontextprotocol/server', () => ({
   McpServer: vi.fn(function () {
     const recorded: Array<{
       name: string;

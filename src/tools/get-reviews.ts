@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 
@@ -13,7 +13,7 @@ export function registerGetReviewsTool(
       description:
         'Get all review requests for a specific file version, or for the latest version of a file. ' +
         'Provide either a versionId or fileMsId (for latest version reviews).',
-      inputSchema: {
+      inputSchema: z.object({
         versionId: z
           .number()
           .optional()
@@ -24,7 +24,7 @@ export function registerGetReviewsTool(
           .describe(
             'Platform ID of the enrolled file (returns reviews for latest version)',
           ),
-      },
+      }),
       annotations: {
         readOnlyHint: true,
         openWorldHint: false,
