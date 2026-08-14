@@ -34,6 +34,48 @@ describe('MCP SDK v2 surface', () => {
     expect(Object.keys(deps)).not.toContain('@modelcontextprotocol/sdk');
   });
 
+  /**
+   * Matches an actual import/require of the v1 umbrella package.
+   *
+   * NOT a substring search for the package name. The previous version was
+   * `contents.includes('@modelcontextprotocol/sdk')`, which matched THIS FILE
+   * — the scanner's own argument and the docblock above — so the assertion
+   * reported one importer on every run and could never go green (measured red
+   * on `origin/epic/mcp-spec-2026-07-28` before ENG-2208 touched anything).
+   *
+   * A specifier is preceded by a quote, so the escaped `\/` and the literal
+   * `\s+` in this pattern's own source cannot satisfy it: the regex text is
+   * not a thing the regex matches. `sdk` must be followed by `/` or the
+   * closing quote, so `@modelcontextprotocol/server` is not a hit.
+   */
+  const UMBRELLA_IMPORT =
+    /(?:from|require\()\s*['"]@modelcontextprotocol\/sdk(?:\/[^'"]*)?['"]/;
+
+  // Every sample below is assembled from two pieces so the umbrella specifier
+  // never appears contiguously in this file's own bytes. A test that plants
+  // the exact string it scans for is the bug being fixed, one level up.
+  const UMBRELLA = `@modelcontextprotocol/${'sdk'}`;
+
+  it('detects an umbrella import and ignores the v2 packages', () => {
+    // The matcher's own red/green proof — a scanner nobody has attacked
+    // proves only that it ran.
+    expect(UMBRELLA_IMPORT.test(`import x from '${UMBRELLA}';`)).toBe(true);
+    expect(
+      UMBRELLA_IMPORT.test(`import y from '${UMBRELLA}/server/mcp.js';`),
+    ).toBe(true);
+    expect(UMBRELLA_IMPORT.test(`require("${UMBRELLA}")`)).toBe(true);
+    expect(
+      UMBRELLA_IMPORT.test("import z from '@modelcontextprotocol/server';"),
+    ).toBe(false);
+    // The shape that broke the old check: the name in prose, not an import.
+    expect(UMBRELLA_IMPORT.test(`// ${UMBRELLA} stays on v1`)).toBe(false);
+    // And this file itself, which is the specific false positive that made
+    // the old assertion impossible to satisfy.
+    expect(
+      UMBRELLA_IMPORT.test(readFileSync(fileURLToPath(import.meta.url), 'utf8')),
+    ).toBe(false);
+  });
+
   it('has no source file importing the v1 umbrella package', () => {
     // Read the tracked tree, not a grep exit code: `git grep` exits 1 on "no
     // match", which is indistinguishable from a grep that never ran. Asserting
@@ -48,9 +90,7 @@ describe('MCP SDK v2 surface', () => {
     expect(tracked.length).toBeGreaterThan(50);
 
     const importers = tracked.filter((f) =>
-      readFileSync(resolve(projectRoot, f), 'utf8').includes(
-        '@modelcontextprotocol/sdk',
-      ),
+      UMBRELLA_IMPORT.test(readFileSync(resolve(projectRoot, f), 'utf8')),
     );
     expect(importers).toEqual([]);
   });

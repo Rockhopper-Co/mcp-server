@@ -119,3 +119,45 @@ describe('MCP stdio protocol e2e', () => {
     30_000,
   );
 });
+
+/**
+ * ENG-2208 — the stdio launch path end to end: the real `cli.ts` subprocess
+ * runs its `/users/me` preflight against the mock API, reads `patScope` off
+ * the response (ENG-2205), and registers only what that scope allows.
+ *
+ * Before this, `cli.ts:125` called `createServer(apiClient)` with one
+ * argument, so all four cases below advertised all nine write tools.
+ */
+describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
+  async function toolNames(patScope: string | null): Promise<string[]> {
+    const { server, baseUrl } = await startMockRockhopperApiServer({ patScope });
+    const client = new McpStdioClient();
+    try {
+      await client.start({
+        ROCKHOPPER_API_URL: baseUrl,
+        ROCKHOPPER_TOKEN: 'rh_pat_test_token',
+      });
+      const listed = await client.listTools();
+      expect(listed.error).toBeUndefined();
+      const { tools } = listed.result as { tools: Array<{ name: string }> };
+      return tools.map((t) => t.name).sort();
+    } finally {
+      await client.stop();
+      await stopMockRockhopperApiServer(server);
+    }
+  }
+
+  it.each([
+    ['read-write', 16],
+    ['read-only', 7],
+    // An unrecognised scope value, and a backend too old to serve the field
+    // at all (`null` omits it) — both deny, where both used to grant.
+    ['some-future-scope', 7],
+    [null, 7],
+  ])('serves %s a tools/list of %i tools', async (patScope, expected) => {
+    const names = await toolNames(patScope);
+    expect(names).toHaveLength(expected);
+    expect(names.includes('add_comment')).toBe(expected === 16);
+    expect(names).toContain('list_files');
+  }, 30_000);
+});

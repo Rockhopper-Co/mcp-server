@@ -70,9 +70,21 @@ const sampleReview = {
   },
 };
 
+/** ENG-2205: what `/users/me` reports about the presenting token. */
+export interface MockApiOptions {
+  /**
+   * Served as `patScope`. Defaults to `read-write` — the scope the pre-ENG-2208
+   * suite implicitly assumed when the CLI registered every write tool
+   * unconditionally. Pass `null` to omit the field, which is what a backend
+   * older than ENG-2205 answers.
+   */
+  patScope?: string | null;
+}
+
 export function handleMockRockhopperRequest(
   req: IncomingMessage,
   res: ServerResponse,
+  options?: MockApiOptions,
 ): void {
   void (async () => {
     const { url = '', method = 'GET' } = req;
@@ -80,7 +92,18 @@ export function handleMockRockhopperRequest(
 
     // --- Users ---
     if (method === 'GET' && path === '/users/me') {
-      sendJson(res, 200, { internalId: 1, firstName: 'Alice', lastName: 'Liddell' });
+      const patScope =
+        options?.patScope === undefined ? 'read-write' : options.patScope;
+      sendJson(res, 200, {
+        internalId: 1,
+        firstName: 'Alice',
+        lastName: 'Liddell',
+        // ENG-2205 serves these only for a PAT-authenticated caller; every
+        // e2e launch here presents `rh_pat_test_token`.
+        ...(patScope === null
+          ? {}
+          : { patScope, patScopes: [], patExpiresAt: null }),
+      });
       return;
     }
 

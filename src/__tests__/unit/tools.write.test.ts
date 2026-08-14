@@ -23,18 +23,11 @@ const READ_TOOL_NAMES = [
   'search_files',
 ];
 
+// ENG-2208 replaced "no scope specified registers the write tools" — which
+// asserted the fail-open gate — with the allow-list suite in
+// `tools.scope-gate.test.ts`. Every handler test below now declares the
+// read-write scope explicitly, because absent no longer grants anything.
 describe('write tool handlers', () => {
-  it('should register write tools when no scope specified', () => {
-    const server = createMockMcpServer();
-    const api = createMockApiClient();
-    registerTools(server as any, api as any);
-
-    const toolNames = server.registerTool.mock.calls.map((c) => c[0]);
-    for (const name of WRITE_TOOL_NAMES) {
-      expect(toolNames).toContain(name);
-    }
-  });
-
   it('should register write tools when scope is read-write', () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
@@ -63,7 +56,7 @@ describe('write tool handlers', () => {
   it('add_comment should call API and format success response', async () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'add_comment');
     const handler = call?.[2];
@@ -86,7 +79,7 @@ describe('write tool handlers', () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
     api.approveReview.mockRejectedValue(new Error('forbidden'));
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'approve_review');
     const handler = call?.[2];
@@ -99,7 +92,7 @@ describe('write tool handlers', () => {
   it('create_version should compute next semver and call API', async () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'create_version');
     const handler = call?.[2];
@@ -134,7 +127,7 @@ describe('write tool handlers', () => {
       name: 'Forecast.xlsx',
       hasUncommittedChanges: false,
     });
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'create_version');
     const handler = call?.[2];
@@ -151,7 +144,7 @@ describe('write tool handlers', () => {
   it('discard_changes should call API and format response', async () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'discard_changes');
     const handler = call?.[2];
@@ -177,7 +170,7 @@ describe('write tool handlers', () => {
       subject: 'Review Q1',
       status: 'PENDING',
     });
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'cancel_review');
     const handler = call?.[2];
@@ -195,7 +188,7 @@ describe('write tool handlers', () => {
       subject: 'Review Q1',
       status: 'APPROVED',
     });
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'cancel_review');
     const handler = call?.[2];
@@ -214,7 +207,7 @@ describe('write tool handlers', () => {
       subject: 'Review Q1',
       status: 'CANCELLED',
     });
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'cancel_review');
     const handler = call?.[2];
@@ -233,7 +226,7 @@ describe('write tool handlers', () => {
       id: 401,
       subject: 'Review Q1',
     } as any);
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'cancel_review');
     const handler = call?.[2];
@@ -247,7 +240,7 @@ describe('write tool handlers', () => {
   it('rename_file should call updateEnrolledFile and format success', async () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'rename_file');
     expect(call).toBeDefined();
@@ -264,7 +257,7 @@ describe('write tool handlers', () => {
   it('rename_file tool description mentions "rename", not "description"', () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const call = server.registerTool.mock.calls.find((c) => c[0] === 'rename_file');
     expect(call).toBeDefined();
@@ -277,7 +270,7 @@ describe('write tool handlers', () => {
   it('update_file_description (old name) should NOT be registered', () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
-    registerTools(server as any, api as any);
+    registerTools(server as any, api as any, { scope: 'read-write' });
 
     const toolNames = server.registerTool.mock.calls.map((c) => c[0]);
     expect(toolNames).not.toContain('update_file_description');

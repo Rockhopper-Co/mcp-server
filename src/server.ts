@@ -4,7 +4,11 @@ import { runWithCorrelationId } from './correlation.js';
 import { log, serviceVersion } from './logger.js';
 import { registerPrompts } from './prompts/index.js';
 import { registerResources } from './resources/index.js';
-import { registerTools, type RegisterToolsOptions } from './tools/index.js';
+import {
+  grantsWriteTools,
+  registerTools,
+  type RegisterToolsOptions,
+} from './tools/index.js';
 
 /**
  * Phase 1.1 / KI-226 + Phase 1.5 / KI-225 — wrap every tool handler once.
@@ -61,7 +65,11 @@ export function createServer(
   apiClient: ApiClient,
   options?: RegisterToolsOptions,
 ): McpServer {
-  const readOnly = options?.scope === 'read-only';
+  // ENG-2208: derived from the SAME allow-list that decides which tools get
+  // registered, so the instructions can never advertise a write tool the
+  // model has not been given. `=== 'read-only'` used to answer this
+  // separately, and an unrecognised scope was told nine write tools existed.
+  const readOnly = !grantsWriteTools(options?.scope);
 
   const server = new McpServer(
     {
