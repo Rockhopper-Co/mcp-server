@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { ApiClient } from './api-client.js';
 import {
   AuthResolutionError,
@@ -144,7 +144,12 @@ apiClient.setAuthExpiredHandler(() => {
 // one argument — used to register all nine write tools for every launch, so a
 // read-only token advertised writes it could not perform and the customer's
 // scope choice surfaced as a 403 rendered into tool text.
-const server = createServer(apiClient, { scope: patScope });
+//
+// ENG-2176: a FACTORY now, not one instance. `serveStdio` owns the era
+// decision for the connection and calls this per connection — plus once more
+// for a `server/discover` probe it discards if the client falls back to
+// `initialize`. Each call must therefore hand back a fresh server.
+const buildServer = () => createServer(apiClient, { scope: patScope });
 
 // KI-225: one line per launch — anchors a session in the file.
 log.info(
@@ -152,5 +157,16 @@ log.info(
   'mcp_server_start',
 );
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+// ENG-2176: `serveStdio`, not `new StdioServerTransport()` + `connect`. The
+// modern (2026-07-28) handlers — `server/discover`, and adding `2026-07-28`
+// to the instance's supported-versions list — are installed by the SERVING
+// ENTRY, never by the server object: the SDK's default
+// `SUPPORTED_PROTOCOL_VERSIONS` names only 2025-era revisions, so a
+// hand-connected server answers `server/discover` with `-32601` forever.
+// `legacy: 'serve'` (the default) keeps a 2025-era client working unchanged —
+// it pins the connection to a 2025 instance from this same factory.
+serveStdio(buildServer, {
+  onerror: (err) => {
+    log.error({ event: 'stdio_serving_error', err }, 'stdio_serving_error');
+  },
+});

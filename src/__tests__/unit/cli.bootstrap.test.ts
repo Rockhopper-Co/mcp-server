@@ -33,7 +33,7 @@ describe('cli bootstrap', () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
-  it('should construct client/server and connect transport when token is valid', async () => {
+  it('should construct client/server and start serving when token is valid', async () => {
     vi.stubEnv('ROCKHOPPER_TOKEN', 'rh_pat_test_token');
     vi.stubEnv('ROCKHOPPER_API_URL', 'http://localhost:3100');
 
@@ -56,7 +56,7 @@ describe('cli bootstrap', () => {
           setAuthExpiredHandler: vi.fn(),
         };
       });
-    const transportMock = vi.fn();
+    const serveStdioMock = vi.fn().mockReturnValue({ close: vi.fn() });
 
     vi.doMock('../../server.js', () => ({
       createServer: createServerMock,
@@ -65,15 +65,21 @@ describe('cli bootstrap', () => {
       ApiClient: apiClientMock,
     }));
     vi.doMock('@modelcontextprotocol/server/stdio', () => ({
-      StdioServerTransport: transportMock,
+      serveStdio: serveStdioMock,
     }));
 
     await import('../../cli.js');
 
     expect(getMeMock).toHaveBeenCalledTimes(1);
     expect(setDrivingHumanMock).toHaveBeenCalledWith('ms-oid-1');
+    expect(serveStdioMock).toHaveBeenCalledTimes(1);
+    // ENG-2176: the server is built by the factory the entry holds, so it is
+    // constructed on demand rather than eagerly at bootstrap.
+    expect(createServerMock).not.toHaveBeenCalled();
+    (serveStdioMock.mock.calls[0][0] as () => unknown)();
     expect(createServerMock).toHaveBeenCalledTimes(1);
-    expect(connectMock).toHaveBeenCalledTimes(1);
+    // The entry owns connecting; the CLI never does it itself.
+    expect(connectMock).not.toHaveBeenCalled();
   });
 
   // ENG-2208: the preflight already runs, and post-ENG-2205 it carries
@@ -110,14 +116,18 @@ describe('cli bootstrap', () => {
         };
       });
 
+      const serveStdioMock = vi.fn().mockReturnValue({ close: vi.fn() });
       vi.doMock('../../server.js', () => ({ createServer: createServerMock }));
       vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
       vi.doMock('@modelcontextprotocol/server/stdio', () => ({
-        StdioServerTransport: vi.fn(),
+        serveStdio: serveStdioMock,
       }));
 
       await import('../../cli.js');
 
+      // ENG-2176: the scope is now captured by the factory the serving entry
+      // holds, so build one server the way the entry would.
+      (serveStdioMock.mock.calls[0][0] as () => unknown)();
       expect(createServerMock).toHaveBeenCalledWith(expect.anything(), {
         scope: expected,
       });
@@ -145,7 +155,7 @@ describe('cli bootstrap', () => {
     }));
     vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
     vi.doMock('@modelcontextprotocol/server/stdio', () => ({
-      StdioServerTransport: vi.fn(),
+      serveStdio: vi.fn().mockReturnValue({ close: vi.fn() }),
     }));
 
     const errorSpy = vi
@@ -188,7 +198,7 @@ describe('cli bootstrap', () => {
       createServer: vi.fn(),
     }));
     vi.doMock('@modelcontextprotocol/server/stdio', () => ({
-      StdioServerTransport: vi.fn(),
+      serveStdio: vi.fn().mockReturnValue({ close: vi.fn() }),
     }));
 
     const exitSpy = vi
@@ -228,7 +238,7 @@ describe('cli bootstrap', () => {
       createServer: vi.fn(),
     }));
     vi.doMock('@modelcontextprotocol/server/stdio', () => ({
-      StdioServerTransport: vi.fn(),
+      serveStdio: vi.fn().mockReturnValue({ close: vi.fn() }),
     }));
 
     const exitSpy = vi
@@ -321,7 +331,7 @@ describe('cli bootstrap', () => {
       createServer: vi.fn(),
     }));
     vi.doMock('@modelcontextprotocol/server/stdio', () => ({
-      StdioServerTransport: vi.fn(),
+      serveStdio: vi.fn().mockReturnValue({ close: vi.fn() }),
     }));
 
     const exitSpy = vi
@@ -339,5 +349,56 @@ describe('cli bootstrap', () => {
       expect.stringContaining('Stored OAuth token is invalid'),
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  // ENG-2176: WHICH SDK entry the CLI uses is the whole 2026-07-28 contract
+  // for the stdio surface, not an implementation detail. `serveStdio` is what
+  // calls `installModernOnlyHandlers` — the step that registers
+  // `server/discover` and adds `2026-07-28` to the instance's supported
+  // versions. A bare `new StdioServerTransport()` + `server.connect(...)`
+  // leaves the SDK's 2025-only default list in place, so every locally
+  // spawned server answers `server/discover` with `-32601` forever.
+  // `stdio-2026-07-28.e2e.test.ts` proves what `serveStdio` then serves.
+  it('serves stdio through the SDK entry that installs the modern handlers', async () => {
+    vi.stubEnv('ROCKHOPPER_TOKEN', 'rh_pat_test_token');
+    vi.stubEnv('ROCKHOPPER_API_URL', 'http://localhost:3100');
+
+    const serveStdioMock = vi.fn().mockReturnValue({ close: vi.fn() });
+    const transportMock = vi.fn();
+    const serverStub = { connect: vi.fn().mockResolvedValue(undefined) };
+    const createServerMock = vi.fn().mockReturnValue(serverStub);
+    const apiClientMock = vi.fn().mockImplementation(function () {
+      return {
+        getMe: vi
+          .fn()
+          .mockResolvedValue({ internalId: 1, msId: 'ms-oid-1', patScope: 'read-only' }),
+        setDrivingHuman: vi.fn(),
+        setAuthExpiredHandler: vi.fn(),
+      };
+    });
+
+    vi.doMock('../../server.js', () => ({ createServer: createServerMock }));
+    vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
+      serveStdio: serveStdioMock,
+      StdioServerTransport: transportMock,
+    }));
+
+    await import('../../cli.js');
+
+    expect(serveStdioMock).toHaveBeenCalledTimes(1);
+    // The entry owns the transport; constructing one ourselves and connecting
+    // to it is exactly the wiring that skips the modern handlers.
+    expect(transportMock).not.toHaveBeenCalled();
+    expect(serverStub.connect).not.toHaveBeenCalled();
+
+    // It must be handed a FACTORY, and that factory must build our server —
+    // the entry calls it per connection and again for a discover probe.
+    const factory = serveStdioMock.mock.calls[0][0] as () => unknown;
+    expect(typeof factory).toBe('function');
+    expect(factory()).toBe(serverStub);
+    expect(createServerMock).toHaveBeenCalledWith(expect.anything(), {
+      scope: 'read-only',
+    });
   });
 });

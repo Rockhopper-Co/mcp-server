@@ -53,8 +53,9 @@ describe('cli observability (#78 / KI-225)', () => {
     });
     vi.doMock('../../server.js', () => ({ createServer: createServerMock }));
     vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
+    const serveStdioMock = vi.fn().mockReturnValue({ close: vi.fn() });
     vi.doMock('@modelcontextprotocol/server/stdio', () => ({
-      StdioServerTransport: vi.fn(),
+      serveStdio: serveStdioMock,
     }));
 
     // Capture (don't really register) the process-level handlers cli.ts installs.
@@ -75,8 +76,11 @@ describe('cli observability (#78 / KI-225)', () => {
 
     expect(typeof handlers.uncaughtException).toBe('function');
     expect(typeof handlers.unhandledRejection).toBe('function');
+    expect(serveStdioMock).toHaveBeenCalledTimes(1);
+    // ENG-2176: server construction moved behind the serving entry's factory.
+    (serveStdioMock.mock.calls[0][0] as () => unknown)();
     expect(createServerMock).toHaveBeenCalledTimes(1);
-    expect(connectMock).toHaveBeenCalledTimes(1);
+    expect(connectMock).not.toHaveBeenCalled();
     expect(logMock.info).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'mcp_server_start',
