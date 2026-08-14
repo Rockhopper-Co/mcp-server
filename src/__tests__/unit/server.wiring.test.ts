@@ -29,6 +29,15 @@ vi.mock('../../resources/index.js', () => ({
 vi.mock('../../tools/index.js', () => ({
   registerTools: registerToolsMock,
   grantsWriteTools: (scope?: string) => scope === 'read-write',
+  // ENG-2212: `createServer` resolves the granted families and builds the
+  // instructions from them. The real resolution is exercised in
+  // `tools.capability-gate.test.ts`; this stands in for it.
+  resolveCapabilities: (options?: { scope?: string; capabilities?: string[] }) =>
+    options?.capabilities !== undefined
+      ? options.capabilities
+      : options?.scope === 'read-write'
+        ? ['comments:write', 'reviews:write', 'versions:write', 'files:write']
+        : [],
 }));
 
 vi.mock('../../prompts/index.js', () => ({

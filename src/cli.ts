@@ -87,10 +87,15 @@ const apiClient = new ApiClient({
 // preflight response). Left undefined by a backend older than that, and by any
 // non-PAT principal — both of which the allow-list in `tools/index.ts` denies.
 let patScope: string | undefined;
+// ENG-2212: the write families the token actually holds. Absent against a
+// backend older than ENG-2211, which is why `patScope` is still read — absent
+// means "the backend said nothing", and the coarse scope decides.
+let patCapabilities: string[] | undefined;
 
 try {
   const me = await apiClient.getMe();
   patScope = me?.patScope;
+  patCapabilities = me?.patScopes;
   // ENG-1756 (plan §9 decision 15): the PAT owner IS the human driving this
   // local agent — reuse the preflight to declare them, so every write carries
   // `X-Driving-Human` and the backend's anonymous-agent-write admission
@@ -149,11 +154,21 @@ apiClient.setAuthExpiredHandler(() => {
 // decision for the connection and calls this per connection — plus once more
 // for a `server/discover` probe it discards if the client falls back to
 // `initialize`. Each call must therefore hand back a fresh server.
-const buildServer = () => createServer(apiClient, { scope: patScope });
+//
+// ENG-2212: the FAMILIES ride along. When the backend serves them they decide
+// which registrars run, one per family, so a token granted `comments:write`
+// alone no longer receives `discard_changes`.
+const buildServer = () =>
+  createServer(apiClient, { scope: patScope, capabilities: patCapabilities });
 
 // KI-225: one line per launch — anchors a session in the file.
 log.info(
-  { event: 'mcp_server_start', version: serviceVersion, scope: patScope ?? 'unknown' },
+  {
+    event: 'mcp_server_start',
+    version: serviceVersion,
+    scope: patScope ?? 'unknown',
+    capabilities: patCapabilities ?? 'unknown',
+  },
   'mcp_server_start',
 );
 
