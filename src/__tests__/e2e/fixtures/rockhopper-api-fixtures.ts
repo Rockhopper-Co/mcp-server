@@ -79,7 +79,28 @@ export interface MockApiOptions {
    * older than ENG-2205 answers.
    */
   patScope?: string | null;
+  /**
+   * ENG-2212: served as `patScopes` — the write families the token holds.
+   *
+   * Defaults to every family for a `read-write` scope and none otherwise,
+   * which is the only pairing the backend can produce: `scopeForCapabilities`
+   * writes `read-write` exactly when the array is non-empty. The fixture used
+   * to serve `patScopes: []` ALONGSIDE `read-write`, and once the package
+   * started reading the families that combination registered zero write tools
+   * — a state no real token can be in.
+   *
+   * Pass `null` to omit the field, which is what a backend older than
+   * ENG-2211 answers.
+   */
+  patScopes?: string[] | null;
 }
+
+const ALL_WRITE_CAPABILITIES = [
+  'comments:write',
+  'reviews:write',
+  'versions:write',
+  'files:write',
+];
 
 export function handleMockRockhopperRequest(
   req: IncomingMessage,
@@ -94,6 +115,12 @@ export function handleMockRockhopperRequest(
     if (method === 'GET' && path === '/users/me') {
       const patScope =
         options?.patScope === undefined ? 'read-write' : options.patScope;
+      const patScopes =
+        options?.patScopes === undefined
+          ? patScope === 'read-write'
+            ? ALL_WRITE_CAPABILITIES
+            : []
+          : options.patScopes;
       sendJson(res, 200, {
         internalId: 1,
         firstName: 'Alice',
@@ -102,7 +129,11 @@ export function handleMockRockhopperRequest(
         // e2e launch here presents `rh_pat_test_token`.
         ...(patScope === null
           ? {}
-          : { patScope, patScopes: [], patExpiresAt: null }),
+          : {
+              patScope,
+              patExpiresAt: null,
+              ...(patScopes === null ? {} : { patScopes }),
+            }),
       });
       return;
     }

@@ -5,10 +5,11 @@ import { log, serviceVersion } from './logger.js';
 import { registerPrompts } from './prompts/index.js';
 import { registerResources } from './resources/index.js';
 import {
-  grantsWriteTools,
   registerTools,
+  resolveCapabilities,
   type RegisterToolsOptions,
 } from './tools/index.js';
+import { buildInstructions } from './instructions.js';
 
 /**
  * Phase 1.1 / KI-226 + Phase 1.5 / KI-225 — wrap every tool handler once.
@@ -107,11 +108,12 @@ export function createServer(
   apiClient: ApiClient,
   options?: RegisterToolsOptions,
 ): McpServer {
-  // ENG-2208: derived from the SAME allow-list that decides which tools get
-  // registered, so the instructions can never advertise a write tool the
+  // ENG-2208 / ENG-2212: derived from the SAME resolution that decides which
+  // registrars run, so the instructions can never advertise a write tool the
   // model has not been given. `=== 'read-only'` used to answer this
-  // separately, and an unrecognised scope was told nine write tools existed.
-  const readOnly = !grantsWriteTools(options?.scope);
+  // separately, and an unrecognised scope was told nine write tools existed;
+  // a coarse boolean then told a `comments:write` token the same nine.
+  const capabilities = resolveCapabilities(options);
 
   const server = new McpServer(
     {
@@ -121,19 +123,7 @@ export function createServer(
       version: serviceVersion,
     },
     {
-      instructions: readOnly
-        ? 'Rockhopper MCP server for reading Excel file metadata. ' +
-          'Use list_files first to discover available files, then drill into ' +
-          'versions, comments, reviews, or cell history. ' +
-          'This token is read-only — write operations are not available. ' +
-          'File IDs use the platformId field (e.g. from list_files output).'
-        : 'Rockhopper MCP server for managing Excel file metadata. ' +
-          'Use list_files first to discover available files, then drill into ' +
-          'versions, comments, reviews, or cell history. Write operations ' +
-          '(add_comment, reply_to_comment, resolve_comment, create_review_request, ' +
-          'approve_review, cancel_review, create_version, discard_changes, ' +
-          'rename_file) require a read-write scoped token. ' +
-          'File IDs use the platformId field (e.g. from list_files output).',
+      instructions: buildInstructions(capabilities),
       // Consumed only by the 2026-07-28 encode seam; the 2025-era codec has
       // no cache path, so this cannot change what a 2025 client sees.
       cacheHints: CACHE_HINTS,

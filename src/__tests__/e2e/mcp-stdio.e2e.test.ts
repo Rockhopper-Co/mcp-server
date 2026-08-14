@@ -129,8 +129,14 @@ describe('MCP stdio protocol e2e', () => {
  * argument, so all four cases below advertised all nine write tools.
  */
 describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
-  async function toolNames(patScope: string | null): Promise<string[]> {
-    const { server, baseUrl } = await startMockRockhopperApiServer({ patScope });
+  async function toolNames(
+    patScope: string | null,
+    patScopes?: string[] | null,
+  ): Promise<string[]> {
+    const { server, baseUrl } = await startMockRockhopperApiServer({
+      patScope,
+      patScopes,
+    });
     const client = new McpStdioClient();
     try {
       await client.start({
@@ -160,4 +166,42 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
     expect(names.includes('add_comment')).toBe(expected === 16);
     expect(names).toContain('list_files');
   }, 30_000);
+
+  /**
+   * ENG-2212 — the families the token reports decide the surface, through the
+   * real `cli.ts` preflight. The coarse scope reads `read-write` for any
+   * non-empty grant, so before this the token below received all nine write
+   * tools including `discard_changes`.
+   */
+  it(
+    'serves a narrowed token only the family it holds',
+    async () => {
+      const names = await toolNames('read-write', ['comments:write']);
+      expect(names.sort()).toEqual(
+        [
+          'add_comment',
+          'get_cell_history',
+          'get_file_comments',
+          'get_file_versions',
+          'get_reviews',
+          'get_unattributed_changes',
+          'list_files',
+          'reply_to_comment',
+          'resolve_comment',
+          'search_files',
+        ].sort(),
+      );
+      expect(names).not.toContain('discard_changes');
+    },
+    30_000,
+  );
+
+  it(
+    'falls back to the coarse scope when the backend serves no families',
+    async () => {
+      // A backend older than ENG-2211 omits `patScopes` entirely.
+      expect(await toolNames('read-write', null)).toHaveLength(16);
+    },
+    30_000,
+  );
 });
