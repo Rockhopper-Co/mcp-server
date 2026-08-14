@@ -1,13 +1,18 @@
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
-import { handleMockRockhopperRequest } from '../fixtures/rockhopper-api-fixtures.js';
+import {
+  handleMockRockhopperRequest,
+  type MockApiOptions,
+} from '../fixtures/rockhopper-api-fixtures.js';
 
-export async function startMockRockhopperApiServer(): Promise<{
+export async function startMockRockhopperApiServer(
+  options?: MockApiOptions,
+): Promise<{
   server: Server;
   baseUrl: string;
 }> {
   const server = createServer((req, res) => {
-    handleMockRockhopperRequest(req, res);
+    handleMockRockhopperRequest(req, res, options);
   });
 
   await new Promise<void>((resolve) => {

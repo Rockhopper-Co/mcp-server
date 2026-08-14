@@ -50,7 +50,7 @@ interface RegisteredTool {
 function toolConfig(name: string): RegisteredTool {
   const server = createMockMcpServer();
   const api = createMockApiClient();
-  registerTools(server as never, api as never);
+  registerTools(server as never, api as never, { scope: 'read-write' });
   const call = server.registerTool.mock.calls.find((c) => c[0] === name);
   if (!call) throw new Error(`tool ${name} was never registered`);
   return call[1] as RegisteredTool;

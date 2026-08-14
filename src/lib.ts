@@ -12,12 +12,18 @@
  * with their own transport (HTTP, in-memory, etc.).
  *
  * Stable API surface (semver-bound):
- *   - `createServer(apiClient): McpServer`
+ *   - `createServer(apiClient, options?): McpServer`
+ *   - `grantsWriteTools(scope)` — the write allow-list (ENG-2208), exported so
+ *     the gateway asks the same question instead of writing a second copy of
+ *     the rule that would drift from this one.
  *   - `ApiClient` (class) and `ApiClientConfig` (interface)
  *   - All `types` (Team, EnrolledFile, FileVersion, ...)
  */
 
 export { createServer } from './server.js';
-export { type RegisterToolsOptions } from './tools/index.js';
+export {
+  grantsWriteTools,
+  type RegisterToolsOptions,
+} from './tools/index.js';
 export { ApiClient, type ApiClientConfig } from './api-client.js';
 export * from './types.js';

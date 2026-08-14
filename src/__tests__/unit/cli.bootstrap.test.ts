@@ -50,7 +50,11 @@ describe('cli bootstrap', () => {
     const apiClientMock = vi
       .fn()
       .mockImplementation(function () {
-        return { getMe: getMeMock, setDrivingHuman: setDrivingHumanMock };
+        return {
+          getMe: getMeMock,
+          setDrivingHuman: setDrivingHumanMock,
+          setAuthExpiredHandler: vi.fn(),
+        };
       });
     const transportMock = vi.fn();
 
@@ -70,6 +74,96 @@ describe('cli bootstrap', () => {
     expect(setDrivingHumanMock).toHaveBeenCalledWith('ms-oid-1');
     expect(createServerMock).toHaveBeenCalledTimes(1);
     expect(connectMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ENG-2208: the preflight already runs, and post-ENG-2205 it carries
+  // `patScope`. Before this, `createServer(apiClient)` took one argument, so
+  // every stdio launch registered all nine write tools whatever the token was
+  // scoped to.
+  it.each([
+    ['read-write', 'read-write'],
+    ['read-only', 'read-only'],
+    // An unrecognised value is forwarded verbatim; the allow-list in
+    // `tools/index.ts` is the one place that decides what it grants.
+    ['some-future-scope', 'some-future-scope'],
+    // An older backend that does not serve the field yields `undefined`,
+    // which the allow-list denies.
+    [undefined, undefined],
+  ])(
+    'passes the preflight scope %s through to createServer',
+    async (patScope, expected) => {
+      vi.stubEnv('ROCKHOPPER_TOKEN', 'rh_pat_test_token');
+      vi.stubEnv('ROCKHOPPER_API_URL', 'http://localhost:3100');
+
+      const connectMock = vi.fn().mockResolvedValue(undefined);
+      const createServerMock = vi
+        .fn()
+        .mockReturnValue({ connect: connectMock });
+      const getMeMock = vi
+        .fn()
+        .mockResolvedValue({ internalId: 1, msId: 'ms-oid-1', patScope });
+      const apiClientMock = vi.fn().mockImplementation(function () {
+        return {
+          getMe: getMeMock,
+          setDrivingHuman: vi.fn(),
+          setAuthExpiredHandler: vi.fn(),
+        };
+      });
+
+      vi.doMock('../../server.js', () => ({ createServer: createServerMock }));
+      vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
+      vi.doMock('@modelcontextprotocol/server/stdio', () => ({
+        StdioServerTransport: vi.fn(),
+      }));
+
+      await import('../../cli.js');
+
+      expect(createServerMock).toHaveBeenCalledWith(expect.anything(), {
+        scope: expected,
+      });
+    },
+  );
+
+  // ENG-2208: a token that expires mid-session is silent today — the 401 is
+  // rendered into tool text for the model, and the human watching the client
+  // sees only a tool that stopped working.
+  it('prints one stderr line on the first 401 after a successful start', async () => {
+    vi.stubEnv('ROCKHOPPER_TOKEN', 'rh_pat_test_token');
+    vi.stubEnv('ROCKHOPPER_API_URL', 'http://localhost:3100');
+
+    const setAuthExpiredHandlerMock = vi.fn();
+    const apiClientMock = vi.fn().mockImplementation(function () {
+      return {
+        getMe: vi.fn().mockResolvedValue({ internalId: 1 }),
+        setDrivingHuman: vi.fn(),
+        setAuthExpiredHandler: setAuthExpiredHandlerMock,
+      };
+    });
+
+    vi.doMock('../../server.js', () => ({
+      createServer: vi.fn().mockReturnValue({ connect: vi.fn() }),
+    }));
+    vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
+      StdioServerTransport: vi.fn(),
+    }));
+
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    await import('../../cli.js');
+
+    // Registered AFTER the preflight succeeded, so a preflight rejection
+    // (which exits with its own message) can never reach it.
+    expect(setAuthExpiredHandlerMock).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    const handler = setAuthExpiredHandlerMock.mock.calls[0][0] as () => void;
+    handler();
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('401'));
   });
 
   it('should exit when token is invalid or expired (401/403)', async () => {

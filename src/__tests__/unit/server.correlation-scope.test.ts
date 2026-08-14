@@ -19,7 +19,11 @@ const logMock = {
 
 vi.mock('../../logger.js', () => ({ log: logMock, serviceVersion: '0.0.0-test' }));
 vi.mock('../../resources/index.js', () => ({ registerResources: vi.fn() }));
-vi.mock('../../tools/index.js', () => ({ registerTools: vi.fn() }));
+vi.mock('../../tools/index.js', () => ({
+  registerTools: vi.fn(),
+  // ENG-2208: `createServer` asks the tools module which scopes grant writes.
+  grantsWriteTools: (scope?: string) => scope === 'read-write',
+}));
 vi.mock('../../prompts/index.js', () => ({ registerPrompts: vi.fn() }));
 
 // Each construction returns a FRESH server whose original `registerTool` records

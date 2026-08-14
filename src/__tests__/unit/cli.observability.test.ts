@@ -43,7 +43,13 @@ describe('cli observability (#78 / KI-225)', () => {
     const createServerMock = vi.fn().mockReturnValue({ connect: connectMock });
     const getMeMock = vi.fn().mockResolvedValue({ internalId: 1 });
     const apiClientMock = vi.fn().mockImplementation(function () {
-      return { getMe: getMeMock };
+      return {
+        getMe: getMeMock,
+        setDrivingHuman: vi.fn(),
+        // ENG-2208: the CLI registers a one-shot mid-session 401 notice once
+        // the preflight has succeeded.
+        setAuthExpiredHandler: vi.fn(),
+      };
     });
     vi.doMock('../../server.js', () => ({ createServer: createServerMock }));
     vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
