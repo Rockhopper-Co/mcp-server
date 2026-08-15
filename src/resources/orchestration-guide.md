@@ -12,6 +12,7 @@ Rockhopper uses four distinct identifiers. Mixing them is the most common cause 
 | `versionId` | number | `get_file_versions` response (`internalId` field), `create_version` response | Tools that act on a specific version snapshot: `get_reviews`, `create_review_request`, `approve_review`, `cancel_review` |
 | `versionInternalId` | number | `get_file_comments` response (comments scope to a version) | Comment-thread tools: `add_comment`, `reply_to_comment`, `resolve_comment` |
 | user / team id | uuid string **or** number | `rockhopper://teams/{teamId}` resource — each record carries an `id` (uuid) and an `internalId` (number) | `reviewerIds` on `create_review_request`; the `{teamId}` in `rockhopper://teams/{teamId}` |
+| `url` / `driveMsId` + `msId` | strings | The user's browser address bar, or a Microsoft file listing | `enroll_file` only — these name a file Rockhopper does **not** have yet, which is why no `fileMsId` exists for it |
 
 Decision tree:
 
@@ -28,7 +29,40 @@ A user or team can be named by its `id` (a uuid, e.g. `0198f3a1-2b4c-7d8e-9f01-2
 
 If a tool returns an error like "expected versionId but received fileMsId", you used the wrong identifier — check the tool description for which type it accepts.
 
-## 2. Reading workflow
+## 2. Adding a file to Rockhopper (enrollment)
+
+Every other tool works on files Rockhopper ALREADY has. `enroll_file` is the only one that adds a new one, and reaching for it is the right move more often than it looks: `list_files` and `search_files` see only enrolled files, so a workbook the user is talking about that appears in neither is very probably one nobody has added yet — not one that does not exist.
+
+**Identity.** Two ways to name the file, mutually exclusive:
+
+- `url` — the SharePoint or OneDrive address, copied from the browser bar. Prefer this always: it names exactly one file, so there is no wrong-match risk.
+- `driveMsId` + `msId` — the Microsoft pair, when another tool already produced it. Both are required together.
+
+**Microsoft only.** SharePoint and OneDrive-for-Business workbooks. A Google Drive or Sheets link returns `unsupported_provider`; that is final, so do not ask the user for a different link.
+
+**You must ask who may see it.** `share_with` is required and has two values: `"me"` (visible to the user alone) and `"team"` (also fanned out to their teammates). Ask the user every time — do not assume, and do not carry an answer over from a previous file. Calling without it enrolls nothing and returns `share_with_required` plus the question to put to them.
+
+**A removed file is restored, never re-added.** Rockhopper keeps three states, not two: `enrolled`, `hidden` and `not_enrolled`. `hidden` means somebody deliberately removed the file from the file lists — its versions, comments and change history all survived. Enrolling a hidden file therefore RESTORES the original, and because that undoes a person's decision it needs their say-so: the first call answers `restore_confirmation_required` and writes nothing; only a second call carrying `confirm_restore: true` restores it.
+
+**Enrollment is asynchronous, and re-calling is safe.** The answer says the file was accepted, not that it is ready — Rockhopper reads the workbook in the background and its versions appear shortly after. If the answer is lost to a dropped connection mid-call, just call again: the file row is written before the background work starts, so the second call answers `already_enrolled` rather than adding anything twice.
+
+**Outcomes.** Every response ends with a JSON object carrying an `outcome` field, so these can be branched on without reading the prose:
+
+| `outcome` | Meaning | What to do |
+|-----------|---------|------------|
+| `enrolled` | Accepted; the file was not here before | Tell the user it is being added |
+| `restored` | Accepted; a file they had removed is back | Tell the user it is being restored |
+| `already_enrolled` | It is already here and visible | Nothing — go straight to reading it |
+| `share_with_required` | No `share_with`, or a `"team"` that resolves to nobody | Ask the user, then call again |
+| `restore_confirmation_required` | The target is hidden | Ask the user, then call again with `confirm_restore: true` |
+| `access_unproven` | Rockhopper cannot confirm the user can open the file | Run `connect_microsoft`, then retry |
+| `unresolvable` | The link names no file Rockhopper can find | Ask for the address from the browser bar |
+| `unsupported_provider` | Not a Microsoft link | Stop; do not ask for another link |
+| `backend_unsupported` | This Rockhopper deployment predates the enrollment API | Tell the user to add the file from the web app |
+
+**Why `access_unproven` is common from a chat client.** Rockhopper will not add a file on the user's say-so; it checks with Microsoft that they can actually open it. An assistant session carries no Microsoft sign-in of its own, so the user has to link their account once with `connect_microsoft`. Until they do, every enroll is refused — deliberately, not as a bug.
+
+## 3. Reading workflow
 
 Standard sequence to inspect a file:
 
@@ -52,7 +86,7 @@ A refusal means **nothing is known yet**. It is not an empty history, not zero c
 and not evidence that the file is unmodified. Wait `retryAfterSeconds` and ask again;
 never answer a user's question about what changed from a not-ready response.
 
-## 3. Commenting workflow
+## 4. Commenting workflow
 
 Comments are scoped to a version. The default version is the latest **committed** one.
 
@@ -65,7 +99,7 @@ Comments on historical versions:
 - Pass `versionInternalId` explicitly to `add_comment` to comment on a historical version snapshot.
 - `get_file_comments` accepts `versionInternalId` if you want to read historical-version comments rather than the current set.
 
-## 4. Review lifecycle
+## 5. Review lifecycle
 
 Reviews follow a strict state machine: **`pending` → `approved`** or **`pending` → `cancelled`**. No other transitions are valid.
 
@@ -75,7 +109,7 @@ Reviews follow a strict state machine: **`pending` → `approved`** or **`pendin
 
 Calling `approve_review` before `create_review_request` returns a 404 — there is no review to approve. Calling `approve_review` on an already-approved or cancelled review returns a 409 conflict.
 
-## 5. Versioning
+## 6. Versioning
 
 `create_version` snapshots the file's current uncommitted state as a new version.
 
@@ -87,7 +121,7 @@ Rules:
 
 `discard_changes(fileMsId)` is the **destructive** alternative: it wipes uncommitted edits without creating a snapshot. Use only when the user explicitly asks to throw away unsaved work — call `get_unattributed_changes(fileMsId)` first and confirm with the user before discarding anything substantive.
 
-## 6. Uncommitted changes vs. committed history
+## 7. Uncommitted changes vs. committed history
 
 Two distinct concepts. Tools work with one or the other; do not mix.
 
@@ -96,7 +130,7 @@ Two distinct concepts. Tools work with one or the other; do not mix.
 
 Note: on files served from the change ledger (most Microsoft files), `get_cell_history` also includes live edits not yet captured by a committed version — those entries carry the literal versionId `uncommitted`. On files still served from the legacy store, only committed values appear; use `get_unattributed_changes` for pending edits there.
 
-## 7. Cross-cloud differences
+## 8. Cross-cloud differences
 
 Rockhopper supports both Microsoft Excel files (M365 / OneDrive) and Google Sheets. Tool calls work transparently across both, but the identifiers carry different meanings:
 
@@ -108,7 +142,7 @@ Rockhopper supports both Microsoft Excel files (M365 / OneDrive) and Google Shee
 
 If a tool description references "drive ID" or "platform ID", it works identically across both clouds. If you need to know the platform, inspect `fileType`.
 
-## 8. Error handling
+## 9. Error handling
 
 Tool failures return structured responses with `isError: true` and a human-readable message in `content`. Common patterns:
 
@@ -119,7 +153,7 @@ Tool failures return structured responses with `isError: true` and a human-reada
 
 When a tool returns `isError: true`, do not silently retry with the same arguments. Either correct the arguments based on the error message or surface the failure.
 
-## 9. Resources
+## 10. Resources
 
 The MCP server exposes two static resources via `resources/list`:
 
