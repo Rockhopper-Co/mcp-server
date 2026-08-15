@@ -125,6 +125,14 @@ export function handleMockRockhopperRequest(
         internalId: 1,
         firstName: 'Alice',
         lastName: 'Liddell',
+        msId: 'ms-alice',
+        // ENG-2200: `User.teamMembers` and `TeamMember.team` are both
+        // `eager: true` on the backend entities, so `/users/me` carries the
+        // membership without anything asking for it. This is what
+        // `share_with: "team"` reads to find the team to expand.
+        teamMembers: [
+          { team: { id: '0198f3a1-2b4c-7d8e-9f01-23456789abcd', internalId: 10, name: 'Finance' } },
+        ],
         // ENG-2205 serves these only for a PAT-authenticated caller; every
         // e2e launch here presents `rh_pat_test_token`.
         ...(patScope === null
@@ -160,6 +168,12 @@ export function handleMockRockhopperRequest(
             role: 'owner',
           },
         ],
+        // ENG-2200: the roster `share_with: "team"` fans a file out to. Alice
+        // is the caller, so a correct expansion drops her and keeps Bob.
+        teamMembers: [
+          { role: 'owner', user: { msId: 'ms-alice', email: 'alice@example.com' } },
+          { role: 'contributor', user: { msId: 'ms-bob', email: 'bob@example.com' } },
+        ],
       });
       return;
     }
@@ -172,6 +186,85 @@ export function handleMockRockhopperRequest(
           { internalId: 1, firstName: 'Alice', lastName: 'Liddell', role: 'owner' },
         ],
       });
+      return;
+    }
+
+    // --- Enrollment (ENG-2200) ---
+    // Keyed on the URL the client sends, so one mock covers every outcome and
+    // the e2e spec reads as the conversation it is testing.
+    if (method === 'POST' && path === '/enrolled-files/resolve-url') {
+      const { webUrl } = JSON.parse((await readBody(req)) || '{}') as {
+        webUrl?: string;
+      };
+      if (webUrl?.includes('google.com')) {
+        sendJson(res, 400, {
+          statusCode: 400,
+          message: 'docs.google.com is not a Microsoft file',
+          code: 'URL_UNSUPPORTED_PROVIDER',
+        });
+        return;
+      }
+      if (webUrl?.includes('nonsense')) {
+        sendJson(res, 400, {
+          statusCode: 400,
+          message: 'that is not a web address',
+          code: 'URL_UNRESOLVABLE',
+        });
+        return;
+      }
+      sendJson(res, 201, {
+        msId: 'ms-item-9',
+        driveMsId: 'drive-9',
+        name: 'Becklar_RMR_Model.xlsx',
+        listItemUniqueId: 'liuid-9',
+        webUrl: webUrl ?? '',
+        enrollmentState: webUrl?.includes('removed')
+          ? 'hidden'
+          : webUrl?.includes('already')
+            ? 'enrolled'
+            : 'not_enrolled',
+      });
+      return;
+    }
+
+    if (method === 'POST' && path === '/enrolled-files/info/bulk') {
+      const { ids } = JSON.parse((await readBody(req)) || '{}') as {
+        ids?: string[];
+      };
+      sendJson(
+        res,
+        200,
+        (ids ?? []).map((id) => ({
+          isEnrolled: false,
+          enrollmentState: id.includes('removed') ? 'hidden' : 'not_enrolled',
+          isInUserWorkspace: false,
+        })),
+      );
+      return;
+    }
+
+    if (method === 'POST' && path === '/enrolled-files') {
+      // The MCP session holds no delegated Microsoft assertion, so the real
+      // backend refuses an unlinked caller here (ENG-2196 / D4). `unlinked` in
+      // the name selects that branch.
+      const { name } = JSON.parse((await readBody(req)) || '{}') as {
+        name?: string;
+      };
+      if (name?.includes('unlinked')) {
+        sendJson(res, 403, {
+          statusCode: 403,
+          message: 'This request has no Microsoft sign-in to prove file access with.',
+          code: 'ACCESS_UNPROVEN',
+          deniedMsIds: ['ms-item-9'],
+        });
+        return;
+      }
+      sendJson(res, 201, { enrollmentId: 'enr-e2e-1', status: 'queued' });
+      return;
+    }
+
+    if (method === 'POST' && path === '/enrolled-files/batch') {
+      sendJson(res, 201, { enrollmentId: 'enr-e2e-batch', status: 'queued' });
       return;
     }
 

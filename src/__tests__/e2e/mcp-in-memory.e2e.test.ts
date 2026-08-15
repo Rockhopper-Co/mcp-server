@@ -67,15 +67,19 @@ describe('MCP in-memory protocol e2e', () => {
         'add_comment',
         'approve_review',
         'cancel_review',
+        'connect_microsoft',
         'create_review_request',
         'create_version',
+        'disconnect_microsoft',
         'discard_changes',
+        'enroll_file',
         'get_cell_history',
         'get_file_comments',
         'get_file_versions',
         'get_reviews',
         'get_unattributed_changes',
         'list_files',
+        'microsoft_link_status',
         'rename_file',
         'reply_to_comment',
         'resolve_comment',
@@ -898,5 +902,113 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
 
   it('shows 10 tools when the scope is unknown', async () => {
     expect(await toolNamesForScope()).toEqual(READ_TOOLS);
+  });
+});
+
+/**
+ * ENG-2200 — `enroll_file` over the real protocol, against the mock HTTP API.
+ *
+ * The unit specs mock the API client; these do not. They prove the request
+ * bodies this package actually puts on the wire are the ones the backend's
+ * DTOs accept — the seam where a field-name guess (`url` for `webUrl`, an
+ * `msId` where a `platformId` belongs) survives every mocked test and fails
+ * once, in front of a customer.
+ */
+describe('enroll_file end to end (ENG-2200)', () => {
+  let handle: Awaited<ReturnType<typeof startMockRockhopperApiServer>>;
+  let enrollClient: Client;
+
+  beforeAll(async () => {
+    handle = await startMockRockhopperApiServer();
+    const server = createServer(
+      new ApiClient({ baseUrl: handle.baseUrl, token: 'rh_pat_test_token' }),
+      { capabilities: ['files:write'] },
+    );
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    enrollClient = new Client(
+      { name: 'enroll-e2e-client', version: '1.0.0' },
+      { capabilities: {} },
+    );
+    await Promise.all([
+      server.connect(serverTransport),
+      enrollClient.connect(clientTransport),
+    ]);
+  });
+
+  afterAll(async () => {
+    await enrollClient?.close();
+    await stopMockRockhopperApiServer(handle.server);
+  });
+
+  async function enroll(args: Record<string, unknown>): Promise<string> {
+    const result = (await enrollClient.callTool({
+      name: 'enroll_file',
+      arguments: args,
+    })) as { content: Array<{ text?: string }> };
+    return result.content[0].text ?? '';
+  }
+
+  const base = 'https://contoso.sharepoint.com/:x:/r/sites/finance/';
+
+  it('enrolls a new workbook for share_with="me"', async () => {
+    const text = await enroll({ url: `${base}Doc.aspx`, share_with: 'me' });
+    expect(text).toContain('"outcome":"enrolled"');
+    expect(text).toContain('Becklar_RMR_Model.xlsx');
+    expect(text).toContain('visible to you only');
+  });
+
+  it('expands share_with="team" to the roster minus the caller', async () => {
+    const text = await enroll({ url: `${base}Doc.aspx`, share_with: 'team' });
+    expect(text).toContain('"outcome":"enrolled"');
+    // Alice is the caller; Bob is the only real target.
+    expect(text).toContain('"sharedWithCount":1');
+  });
+
+  it('returns the question when share_with is missing', async () => {
+    const text = await enroll({ url: `${base}Doc.aspx` });
+    expect(text).toContain('"outcome":"share_with_required"');
+  });
+
+  it('asks before restoring a workbook the user removed', async () => {
+    const text = await enroll({ url: `${base}removed.aspx`, share_with: 'me' });
+    expect(text).toContain('"outcome":"restore_confirmation_required"');
+    expect(text).toContain('confirm_restore');
+  });
+
+  it('restores it on the confirmed second call', async () => {
+    const text = await enroll({
+      url: `${base}removed.aspx`,
+      share_with: 'me',
+      confirm_restore: true,
+    });
+    expect(text).toContain('"outcome":"restored"');
+  });
+
+  it('says already_enrolled for a workbook that is already there', async () => {
+    const text = await enroll({ url: `${base}already.aspx`, share_with: 'me' });
+    expect(text).toContain('"outcome":"already_enrolled"');
+  });
+
+  it('refuses a Google link as unsupported_provider', async () => {
+    const text = await enroll({
+      url: 'https://docs.google.com/spreadsheets/d/abc/edit',
+      share_with: 'me',
+    });
+    expect(text).toContain('"outcome":"unsupported_provider"');
+  });
+
+  it('asks for the browser address when the link resolves to nothing', async () => {
+    const text = await enroll({ url: 'https://nonsense.test/x', share_with: 'me' });
+    expect(text).toContain('"outcome":"unresolvable"');
+  });
+
+  it('takes a driveMsId + msId pair and still guards a hidden target', async () => {
+    expect(
+      await enroll({ msId: 'removed-item', driveMsId: 'drive-9', share_with: 'me' }),
+    ).toContain('"outcome":"restore_confirmation_required"');
+    expect(
+      await enroll({ msId: 'fresh-item', driveMsId: 'drive-9', share_with: 'me' }),
+    ).toContain('"outcome":"enrolled"');
   });
 });
