@@ -56,6 +56,41 @@ export interface MicrosoftConnectHandoff {
   expiresAt: string;
 }
 
+/**
+ * ENG-2541 — THREE states, never a boolean.
+ *
+ * `hidden` is a file this tenant enrolled and then deliberately removed from
+ * its file lists; the row and everything hanging off it (versions, comments,
+ * history) survives. A caller that cannot tell `hidden` from `not_enrolled`
+ * offers the wrong action, and a caller that cannot tell it from `enrolled`
+ * silently undoes a removal somebody meant.
+ */
+export type EnrollmentState = 'enrolled' | 'hidden' | 'not_enrolled';
+
+/** ENG-2195 — `POST /enrolled-files/resolve-url`'s answer. */
+export interface ResolvedFileUrl {
+  /** The Graph driveItem id. */
+  msId: string;
+  /** The Graph drive id containing the item. */
+  driveMsId: string;
+  /** The file name as Microsoft holds it. */
+  name: string;
+  /** The SharePoint listItemUniqueId — stable across rename and move. */
+  listItemUniqueId: string | null;
+  /** The canonical Graph webUrl. */
+  webUrl: string;
+  enrollmentState: EnrollmentState;
+}
+
+/**
+ * What every enroll route answers. Enrollment is ASYNC — the file is not
+ * present when this returns, only accepted, so nothing may claim otherwise.
+ */
+export interface QueuedEnrollment {
+  enrollmentId: string;
+  status: 'queued';
+}
+
 export interface UserSummary {
   /**
    * Version-7 uuid (ENG-1966) — the spelling to pass as a reviewer id.
