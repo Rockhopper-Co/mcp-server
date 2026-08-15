@@ -17,6 +17,7 @@ import type {
   UserSummary,
   MicrosoftConnectHandoff,
   MicrosoftLinkStatus,
+  EnrollmentInfo,
   QueuedEnrollment,
   ResolvedFileUrl,
 } from './types.js';
@@ -415,6 +416,22 @@ export class ApiClient {
     return this.request<ResolvedFileUrl>('/enrolled-files/resolve-url', {
       method: 'POST',
       body: JSON.stringify({ webUrl }),
+    });
+  }
+
+  /**
+   * ENG-2541 — the same three states {@link resolveEnrollmentUrl} reports, for
+   * a caller that already holds `(driveMsId, msId)` and has no URL to resolve.
+   *
+   * `POST /enrolled-files/info/bulk` is the only route that answers `hidden`
+   * for an id: `GET /enrolled-files/:fileMsId` returns the row and leaves the
+   * caller to infer visibility, and inferring it is exactly what produced
+   * "already enrolled" about a file the user had deliberately removed.
+   */
+  async getEnrollmentInfo(msIds: readonly string[]): Promise<EnrollmentInfo[]> {
+    return this.request<EnrollmentInfo[]>('/enrolled-files/info/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ ids: [...msIds], accountType: 'microsoft' }),
     });
   }
 

@@ -13,7 +13,7 @@
  */
 
 import { RockhopperApiError } from './api-client.js';
-import type { EnrollmentState } from './types.js';
+import type { EnrollmentState, RockhopperId, Team, UserSummary } from './types.js';
 
 /**
  * Every answer `enroll_file` can give, as a value a model can branch on
@@ -185,4 +185,70 @@ export function classifyEnrollmentFailure(error: unknown): ClassifiedFailure {
     };
   }
   return { outcome: 'error', message: error.message };
+}
+
+/**
+ * The two reads `share_with: 'team'` needs. A narrow interface rather than the
+ * whole `ApiClient`, so the resolution can be tested without one and so this
+ * module never imports the client's concrete type.
+ */
+export interface TeamDirectory {
+  getMe(): Promise<UserSummary>;
+  getTeam(teamId: RockhopperId): Promise<Team>;
+}
+
+/** Raised when `share_with: 'team'` names a team we cannot resolve. */
+export class TeamUnresolvedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TeamUnresolvedError';
+  }
+}
+
+/**
+ * The teammates a `share_with: 'team'` enroll fans the file out to.
+ *
+ * Mirrors the web enrollment wizard exactly — the caller's FIRST team
+ * membership, its roster, minus the caller — because SP04 defines "team" as
+ * "the wizard's default set" and two surfaces answering the same question
+ * differently is worse than either answer. The backend has no team-vs-private
+ * enum to lean on: `POST /enrolled-files/batch` takes an explicit list of
+ * platform ids and nothing else, so the expansion happens here or nowhere.
+ *
+ * THROWS rather than returning an empty list when there is no team or no
+ * teammate. Enrolling privately after the user said "my team" is a silent
+ * substitution of a different answer for the one they gave, and it is
+ * invisible: the file simply never appears for anyone else.
+ */
+export async function resolveTeamShareTargets(
+  api: TeamDirectory,
+): Promise<string[]> {
+  const me = await api.getMe();
+  const membership = me.teamMembers?.find((m) => m.team != null);
+  const teamId = membership?.team?.id ?? membership?.team?.internalId;
+  if (teamId === undefined) {
+    throw new TeamUnresolvedError(
+      'You are not on a team yet, so there is nobody to share this file ' +
+        'with. Call `enroll_file` again with share_with="me" to add it just ' +
+        'for yourself, or set up a team in the Rockhopper web app first. ' +
+        'Nothing was changed.',
+    );
+  }
+
+  const team = await api.getTeam(teamId);
+  const mine = me.msId ?? me.googleId ?? null;
+  const targets = (team.teamMembers ?? [])
+    .map((member) => member.user?.msId ?? null)
+    .filter((id): id is string => !!id && id !== mine);
+
+  if (targets.length === 0) {
+    throw new TeamUnresolvedError(
+      `You are the only member of ${
+        team.name ? `the ${team.name} team` : 'your team'
+      }, so sharing with the team would share it with nobody. Call ` +
+        '`enroll_file` again with share_with="me" to add it just for ' +
+        'yourself. Nothing was changed.',
+    );
+  }
+  return targets;
 }
