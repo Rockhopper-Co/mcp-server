@@ -2,8 +2,22 @@ import { vi } from 'vitest';
 
 export function createMockApiClient() {
   return {
-    getMe: vi.fn().mockResolvedValue({ internalId: 1, email: 'user@test.com' }),
-    getTeam: vi.fn().mockResolvedValue({ internalId: 2, name: 'Finance' }),
+    getMe: vi.fn().mockResolvedValue({
+      internalId: 1,
+      email: 'user@test.com',
+      msId: 'ms-user-1',
+      // `/users/me` serves these because both relations are `eager: true` on
+      // the backend entities — nothing has to ask for them.
+      teamMembers: [{ team: { id: 'team-uuid-1', internalId: 2, name: 'Finance' } }],
+    }),
+    getTeam: vi.fn().mockResolvedValue({
+      internalId: 2,
+      name: 'Finance',
+      teamMembers: [
+        { user: { msId: 'ms-user-1', email: 'user@test.com' } },
+        { user: { msId: 'ms-user-2', email: 'colleague@test.com' } },
+      ],
+    }),
     // ENG-2198 — the delegated Microsoft Graph link.
     beginMicrosoftConnect: vi.fn().mockResolvedValue({
       authorizeUrl:
@@ -37,6 +51,30 @@ export function createMockApiClient() {
         hasUncommittedChanges: false,
       },
     ]),
+    // ENG-2200 — enrollment. Defaults describe the ordinary case: a Microsoft
+    // link that resolves to a file Rockhopper has never seen, and a caller on
+    // a two-person team. Each spec overrides the one field it is about.
+    resolveEnrollmentUrl: vi.fn().mockResolvedValue({
+      msId: 'ms-item-9',
+      driveMsId: 'drive-9',
+      name: 'Becklar_RMR_Model.xlsx',
+      listItemUniqueId: 'liuid-9',
+      webUrl: 'https://contoso.sharepoint.com/:x:/r/sites/finance/Doc.aspx',
+      enrollmentState: 'not_enrolled',
+    }),
+    getEnrollmentInfo: vi.fn().mockResolvedValue([
+      {
+        isEnrolled: false,
+        enrollmentState: 'not_enrolled',
+        isInUserWorkspace: false,
+      },
+    ]),
+    createEnrolledFile: vi
+      .fn()
+      .mockResolvedValue({ enrollmentId: 'enr-1', status: 'queued' }),
+    enrollFileSharedWith: vi
+      .fn()
+      .mockResolvedValue({ enrollmentId: 'enr-2', status: 'queued' }),
     getEnrolledFile: vi.fn().mockResolvedValue({
       internalId: 11,
       platformId: 'file-1',

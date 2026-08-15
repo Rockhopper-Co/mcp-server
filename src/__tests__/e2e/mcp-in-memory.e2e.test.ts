@@ -841,6 +841,9 @@ describe('MCP in-memory protocol e2e', () => {
  */
 describe('tools/list is gated by the token scope (ENG-2208)', () => {
   const READ_TOOLS = [
+    'connect_microsoft',
+    'disconnect_microsoft',
+    'microsoft_link_status',
     'get_cell_history',
     'get_file_comments',
     'get_file_versions',
@@ -879,21 +882,21 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     }
   }
 
-  it('shows 16 tools to a read-write token', async () => {
+  it('shows 20 tools to a read-write token', async () => {
     const names = await toolNamesForScope('read-write');
-    expect(names).toHaveLength(16);
+    expect(names).toHaveLength(20);
     expect(names).toContain('add_comment');
   });
 
-  it('shows 7 tools to a read-only token', async () => {
+  it('shows 10 tools to a read-only token', async () => {
     expect(await toolNamesForScope('read-only')).toEqual(READ_TOOLS);
   });
 
-  it('shows 7 tools for an unrecognised scope', async () => {
+  it('shows 10 tools for an unrecognised scope', async () => {
     expect(await toolNamesForScope('some-future-scope')).toEqual(READ_TOOLS);
   });
 
-  it('shows 7 tools when the scope is unknown', async () => {
+  it('shows 10 tools when the scope is unknown', async () => {
     expect(await toolNamesForScope()).toEqual(READ_TOOLS);
   });
 });
