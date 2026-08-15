@@ -15,6 +15,8 @@ import type {
   Team,
   UnattributedChange,
   UserSummary,
+  MicrosoftConnectHandoff,
+  MicrosoftLinkStatus,
 } from './types.js';
 import {
   CellHistoryEntryArraySchema,
@@ -303,6 +305,37 @@ export class ApiClient {
 
   async getMe(): Promise<UserSummary> {
     return this.request<UserSummary>('/users/me');
+  }
+
+  // --- Microsoft Graph link (ENG-2198) ---
+
+  /**
+   * Ask the BACKEND to build the Microsoft consent URL.
+   *
+   * Note what this method cannot do: pass a URL, a redirect, a client id or a
+   * scope list. The authorize URL is constructed server-side and the callback
+   * re-pins the client id and redirect when it redeems the code. That is
+   * deliberate — a URL this client could influence is a consent-phishing
+   * lever, because the model driving an MCP session could be talked into
+   * emitting a link that points the user's consent at an attacker's
+   * application, behind a genuine Microsoft consent screen.
+   */
+  async beginMicrosoftConnect(): Promise<MicrosoftConnectHandoff> {
+    return this.request<MicrosoftConnectHandoff>('/auth/microsoft/connect', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async getMicrosoftLink(): Promise<MicrosoftLinkStatus> {
+    return this.request<MicrosoftLinkStatus>('/auth/microsoft/link');
+  }
+
+  async unlinkMicrosoft(): Promise<{ linked: boolean; removed: boolean }> {
+    return this.request<{ linked: boolean; removed: boolean }>(
+      '/auth/microsoft/link',
+      { method: 'DELETE' },
+    );
   }
 
   // --- Teams ---

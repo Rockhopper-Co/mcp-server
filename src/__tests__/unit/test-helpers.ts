@@ -4,6 +4,21 @@ export function createMockApiClient() {
   return {
     getMe: vi.fn().mockResolvedValue({ internalId: 1, email: 'user@test.com' }),
     getTeam: vi.fn().mockResolvedValue({ internalId: 2, name: 'Finance' }),
+    // ENG-2198 — the delegated Microsoft Graph link.
+    beginMicrosoftConnect: vi.fn().mockResolvedValue({
+      authorizeUrl:
+        'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=real-client',
+      expiresAt: '2026-08-14T21:00:00.000Z',
+    }),
+    getMicrosoftLink: vi.fn().mockResolvedValue({
+      linked: false,
+      msAccountLabel: null,
+      msTenantId: null,
+      grantedScopes: [],
+      linkedAt: null,
+      lastUsedAt: null,
+    }),
+    unlinkMicrosoft: vi.fn().mockResolvedValue({ linked: false, removed: true }),
     listEnrolledFiles: vi.fn().mockResolvedValue([
       {
         internalId: 11,
