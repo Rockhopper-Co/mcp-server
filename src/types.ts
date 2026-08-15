@@ -56,6 +56,59 @@ export interface MicrosoftConnectHandoff {
   expiresAt: string;
 }
 
+/**
+ * ENG-2541 — THREE states, never a boolean.
+ *
+ * `hidden` is a file this tenant enrolled and then deliberately removed from
+ * its file lists; the row and everything hanging off it (versions, comments,
+ * history) survives. A caller that cannot tell `hidden` from `not_enrolled`
+ * offers the wrong action, and a caller that cannot tell it from `enrolled`
+ * silently undoes a removal somebody meant.
+ */
+export type EnrollmentState = 'enrolled' | 'hidden' | 'not_enrolled';
+
+/** ENG-2195 — `POST /enrolled-files/resolve-url`'s answer. */
+export interface ResolvedFileUrl {
+  /** The Graph driveItem id. */
+  msId: string;
+  /** The Graph drive id containing the item. */
+  driveMsId: string;
+  /** The file name as Microsoft holds it. */
+  name: string;
+  /** The SharePoint listItemUniqueId — stable across rename and move. */
+  listItemUniqueId: string | null;
+  /** The canonical Graph webUrl. */
+  webUrl: string;
+  enrollmentState: EnrollmentState;
+}
+
+/**
+ * ENG-2541 — `POST /enrolled-files/info/bulk`, one entry per requested id, in
+ * the order they were sent.
+ *
+ * The identity fields are WITHHELD (absent) for a `hidden` file and for a
+ * half-written enrolment stub, deliberately: holding them is the caller's
+ * licence to treat the row as a live enrolment, and neither of those is one.
+ */
+export interface EnrollmentInfo {
+  isEnrolled: boolean;
+  enrollmentState: EnrollmentState;
+  isInUserWorkspace: boolean;
+  enrolledFileMsId?: string;
+  driveMsId?: string;
+  internalId?: number;
+  name?: string;
+}
+
+/**
+ * What every enroll route answers. Enrollment is ASYNC — the file is not
+ * present when this returns, only accepted, so nothing may claim otherwise.
+ */
+export interface QueuedEnrollment {
+  enrollmentId: string;
+  status: 'queued';
+}
+
 export interface UserSummary {
   /**
    * Version-7 uuid (ENG-1966) — the spelling to pass as a reviewer id.
@@ -93,6 +146,26 @@ export interface UserSummary {
   patScopes?: string[];
   /** ENG-2205 — ISO-8601 expiry of the presenting token, or null if it never expires. */
   patExpiresAt?: string | null;
+  /**
+   * ENG-2200 — the caller's team memberships. `/users/me` serves these
+   * because `User.teamMembers` and `TeamMember.team` are both `eager: true`
+   * on the backend entities; no relation has to be requested.
+   *
+   * Optional because nothing else in this package reads it and a user may
+   * belong to no team at all — which is a real state `enroll_file` has to
+   * report rather than silently treat as an empty team.
+   */
+  teamMembers?: TeamMembership[];
+}
+
+/** One row of {@link UserSummary.teamMembers} — the team, not its roster. */
+export interface TeamMembership {
+  team?: {
+    /** Version-7 uuid (ENG-1966). Absent on a backend older than the re-key. */
+    id?: string;
+    internalId?: number;
+    name?: string;
+  } | null;
 }
 
 export interface Workspace {

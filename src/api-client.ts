@@ -17,6 +17,9 @@ import type {
   UserSummary,
   MicrosoftConnectHandoff,
   MicrosoftLinkStatus,
+  EnrollmentInfo,
+  QueuedEnrollment,
+  ResolvedFileUrl,
 } from './types.js';
 import {
   CellHistoryEntryArraySchema,
@@ -90,10 +93,38 @@ export interface ApiClientConfig {
  */
 export class RockhopperApiError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  /**
+   * ENG-2200 — the backend's own machine-readable refusal code, when it sent
+   * one. Enrollment refusals each name a DIFFERENT remedy
+   * (`ACCESS_UNPROVEN` = link a Microsoft account, `URL_UNSUPPORTED_PROVIDER`
+   * = this is not a Microsoft link, `FILE_ACCESS_DENIED` = nothing to retry),
+   * and telling them apart by matching prose would break the first time
+   * someone rewords a message. `null` when the body carried no `code` — every
+   * pre-existing caller reads {@link Error.message} and is unaffected.
+   */
+  readonly code: string | null;
+  constructor(status: number, message: string, code?: string | null) {
     super(message);
     this.name = 'RockhopperApiError';
     this.status = status;
+    this.code = code ?? null;
+  }
+}
+
+/**
+ * Pull the `code` out of an error body without ever letting a malformed body
+ * become a second failure. A non-JSON body, a JSON array, or a `code` that is
+ * not a string all answer `null` — the caller then falls back to the status,
+ * which is the answer it had before this existed.
+ */
+function parseErrorCode(body: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed === null || typeof parsed !== 'object') return null;
+    const code = (parsed as { code?: unknown }).code;
+    return typeof code === 'string' ? code : null;
+  } catch {
+    return null;
   }
 }
 
@@ -262,6 +293,7 @@ export class ApiClient {
       throw new RockhopperApiError(
         response.status,
         `Rockhopper API ${response.status}: ${response.statusText} — ${body}`,
+        parseErrorCode(body),
       );
     }
 
@@ -367,6 +399,87 @@ export class ApiClient {
 
   async getEnrolledFile(fileMsId: string): Promise<EnrolledFile> {
     return this.request<EnrolledFile>(`/enrolled-files/${fileMsId}`);
+  }
+
+  // --- Enrollment (ENG-2200 / plan 13) ---
+
+  /**
+   * ENG-2195 — turn a pasted SharePoint / OneDrive link into a file identity
+   * AND say whether this tenant already holds it.
+   *
+   * Read-only: nothing is created. It is called BEFORE any enroll so the tool
+   * can tell `already_enrolled` from `hidden` from `not_enrolled` — the
+   * discrimination ENG-1647 lacked, where a name-substring search matched a
+   * different file and the assistant reported "already enrolled" about it.
+   */
+  async resolveEnrollmentUrl(webUrl: string): Promise<ResolvedFileUrl> {
+    return this.request<ResolvedFileUrl>('/enrolled-files/resolve-url', {
+      method: 'POST',
+      body: JSON.stringify({ webUrl }),
+    });
+  }
+
+  /**
+   * ENG-2541 — the same three states {@link resolveEnrollmentUrl} reports, for
+   * a caller that already holds `(driveMsId, msId)` and has no URL to resolve.
+   *
+   * `POST /enrolled-files/info/bulk` is the only route that answers `hidden`
+   * for an id: `GET /enrolled-files/:fileMsId` returns the row and leaves the
+   * caller to infer visibility, and inferring it is exactly what produced
+   * "already enrolled" about a file the user had deliberately removed.
+   */
+  async getEnrollmentInfo(msIds: readonly string[]): Promise<EnrollmentInfo[]> {
+    return this.request<EnrollmentInfo[]>('/enrolled-files/info/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ ids: [...msIds], accountType: 'microsoft' }),
+    });
+  }
+
+  /**
+   * `POST /enrolled-files` — enroll ONE file, shared with nobody.
+   *
+   * ASYNC by design: the answer is `{enrollmentId, status:'queued'}`, never the
+   * file. The backend writes the `enrolled_file` stub row SYNCHRONOUSLY before
+   * it enqueues the job, so by the time this resolves the row exists and a
+   * repeat `resolveEnrollmentUrl` already answers `enrolled` — which is what
+   * makes a retry after a dropped stream safe rather than duplicating work.
+   *
+   * `X-MS-Graph-Token` is deliberately NOT sent and cannot be: this package
+   * holds no delegated Microsoft assertion. A caller with no linked Microsoft
+   * account is refused with `ACCESS_UNPROVEN` (ENG-2196 / decision D4), which
+   * is the intended outcome, not a gap.
+   */
+  async createEnrolledFile(body: {
+    msId: string;
+    driveMsId: string;
+    name: string;
+  }): Promise<QueuedEnrollment> {
+    return this.request<QueuedEnrollment>('/enrolled-files', {
+      method: 'POST',
+      body: JSON.stringify({ ...body, accountType: 'microsoft' }),
+    });
+  }
+
+  /**
+   * `POST /enrolled-files/batch` — enroll ONE file and fan it into the named
+   * teammates' workspaces in the same call.
+   *
+   * The batch route rather than a second share call because sharing has to be
+   * part of the same decision: an enroll that succeeded and a share that then
+   * failed leaves the file visible to one person after the user asked for the
+   * team, and there is no transaction to undo the first half.
+   */
+  async enrollFileSharedWith(
+    file: { msId: string; driveMsId: string; name: string },
+    shareWithUserMsIds: readonly string[],
+  ): Promise<QueuedEnrollment> {
+    return this.request<QueuedEnrollment>('/enrolled-files/batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        files: [{ ...file, accountType: 'microsoft' }],
+        shareWithUserMsIds: [...shareWithUserMsIds],
+      }),
+    });
   }
 
   // --- File Versions ---
