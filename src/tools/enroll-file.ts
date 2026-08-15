@@ -1,15 +1,20 @@
 import type { McpServer } from '@modelcontextprotocol/server';
-import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import {
   classifyEnrollmentFailure,
   outcomeForState,
   resolveTeamShareTargets,
   TeamUnresolvedError,
-  type EnrollOutcome,
   type ShareWith,
 } from '../enrollment.js';
 import type { EnrollmentState } from '../types.js';
+import {
+  ENROLL_ANNOTATIONS,
+  ENROLL_DESCRIPTION,
+  ENROLL_INPUT_SCHEMA,
+  SHARE_QUESTION,
+  toolResult,
+} from './enroll-file.contract.js';
 
 /**
  * ENG-2200 — the tool ENG-1647's customer reached for and did not find.
@@ -31,88 +36,6 @@ import type { EnrollmentState } from '../types.js';
  *    `restore_confirmation_required` and only a second call carrying
  *    `confirm_restore: true` writes anything.
  */
-
-const INPUT_SCHEMA = z.object({
-  url: z
-    .string()
-    .optional()
-    .describe(
-      'The workbook\'s SharePoint or OneDrive address, exactly as copied from ' +
-        'the browser bar. Use this whenever the user can paste a link — it is ' +
-        'the only input that names one specific file with no guessing.',
-    ),
-  driveMsId: z
-    .string()
-    .optional()
-    .describe(
-      'Microsoft drive id. Only for a file already identified by another tool; ' +
-        'must be sent together with `msId`, and never alongside `url`.',
-    ),
-  msId: z
-    .string()
-    .optional()
-    .describe(
-      'Microsoft drive-item id. Must be sent together with `driveMsId`, and ' +
-        'never alongside `url`.',
-    ),
-  share_with: z
-    .enum(['me', 'team'])
-    .optional()
-    .describe(
-      'REQUIRED. Who may see this file: "me" (just the user) or "team" ' +
-        '(everyone on their team). ASK THE USER every time and use their ' +
-        'answer — never assume, never carry an answer over from an earlier ' +
-        'file. Omitting it does not enroll anything; the tool returns the ' +
-        'question to put to them.',
-    ),
-  confirm_restore: z
-    .boolean()
-    .optional()
-    .describe(
-      'Set to true only after the user has confirmed they want a file they ' +
-        'previously removed to be restored. Ignored otherwise.',
-    ),
-});
-
-const DESCRIPTION =
-  'Add a Microsoft Excel workbook to Rockhopper so it can be versioned, ' +
-  'reviewed and tracked. Takes the file\'s SharePoint or OneDrive link (best), ' +
-  'or a `driveMsId` + `msId` pair. ' +
-  'MICROSOFT ONLY — Google Sheets and Drive links are refused. ' +
-  'You MUST ask the user who may see the file and pass their answer as ' +
-  '`share_with` ("me" or "team"); calling without it returns the question ' +
-  'instead of enrolling. ' +
-  'If the file was previously removed from Rockhopper, this reports ' +
-  '`restore_confirmation_required` and changes nothing — ask the user, then ' +
-  'call again with `confirm_restore: true`. ' +
-  'Safe to call again if you lose the answer: a file that is already there ' +
-  'reports `already_enrolled` and is not duplicated. ' +
-  'Use this whenever `search_files` or `list_files` cannot find a file the ' +
-  'user is asking about — a file Rockhopper does not know about is not a ' +
-  'missing file, it is an un-enrolled one.';
-
-/** The machine-readable half of every answer, so a model can branch on it. */
-interface EnrollAnswer {
-  outcome: EnrollOutcome;
-  text: string;
-  isError?: boolean;
-  detail?: Record<string, unknown>;
-}
-
-function toolResult(answer: EnrollAnswer) {
-  const payload = { outcome: answer.outcome, ...(answer.detail ?? {}) };
-  return {
-    content: [
-      { type: 'text' as const, text: `${answer.text}\n${JSON.stringify(payload)}` },
-    ],
-    ...(answer.isError ? { isError: true as const } : {}),
-  };
-}
-
-const SHARE_QUESTION =
-  'Before this file can be added, ask the user: "Should this workbook be ' +
-  'visible to just you, or to your whole team?" Then call `enroll_file` again ' +
-  'with share_with="me" or share_with="team". Nothing has been added yet.';
 
 /** One resolved Microsoft file plus what Rockhopper already knows about it. */
 interface Target {
@@ -182,17 +105,9 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
     'enroll_file',
     {
       title: 'Add a File to Rockhopper',
-      description: DESCRIPTION,
-      inputSchema: INPUT_SCHEMA,
-      annotations: {
-        readOnlyHint: false,
-        // Enrolling adds a file; it never removes or overwrites one, and a
-        // repeat call on an already-enrolled file changes nothing.
-        destructiveHint: false,
-        idempotentHint: true,
-        // It reaches SharePoint / OneDrive through Rockhopper.
-        openWorldHint: true,
-      },
+      description: ENROLL_DESCRIPTION,
+      inputSchema: ENROLL_INPUT_SCHEMA,
+      annotations: ENROLL_ANNOTATIONS,
     },
     async ({ url, driveMsId, msId, share_with, confirm_restore }) => {
       const hasUrl = !!url?.trim();
