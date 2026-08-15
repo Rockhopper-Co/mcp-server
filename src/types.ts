@@ -101,6 +101,43 @@ export interface EnrollmentInfo {
 }
 
 /**
+ * ENG-2203 — one hit from `GET /drive-files/search`.
+ *
+ * These are files Microsoft returned for THIS user's delegated token, so the
+ * set is already permission-trimmed: nothing here needs a second access check
+ * and nothing outside it may be offered to the user.
+ */
+export interface DriveSearchItem {
+  msId: string;
+  /** `null` when Graph withheld the containing drive on this hit. */
+  driveMsId: string | null;
+  name: string;
+  webUrl: string | null;
+  lastModifiedAt: string | null;
+  size: number | null;
+  /**
+   * Containing folder from the tenant drive crawl. `null` when the crawl has
+   * not reached this file — normal, and never a reason to hide it.
+   */
+  parentPath: string | null;
+  /**
+   * Three states, never a boolean: `hidden` is a file Rockhopper still tracks
+   * but the user deliberately removed, and collapsing it into `enrolled`
+   * offers a next step that leads nowhere.
+   */
+  enrollmentState: EnrollmentState;
+}
+
+/** Which discovery question was asked, echoed back with the answer. */
+export type DriveSearchScope = 'search' | 'recent';
+
+/** `GET /drive-files/search`'s answer. */
+export interface DriveSearchResponse {
+  scope: DriveSearchScope;
+  items: DriveSearchItem[];
+}
+
+/**
  * What every enroll route answers. Enrollment is ASYNC — the file is not
  * present when this returns, only accepted, so nothing may claim otherwise.
  */

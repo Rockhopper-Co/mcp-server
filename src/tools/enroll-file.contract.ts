@@ -80,7 +80,13 @@ export const ENROLL_DESCRIPTION =
   'reports `already_enrolled` and is not duplicated. ' +
   'Use this whenever `search_files` or `list_files` cannot find a file the ' +
   'user is asking about — a file Rockhopper does not know about is not a ' +
-  'missing file, it is an un-enrolled one.';
+  'missing file, it is an un-enrolled one. ' +
+  // ENG-2204: the `driveMsId` + `msId` pair has one honest source, and naming
+  // it here is what keeps a model from assembling a pair out of ids it read
+  // somewhere else and enrolling a file the user never named.
+  'If the user cannot produce a link, call `search_drive_files` first, have ' +
+  'them confirm which candidate they meant, and pass the `driveMsId` + `msId` ' +
+  'that confirmation returned. Never enroll a file the user has not named.';
 
 export const ENROLL_ANNOTATIONS = {
   readOnlyHint: false,

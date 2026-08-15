@@ -31,12 +31,28 @@ If a tool returns an error like "expected versionId but received fileMsId", you 
 
 ## 2. Adding a file to Rockhopper (enrollment)
 
-Every other tool works on files Rockhopper ALREADY has. `enroll_file` is the only one that adds a new one, and reaching for it is the right move more often than it looks: `list_files` and `search_files` see only enrolled files, so a workbook the user is talking about that appears in neither is very probably one nobody has added yet — not one that does not exist.
+Every other tool works on files Rockhopper ALREADY has. `enroll_file` is the only one that adds a new one, and reaching for it is the right move more often than it looks: `list_files` and `search_files` see only enrolled files, so a workbook the user is talking about that appears in neither is very probably one nobody has added yet — not one that does not exist. `search_drive_files` is how you find it.
 
 **Identity.** Two ways to name the file, mutually exclusive:
 
 - `url` — the SharePoint or OneDrive address, copied from the browser bar. Prefer this always: it names exactly one file, so there is no wrong-match risk.
 - `driveMsId` + `msId` — the Microsoft pair, when another tool already produced it. Both are required together.
+
+### Finding the file first: `search_drive_files` → confirm → `enroll_file`
+
+Most users cannot produce a link on request. `search_drive_files` looks across the user's own OneDrive and SharePoint — **including workbooks Rockhopper has never seen** — and marks each candidate `not in Rockhopper yet`, `already in Rockhopper`, or `previously removed`. It is the only tool that can see an un-enrolled file.
+
+The two steps are one flow and the middle one is not optional:
+
+1. `search_drive_files({ query: "Q3 forecast" })` — or `scope: "recent"` when the user cannot remember the name.
+2. **Show the candidates and ask which one they meant.** Quote the names; never choose for them, and never report a file as already enrolled because one result looked similar — that specific mistake is why this tool exists. Call `search_drive_files` again with their `confirm_index` and the `confirm_token` from that answer. Some clients render the question themselves; either way, one comes back confirmed.
+3. Pass the `driveMsId` + `msId` the confirmation returned to `enroll_file`, which then asks who may see the file.
+
+Only files that came back from the search can be confirmed. A pick that names anything else answers `unknown_candidate` and adds nothing.
+
+**Searching is capped per session.** A fixed number of searches, after which `search_limit_reached` is the only answer and waiting does not restore it. Search deliberately — two or three well-chosen queries, not a browse. If the cap is reached, ask the user for the workbook link and use `enroll_file` directly.
+
+**No Microsoft account connected?** `search_drive_files` answers `microsoft_not_connected` and hands back a sign-in link Rockhopper built. Give the user that link verbatim. Never compose a Microsoft sign-in URL yourself — a link the assistant made up sends the user's consent wherever whoever wrote it wanted.
 
 **Microsoft only.** SharePoint and OneDrive-for-Business workbooks. A Google Drive or Sheets link returns `unsupported_provider`; that is final, so do not ask the user for a different link.
 

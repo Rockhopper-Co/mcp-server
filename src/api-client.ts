@@ -20,6 +20,8 @@ import type {
   EnrollmentInfo,
   QueuedEnrollment,
   ResolvedFileUrl,
+  DriveSearchResponse,
+  DriveSearchScope,
 } from './types.js';
 import {
   CellHistoryEntryArraySchema,
@@ -399,6 +401,41 @@ export class ApiClient {
 
   async getEnrolledFile(fileMsId: string): Promise<EnrolledFile> {
     return this.request<EnrolledFile>(`/enrolled-files/${fileMsId}`);
+  }
+
+  // --- Drive discovery (ENG-2203 / plan 13) ---
+
+  /**
+   * `GET /drive-files/search` — the caller's OWN Microsoft drive, spreadsheets
+   * only, each hit marked `enrolled | hidden | not_enrolled`.
+   *
+   * Delegated: the backend speaks to Microsoft AS this user, so the returned
+   * set IS the permission trim and nothing outside it may be shown. There is
+   * deliberately no client-side filtering here — not on extension, not on
+   * host, not on name. ENG-2200 wrote a client-side host allow-list for the
+   * enroll path and removed it again: the server's real rule was narrower than
+   * the plausible guess, and a stale second copy inside a package customers
+   * upgrade on their own schedule refuses files the server would have taken,
+   * invisibly.
+   *
+   * Refusals a caller must tell apart, by `code` on {@link RockhopperApiError}:
+   * `NO_DELEGATED_TOKEN` (403 — the user has to connect Microsoft) and
+   * `DRIVE_SEARCH_UNAVAILABLE` (503 — Microsoft could not answer). The 503 and
+   * the 429 throttle both arrive as `ChangeHistoryNotReadyError` from
+   * {@link request}'s shared not-ready classification.
+   */
+  async searchDriveFiles(params: {
+    q?: string;
+    scope?: DriveSearchScope;
+    limit?: number;
+  }): Promise<DriveSearchResponse> {
+    const query = new URLSearchParams();
+    if (params.q) query.set('q', params.q);
+    if (params.scope) query.set('scope', params.scope);
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+    return this.request<DriveSearchResponse>(
+      `/drive-files/search?${query.toString()}`,
+    );
   }
 
   // --- Enrollment (ENG-2200 / plan 13) ---
