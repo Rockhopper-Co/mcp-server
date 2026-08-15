@@ -154,16 +154,16 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
   }
 
   it.each([
-    ['read-write', 20],
-    ['read-only', 10],
+    ['read-write', 21],
+    ['read-only', 11],
     // An unrecognised scope value, and a backend too old to serve the field
     // at all (`null` omits it) — both deny, where both used to grant.
-    ['some-future-scope', 10],
-    [null, 10],
+    ['some-future-scope', 11],
+    [null, 11],
   ])('serves %s a tools/list of %i tools', async (patScope, expected) => {
     const names = await toolNames(patScope);
     expect(names).toHaveLength(expected);
-    expect(names.includes('add_comment')).toBe(expected === 20);
+    expect(names.includes('add_comment')).toBe(expected === 21);
     expect(names).toContain('list_files');
   }, 30_000);
 
@@ -191,6 +191,7 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
           'list_files',
           'reply_to_comment',
           'resolve_comment',
+          'search_drive_files',
           'search_files',
         ].sort(),
       );
@@ -203,7 +204,7 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
     'falls back to the coarse scope when the backend serves no families',
     async () => {
       // A backend older than ENG-2211 omits `patScopes` entirely.
-      expect(await toolNames('read-write', null)).toHaveLength(20);
+      expect(await toolNames('read-write', null)).toHaveLength(21);
     },
     30_000,
   );

@@ -51,6 +51,34 @@ export function createMockApiClient() {
         hasUncommittedChanges: false,
       },
     ]),
+    // ENG-2204 — drive discovery. Two hits whose names both match, because a
+    // single hit lets a wrong flow look right: the failure being fixed picked
+    // one match and reported it as fact.
+    searchDriveFiles: vi.fn().mockResolvedValue({
+      scope: 'search',
+      items: [
+        {
+          msId: 'ms-item-9',
+          driveMsId: 'drive-9',
+          name: 'Becklar_RMR_Model.xlsx',
+          webUrl: 'https://contoso.sharepoint.com/a.xlsx',
+          lastModifiedAt: '2026-08-01T10:00:00Z',
+          size: 120_000,
+          parentPath: '/Finance/Models',
+          enrollmentState: 'not_enrolled',
+        },
+        {
+          msId: 'ms-item-10',
+          driveMsId: 'drive-9',
+          name: 'Becklar_RMR_Model_OLD.xlsx',
+          webUrl: 'https://contoso.sharepoint.com/b.xlsx',
+          lastModifiedAt: '2025-02-01T10:00:00Z',
+          size: 90_000,
+          parentPath: '/Finance/Archive',
+          enrollmentState: 'enrolled',
+        },
+      ],
+    }),
     // ENG-2200 — enrollment. Defaults describe the ordinary case: a Microsoft
     // link that resolves to a file Rockhopper has never seen, and a caller on
     // a two-person team. Each spec overrides the one field it is about.

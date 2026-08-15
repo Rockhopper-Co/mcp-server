@@ -36,6 +36,7 @@ const READ_TOOL_NAMES = [
   'get_cell_history',
   'get_unattributed_changes',
   'search_files',
+  'search_drive_files',
 ];
 
 function registeredToolNames(scope?: string): string[] {
@@ -56,33 +57,33 @@ describe('write-tool scope gate (ENG-2208)', () => {
     expect(grantsWriteTools('read-write-plus')).toBe(false);
   });
 
-  it('registers 20 tools for a read-write scope', () => {
+  it('registers 21 tools for a read-write scope', () => {
     const names = registeredToolNames('read-write');
-    expect(names).toHaveLength(20);
+    expect(names).toHaveLength(21);
     for (const name of [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES]) {
       expect(names).toContain(name);
     }
   });
 
-  it('registers 10 tools for a read-only scope', () => {
+  it('registers 11 tools for a read-only scope', () => {
     const names = registeredToolNames('read-only');
-    expect(names).toHaveLength(10);
+    expect(names).toHaveLength(11);
     expect(names.sort()).toEqual([...READ_TOOL_NAMES].sort());
   });
 
   // The polarity flip. Pre-ENG-2208 each of these registered all 16.
-  it('registers 10 tools for an UNRECOGNISED scope', () => {
+  it('registers 11 tools for an UNRECOGNISED scope', () => {
     for (const scope of ['admin', 'write', 'read-write-plus', '']) {
       const names = registeredToolNames(scope);
-      expect(names, `scope=${JSON.stringify(scope)}`).toHaveLength(10);
+      expect(names, `scope=${JSON.stringify(scope)}`).toHaveLength(11);
       for (const name of WRITE_TOOL_NAMES) {
         expect(names, `scope=${JSON.stringify(scope)}`).not.toContain(name);
       }
     }
   });
 
-  it('registers 10 tools when no scope is supplied at all', () => {
-    expect(registeredToolNames()).toHaveLength(10);
+  it('registers 11 tools when no scope is supplied at all', () => {
+    expect(registeredToolNames()).toHaveLength(11);
     for (const name of WRITE_TOOL_NAMES) {
       expect(registeredToolNames()).not.toContain(name);
     }
