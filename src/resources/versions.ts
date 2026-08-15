@@ -1,5 +1,5 @@
-import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { ResourceTemplate } from '@modelcontextprotocol/server';
+import type { McpServer } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
 
 export function registerVersionResources(

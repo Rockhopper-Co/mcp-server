@@ -38,6 +38,27 @@ Move a `^0.x` range to `^1.0.0`. A `0.x` range will not pick this up.
 
 ## [Unreleased]
 
+### Changed
+- **Moved to the v2 MCP SDK (ENG-2175).** v2 is a package **split**, not a
+  version bump: `@modelcontextprotocol/sdk` stays on the v1 line at 1.30.0
+  forever, and v2 ships as `@modelcontextprotocol/{core,server,client,node}`.
+  This package now depends on `@modelcontextprotocol/server` (and
+  `@modelcontextprotocol/client` for tests). Tool `inputSchema` and prompt
+  `argsSchema` are declared as `z.object({...})` rather than the raw
+  `{ field: schema }` shape v1 accepted.
+
+  **Nothing changes on the wire.** v2's `LATEST_PROTOCOL_VERSION` is
+  `2025-11-25` — the same value v1 1.30.0 carried — so a connected client
+  negotiates exactly the version it did before, and the advertised
+  capabilities are unchanged (`prompts`, `resources`, `tools`). Serving
+  protocol revision 2026-07-28 is separate work (ENG-2176).
+
+### Breaking
+- **`engines.node` moved from `>=18.0.0` to `>=20.0.0`.** Every v2 SDK package
+  declares `engines.node: ">=20"`, so the previous floor advertised a Node
+  version this package no longer runs on. Node 18 reached end of life on
+  2025-04-30.
+
 ### Added
 - **User and team ids are accepted as uuids (ENG-2230).** `reviewerIds` on
   `create_review_request` and `{teamId}` in `rockhopper://teams/{teamId}` now

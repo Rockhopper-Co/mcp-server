@@ -43,12 +43,19 @@ describe('cli observability (#78 / KI-225)', () => {
     const createServerMock = vi.fn().mockReturnValue({ connect: connectMock });
     const getMeMock = vi.fn().mockResolvedValue({ internalId: 1 });
     const apiClientMock = vi.fn().mockImplementation(function () {
-      return { getMe: getMeMock };
+      return {
+        getMe: getMeMock,
+        setDrivingHuman: vi.fn(),
+        // ENG-2208: the CLI registers a one-shot mid-session 401 notice once
+        // the preflight has succeeded.
+        setAuthExpiredHandler: vi.fn(),
+      };
     });
     vi.doMock('../../server.js', () => ({ createServer: createServerMock }));
     vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
-    vi.doMock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
-      StdioServerTransport: vi.fn(),
+    const serveStdioMock = vi.fn().mockReturnValue({ close: vi.fn() });
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
+      serveStdio: serveStdioMock,
     }));
 
     // Capture (don't really register) the process-level handlers cli.ts installs.
@@ -69,8 +76,11 @@ describe('cli observability (#78 / KI-225)', () => {
 
     expect(typeof handlers.uncaughtException).toBe('function');
     expect(typeof handlers.unhandledRejection).toBe('function');
+    expect(serveStdioMock).toHaveBeenCalledTimes(1);
+    // ENG-2176: server construction moved behind the serving entry's factory.
+    (serveStdioMock.mock.calls[0][0] as () => unknown)();
     expect(createServerMock).toHaveBeenCalledTimes(1);
-    expect(connectMock).toHaveBeenCalledTimes(1);
+    expect(connectMock).not.toHaveBeenCalled();
     expect(logMock.info).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'mcp_server_start',
@@ -98,7 +108,7 @@ describe('cli observability (#78 / KI-225)', () => {
     vi.doUnmock('../../logger.js');
     vi.doUnmock('../../server.js');
     vi.doUnmock('../../api-client.js');
-    vi.doUnmock('@modelcontextprotocol/sdk/server/stdio.js');
+    vi.doUnmock('@modelcontextprotocol/server/stdio');
   });
 
   it('prints the generic message for an AuthResolutionError with an unmapped code, then the !resolved guard re-exits (line 78)', async () => {

@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import {
@@ -25,13 +25,13 @@ export function registerGetCellHistoryTool(
         'computing this history. That is NOT an empty history — nothing is ' +
         'known yet; retry after the stated interval and never report an ' +
         'absence of changes from it.',
-      inputSchema: {
+      inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         sheetName: z.string().describe('Name of the worksheet'),
         cellAddress: z
           .string()
           .describe('Cell address (e.g. "A1", "B12", "Sheet1!C3")'),
-      },
+      }),
       annotations: {
         readOnlyHint: true,
         openWorldHint: false,

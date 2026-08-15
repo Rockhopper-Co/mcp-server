@@ -105,6 +105,8 @@ export class ApiClient {
   private readonly surface: string;
   private readonly sessionId: string;
   private drivingHumanPlatformId: string | null;
+  private authExpiredHandler?: () => void;
+  private authExpiredNotified = false;
 
   constructor(config: ApiClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, '');
@@ -125,6 +127,25 @@ export class ApiClient {
    */
   setDrivingHuman(platformId: string | null): void {
     this.drivingHumanPlatformId = platformId;
+  }
+
+  /**
+   * ENG-2208 — run `handler` the FIRST time this client sees a 401, and never
+   * again for the life of the client.
+   *
+   * A token that expires mid-session is silent today: the 401 becomes an error
+   * string inside a tool result, which the model reads and the human does not.
+   * The CLI registers a handler that writes one stderr line, and registers it
+   * only AFTER the `/users/me` preflight has succeeded — so a token that was
+   * already dead at launch takes the startup path (which exits with its own
+   * message) and can never double-report here.
+   *
+   * 401 only. A 403 is an authorisation answer about one resource, not a dead
+   * token, and telling a customer to re-mint their token over a permission
+   * denial sends them to fix the wrong thing.
+   */
+  setAuthExpiredHandler(handler: () => void): void {
+    this.authExpiredHandler = handler;
   }
 
   /**
@@ -217,6 +238,17 @@ export class ApiClient {
         },
         'api_request_failed',
       );
+      // ENG-2208: one-shot mid-session expiry notice (see
+      // {@link setAuthExpiredHandler}). Guarded on the handler existing so the
+      // "first 401" is the first one anybody is listening for.
+      if (
+        response.status === 401 &&
+        this.authExpiredHandler &&
+        !this.authExpiredNotified
+      ) {
+        this.authExpiredNotified = true;
+        this.authExpiredHandler();
+      }
       const body = await response.text().catch(() => '');
       if (notReady) {
         throw new ChangeHistoryNotReadyError({

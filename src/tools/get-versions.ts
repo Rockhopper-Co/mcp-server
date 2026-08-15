@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 
@@ -13,9 +13,9 @@ export function registerGetVersionsTool(
       description:
         'Get the version history for a specific enrolled file. ' +
         'Returns all version snapshots with semver numbering, timestamps, and attribution.',
-      inputSchema: {
+      inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
-      },
+      }),
       annotations: {
         readOnlyHint: true,
         openWorldHint: false,

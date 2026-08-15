@@ -23,15 +23,28 @@ vi.mock('../../resources/index.js', () => ({
   registerResources: registerResourcesMock,
 }));
 
+// ENG-2208: `createServer` now asks the tools module whether a scope grants
+// the write tools, so this mock must carry that export too — the real
+// allow-list is exercised in `tools.scope-gate.test.ts`.
 vi.mock('../../tools/index.js', () => ({
   registerTools: registerToolsMock,
+  grantsWriteTools: (scope?: string) => scope === 'read-write',
+  // ENG-2212: `createServer` resolves the granted families and builds the
+  // instructions from them. The real resolution is exercised in
+  // `tools.capability-gate.test.ts`; this stands in for it.
+  resolveCapabilities: (options?: { scope?: string; capabilities?: string[] }) =>
+    options?.capabilities !== undefined
+      ? options.capabilities
+      : options?.scope === 'read-write'
+        ? ['comments:write', 'reviews:write', 'versions:write', 'files:write']
+        : [],
 }));
 
 vi.mock('../../prompts/index.js', () => ({
   registerPrompts: registerPromptsMock,
 }));
 
-vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+vi.mock('@modelcontextprotocol/server', () => ({
   McpServer: mcpServerConstructor,
 }));
 
@@ -87,4 +100,31 @@ describe('createServer wiring', () => {
       { scope: 'read-only' },
     );
   });
+
+  // ENG-2208: the instructions text is the model's only description of what it
+  // may do. It has to agree with the gate — a scope that gets 7 tools must not
+  // be told nine write tools exist, or the model plans work it cannot perform.
+  it.each([
+    ['read-only', true],
+    ['admin', true],
+    [undefined, true],
+    ['read-write', false],
+  ])(
+    'declares read-only instructions for scope %s: %s',
+    async (scope, expectReadOnly) => {
+      const { createServer } = await import('../../server.js');
+      const apiClient = { any: 'client' } as any;
+
+      createServer(apiClient, scope === undefined ? undefined : { scope });
+
+      const [, opts] = mcpServerConstructor.mock.calls[0] as unknown as [
+        unknown,
+        { instructions: string },
+      ];
+      expect(opts.instructions.includes('token is read-only')).toBe(
+        expectReadOnly,
+      );
+      expect(opts.instructions.includes('add_comment')).toBe(!expectReadOnly);
+    },
+  );
 });

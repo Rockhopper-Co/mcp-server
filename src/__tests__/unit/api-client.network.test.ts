@@ -58,6 +58,70 @@ describe('ApiClient failure logging (KI-225)', () => {
     vi.unstubAllGlobals();
   });
 
+  // ENG-2208 — the mid-session expiry notice. Once, on the first 401 only:
+  // a token that dies during a session otherwise produces a stream of tool
+  // errors the human never sees, and repeating the line on every subsequent
+  // call would bury the stdio client's own output.
+  it('fires the auth-expired handler once, on the first 401 only', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      json: () => Promise.resolve({}),
+      text: () => Promise.resolve('Invalid token'),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const onExpired = vi.fn();
+    const client = makeClient();
+    client.setAuthExpiredHandler(onExpired);
+
+    await expect(client.getMe()).rejects.toThrow('Rockhopper API 401');
+    await expect(client.getMe()).rejects.toThrow('Rockhopper API 401');
+    await expect(client.getMe()).rejects.toThrow('Rockhopper API 401');
+
+    expect(onExpired).toHaveBeenCalledTimes(1);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('does not fire the auth-expired handler for a 403 or a 500', async () => {
+    for (const status of [403, 500]) {
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: false,
+        status,
+        statusText: 'Nope',
+        json: () => Promise.resolve({}),
+        text: () => Promise.resolve(''),
+      });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      const onExpired = vi.fn();
+      const client = makeClient();
+      client.setAuthExpiredHandler(onExpired);
+
+      await expect(client.getMe()).rejects.toThrow(`Rockhopper API ${status}`);
+      expect(onExpired, `status=${status}`).not.toHaveBeenCalled();
+
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('throws the same 401 error when no auth-expired handler is registered', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      json: () => Promise.resolve({}),
+      text: () => Promise.resolve('Invalid token'),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await expect(makeClient().getMe()).rejects.toThrow('Rockhopper API 401');
+
+    vi.unstubAllGlobals();
+  });
+
   it('builds the request path for the read methods (getTeam, listEnrolledFiles)', async () => {
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,

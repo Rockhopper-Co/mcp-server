@@ -1,5 +1,4 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ApiClient } from '../../api-client.js';
 import { createServer } from '../../server.js';
@@ -36,7 +35,10 @@ describe('MCP in-memory protocol e2e', () => {
       baseUrl: apiServerHandle.baseUrl,
       token: 'rh_pat_test_token',
     });
-    const server = createServer(apiClient);
+    // ENG-2208: the scope is now explicit. This suite exercises every tool
+    // including the writes, so it declares the read-write token it always
+    // implicitly assumed.
+    const server = createServer(apiClient, { scope: 'read-write' });
 
     const [clientTransport, serverTransport] =
       InMemoryTransport.createLinkedPair();
@@ -827,5 +829,71 @@ describe('MCP in-memory protocol e2e', () => {
     const text = JSON.stringify(result.messages);
     expect(text).toContain('comprehensive overview');
     expect(text).toContain('Budget.xlsx');
+  });
+});
+
+/**
+ * ENG-2208 — what a client actually sees in `tools/list` at each scope, over
+ * the real protocol rather than through the registrar's mock.
+ *
+ * The gate used to be `scope !== 'read-only'`, so every one of these cases
+ * except the explicit `read-only` string advertised all nine write tools.
+ */
+describe('tools/list is gated by the token scope (ENG-2208)', () => {
+  const READ_TOOLS = [
+    'get_cell_history',
+    'get_file_comments',
+    'get_file_versions',
+    'get_reviews',
+    'get_unattributed_changes',
+    'list_files',
+    'search_files',
+  ].sort();
+
+  async function toolNamesForScope(scope?: string): Promise<string[]> {
+    const handle = await startMockRockhopperApiServer();
+    const apiClient = new ApiClient({
+      baseUrl: handle.baseUrl,
+      token: 'rh_pat_test_token',
+    });
+    const server = createServer(
+      apiClient,
+      scope === undefined ? undefined : { scope },
+    );
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const scopedClient = new Client(
+      { name: 'scope-gate-test-client', version: '1.0.0' },
+      { capabilities: {} },
+    );
+    try {
+      await Promise.all([
+        server.connect(serverTransport),
+        scopedClient.connect(clientTransport),
+      ]);
+      const tools = await scopedClient.listTools();
+      return tools.tools.map((t) => t.name).sort();
+    } finally {
+      await scopedClient.close();
+      await stopMockRockhopperApiServer(handle.server);
+    }
+  }
+
+  it('shows 16 tools to a read-write token', async () => {
+    const names = await toolNamesForScope('read-write');
+    expect(names).toHaveLength(16);
+    expect(names).toContain('add_comment');
+  });
+
+  it('shows 7 tools to a read-only token', async () => {
+    expect(await toolNamesForScope('read-only')).toEqual(READ_TOOLS);
+  });
+
+  it('shows 7 tools for an unrecognised scope', async () => {
+    expect(await toolNamesForScope('some-future-scope')).toEqual(READ_TOOLS);
+  });
+
+  it('shows 7 tools when the scope is unknown', async () => {
+    expect(await toolNamesForScope()).toEqual(READ_TOOLS);
   });
 });

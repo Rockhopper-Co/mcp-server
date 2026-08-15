@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 
@@ -13,9 +13,9 @@ export function registerListFilesTool(
       description:
         'List all Excel files enrolled in the user\'s Rockhopper workspace. ' +
         'Optionally filter by search term matching file names.',
-      inputSchema: {
+      inputSchema: z.object({
         search: z.string().optional().describe('Search term to filter file names'),
-      },
+      }),
       annotations: {
         readOnlyHint: true,
         openWorldHint: false,
