@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { ApiClient } from './api-client.js';
 import {
   AuthResolutionError,
@@ -83,8 +83,19 @@ const apiClient = new ApiClient({
   token: resolved.accessToken,
 });
 
+// ENG-2208: the scope the token reports about ITSELF (ENG-2205 put it on the
+// preflight response). Left undefined by a backend older than that, and by any
+// non-PAT principal — both of which the allow-list in `tools/index.ts` denies.
+let patScope: string | undefined;
+// ENG-2212: the write families the token actually holds. Absent against a
+// backend older than ENG-2211, which is why `patScope` is still read — absent
+// means "the backend said nothing", and the coarse scope decides.
+let patCapabilities: string[] | undefined;
+
 try {
   const me = await apiClient.getMe();
+  patScope = me?.patScope;
+  patCapabilities = me?.patScopes;
   // ENG-1756 (plan §9 decision 15): the PAT owner IS the human driving this
   // local agent — reuse the preflight to declare them, so every write carries
   // `X-Driving-Human` and the backend's anonymous-agent-write admission
@@ -122,10 +133,55 @@ try {
   process.exit(1);
 }
 
-const server = createServer(apiClient);
+// ENG-2208: the preflight succeeded, so from here a 401 means the token died
+// mid-session. Report it once on stderr — the only channel a stdio server has
+// to the human — instead of leaving it as an error string inside a tool result
+// that only the model ever reads.
+apiClient.setAuthExpiredHandler(() => {
+  log.warn({ event: 'auth_failed', reason: 'expired_mid_session' }, 'auth_failed');
+  console.error(
+    'Error: Rockhopper rejected the token (401) — it expired or was revoked after this server started. ' +
+      'Create a new Personal Access Token in Rockhopper Settings and restart this MCP server.',
+  );
+});
+
+// ENG-2208: register only what this token may do. `createServer(apiClient)` —
+// one argument — used to register all nine write tools for every launch, so a
+// read-only token advertised writes it could not perform and the customer's
+// scope choice surfaced as a 403 rendered into tool text.
+//
+// ENG-2176: a FACTORY now, not one instance. `serveStdio` owns the era
+// decision for the connection and calls this per connection — plus once more
+// for a `server/discover` probe it discards if the client falls back to
+// `initialize`. Each call must therefore hand back a fresh server.
+//
+// ENG-2212: the FAMILIES ride along. When the backend serves them they decide
+// which registrars run, one per family, so a token granted `comments:write`
+// alone no longer receives `discard_changes`.
+const buildServer = () =>
+  createServer(apiClient, { scope: patScope, capabilities: patCapabilities });
 
 // KI-225: one line per launch — anchors a session in the file.
-log.info({ event: 'mcp_server_start', version: serviceVersion }, 'mcp_server_start');
+log.info(
+  {
+    event: 'mcp_server_start',
+    version: serviceVersion,
+    scope: patScope ?? 'unknown',
+    capabilities: patCapabilities ?? 'unknown',
+  },
+  'mcp_server_start',
+);
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+// ENG-2176: `serveStdio`, not `new StdioServerTransport()` + `connect`. The
+// modern (2026-07-28) handlers — `server/discover`, and adding `2026-07-28`
+// to the instance's supported-versions list — are installed by the SERVING
+// ENTRY, never by the server object: the SDK's default
+// `SUPPORTED_PROTOCOL_VERSIONS` names only 2025-era revisions, so a
+// hand-connected server answers `server/discover` with `-32601` forever.
+// `legacy: 'serve'` (the default) keeps a 2025-era client working unchanged —
+// it pins the connection to a 2025 instance from this same factory.
+serveStdio(buildServer, {
+  onerror: (err) => {
+    log.error({ event: 'stdio_serving_error', err }, 'stdio_serving_error');
+  },
+});

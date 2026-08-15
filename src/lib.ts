@@ -12,12 +12,29 @@
  * with their own transport (HTTP, in-memory, etc.).
  *
  * Stable API surface (semver-bound):
- *   - `createServer(apiClient): McpServer`
+ *   - `createServer(apiClient, options?): McpServer`
+ *   - `grantsWriteTools(scope)` — the write allow-list (ENG-2208), exported so
+ *     the gateway asks the same question instead of writing a second copy of
+ *     the rule that would drift from this one.
+ *   - `PAT_CAPABILITIES`, `WRITE_TOOLS_BY_CAPABILITY`, `PENDING_WRITE_TOOLS`
+ *     and `resolveCapabilities` (ENG-2212) — the four write families, which
+ *     tools each covers, and how a grant is resolved. Exported for the same
+ *     reason: the gateway has to answer "which family does this tool need"
+ *     BEFORE it builds a server, and a hand-copied list drifts.
  *   - `ApiClient` (class) and `ApiClientConfig` (interface)
  *   - All `types` (Team, EnrolledFile, FileVersion, ...)
  */
 
 export { createServer } from './server.js';
-export { type RegisterToolsOptions } from './tools/index.js';
+export {
+  grantsWriteTools,
+  resolveCapabilities,
+  registeredToolsForCapabilities,
+  PAT_CAPABILITIES,
+  PENDING_WRITE_TOOLS,
+  WRITE_TOOLS_BY_CAPABILITY,
+  type PatCapability,
+  type RegisterToolsOptions,
+} from './tools/index.js';
 export { ApiClient, type ApiClientConfig } from './api-client.js';
 export * from './types.js';

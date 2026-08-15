@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import type { FileChat } from '../types.js';
@@ -26,9 +26,9 @@ export function registerGetCommentsTool(
       description:
         'Get all comments and discussion threads on an enrolled file. ' +
         'Includes cell references, resolution status, and threaded replies.',
-      inputSchema: {
+      inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
-      },
+      }),
       annotations: {
         readOnlyHint: true,
         openWorldHint: false,

@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { assertChangeHistoryComplete } from '../not-ready.js';
@@ -10,9 +10,9 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
       title: 'Summarize Recent Changes',
       description:
         'Summarize recent version changes and unattributed edits for an enrolled file.',
-      argsSchema: {
+      argsSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
-      },
+      }),
     },
     async ({ fileMsId }) => {
       // Plan 02 ruling 5 (STRICT) — a prompt is the highest-risk surface: its
@@ -71,9 +71,9 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
       title: 'Pending Reviews',
       description:
         'Show all pending review requests for the latest version of a file.',
-      argsSchema: {
+      argsSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
-      },
+      }),
     },
     async ({ fileMsId }) => {
       const [file, reviews] = await Promise.all([
@@ -116,9 +116,9 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
     {
       title: 'Unresolved Comments',
       description: 'List all unresolved comments on a file for follow-up.',
-      argsSchema: {
+      argsSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
-      },
+      }),
     },
     async ({ fileMsId }) => {
       const [file, comments] = await Promise.all([
@@ -164,9 +164,9 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
       title: 'File Overview',
       description:
         'Get a comprehensive overview of an enrolled file — versions, comments, reviews, and changes.',
-      argsSchema: {
+      argsSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
-      },
+      }),
     },
     async ({ fileMsId }) => {
       // Plan 02 ruling 5 (STRICT) — this prompt reports a change COUNT, which

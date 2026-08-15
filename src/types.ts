@@ -54,6 +54,25 @@ export interface UserSummary {
    */
   msId?: string | null;
   googleId?: string | null;
+  /**
+   * ENG-2205 — the presenting token's own scope, served on `/users/me` and
+   * ONLY when the caller authenticated with a Personal Access Token. The
+   * token value itself is never returned.
+   *
+   * Known values are `'read-only'` and `'read-write'`, but the column is a
+   * `varchar(20)` and the vocabulary is about to widen (ENG-2211), so this is
+   * typed as a bare string: whatever decides what a scope may do must treat an
+   * unknown value as granting nothing. Absent against a backend older than
+   * ENG-2205, which is also "grants nothing".
+   */
+  patScope?: string;
+  /**
+   * ENG-2205 — the write families the token holds, e.g. `comments:write`.
+   * Derived from `patScope` today; ENG-2211 makes it the source of truth.
+   */
+  patScopes?: string[];
+  /** ENG-2205 — ISO-8601 expiry of the presenting token, or null if it never expires. */
+  patExpiresAt?: string | null;
 }
 
 export interface Workspace {

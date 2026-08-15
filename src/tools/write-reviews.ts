@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 
@@ -74,7 +74,7 @@ export function registerWriteReviewTools(
         'record with both an "id" (uuid) and an "internalId" (number); use it to ' +
         'resolve platform IDs (msId / googleId) to a reviewer ID first. ' +
         'The numeric form is accepted until 2027-09-14 and removed after — send the uuid.',
-      inputSchema: {
+      inputSchema: z.object({
         versionId: z
           .number()
           .describe('Internal ID of the file version to review'),
@@ -97,7 +97,7 @@ export function registerWriteReviewTools(
               'two spellings can be mixed in one array. The numeric form is ' +
               'accepted until 2027-09-14 and removed after.',
           ),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -145,14 +145,14 @@ export function registerWriteReviewTools(
       title: 'Approve Review',
       description:
         'Approve a review request. Only assigned reviewers can approve.',
-      inputSchema: {
+      inputSchema: z.object({
         reviewId: z.number().describe('ID of the review request to approve'),
         notes: z
           .string()
           .max(5000)
           .optional()
           .describe('Optional approval notes'),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -194,11 +194,11 @@ export function registerWriteReviewTools(
       description:
         'Cancel a pending review request. Only the requester can cancel. ' +
         'The review must be in "pending" status — completed or already-cancelled reviews cannot be cancelled.',
-      inputSchema: {
+      inputSchema: z.object({
         reviewId: z
           .number()
           .describe('ID of the review request to cancel'),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,

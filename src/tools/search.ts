@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import {
@@ -19,7 +19,7 @@ export function registerSearchTool(
         'Search enrolled files by name (default), comment text, version ' +
         'descriptions, or all of the above. Returns matching files with ' +
         'their metadata including uncommitted change status.',
-      inputSchema: {
+      inputSchema: z.object({
         query: z.string().describe('Search query'),
         matchIn: z
           .enum(['name', 'comments', 'versions', 'all'])
@@ -29,7 +29,7 @@ export function registerSearchTool(
               '"comments" (comment text on the file), "versions" (committed ' +
               'version descriptions), or "all" (any of the above).',
           ),
-      },
+      }),
       annotations: {
         readOnlyHint: true,
         openWorldHint: false,
@@ -89,7 +89,7 @@ export function registerSearchTool(
         'Answers CHANGE_HISTORY_NOT_READY (isError) while Rockhopper is still ' +
         "computing this file's changes. That is NOT \"no changes\" — retry " +
         'after the stated interval instead of reporting an absence.',
-      inputSchema: {
+      inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         sheetName: z
           .string()
@@ -108,7 +108,7 @@ export function registerSearchTool(
               'cursors return an SNAPSHOT_EXPIRED error and the caller must ' +
               'restart from the first page.',
           ),
-      },
+      }),
       annotations: {
         readOnlyHint: true,
         openWorldHint: false,

@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
 import { registerFileResources } from './files.js';
 import { registerVersionResources } from './versions.js';
