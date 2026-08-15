@@ -143,7 +143,8 @@ npm run generate:postman
 | `get_file_comments` | Get comments and threaded discussions on a file |
 | `get_reviews` | Get review requests for a version or file |
 | `get_cell_history` | Get change history for a specific cell across versions |
-| `search_files` | Search enrolled files by name |
+| `search_files` | Search files **already enrolled** in Rockhopper, by name |
+| `search_drive_files` | Find a workbook in the user's own OneDrive / SharePoint, including files Rockhopper has never seen; returns candidates to confirm with the user before `enroll_file` |
 | `get_unattributed_changes` | Get pending cell changes not yet committed to a version |
 
 ## Available Resources

@@ -189,6 +189,66 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    // --- Microsoft Graph link (ENG-2198) ---
+    // The authorize URL is built SERVER-side and relayed verbatim. Nothing the
+    // caller sends can influence it, which is why the route takes no body.
+    if (method === 'POST' && path === '/auth/microsoft/connect') {
+      sendJson(res, 201, {
+        authorizeUrl:
+          'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=real-client',
+        expiresAt: '2026-08-15T21:00:00.000Z',
+      });
+      return;
+    }
+
+    // --- Drive discovery (ENG-2203 / ENG-2204) ---
+    // Keyed on the search terms, so one mock covers every outcome and the e2e
+    // spec reads as the conversation it is testing. `unlinked` selects the
+    // no-delegated-token refusal; `nothing` the empty answer.
+    if (method === 'GET' && path === '/drive-files/search') {
+      const q = new URLSearchParams(queryString).get('q') ?? '';
+      if (q.includes('unlinked')) {
+        sendJson(res, 403, {
+          statusCode: 403,
+          message: 'Connect a Microsoft account to search your files',
+          code: 'NO_DELEGATED_TOKEN',
+          reason: 'not_linked',
+        });
+        return;
+      }
+      sendJson(res, 200, {
+        scope: new URLSearchParams(queryString).get('scope') ?? 'search',
+        items: q.includes('nothing')
+          ? []
+          : [
+              {
+                msId: 'ms-item-9',
+                driveMsId: 'drive-9',
+                name: 'Becklar_RMR_Model.xlsx',
+                webUrl: 'https://contoso.sharepoint.com/:x:/r/sites/fin/a.xlsx',
+                lastModifiedAt: '2026-08-01T10:00:00Z',
+                size: 120_000,
+                parentPath: '/Finance/Models',
+                enrollmentState: 'not_enrolled',
+              },
+              {
+                // ENG-1647's trap, kept in the fixture on purpose: a second
+                // file whose name also matches. A correct flow asks; the
+                // failure being fixed answered "already enrolled" about this.
+                msId: 'ms-item-10',
+                driveMsId: 'drive-9',
+                name: 'Becklar_RMR_Model_OLD.xlsx',
+                webUrl: 'https://contoso.sharepoint.com/:x:/r/sites/fin/b.xlsx',
+                lastModifiedAt: '2025-02-01T10:00:00Z',
+                size: 90_000,
+                parentPath: '/Finance/Archive',
+                enrollmentState: 'enrolled',
+              },
+            ],
+      });
+      return;
+    }
+
     // --- Enrollment (ENG-2200) ---
     // Keyed on the URL the client sends, so one mock covers every outcome and
     // the e2e spec reads as the conversation it is testing.
