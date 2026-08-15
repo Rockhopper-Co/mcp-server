@@ -36,6 +36,26 @@ export interface TeamMember {
   createdAt: string;
 }
 
+/**
+ * ENG-2198 — the delegated Microsoft Graph grant, as the backend reports it.
+ * Carries no token material by design: the refresh token lives encrypted in
+ * the backend and is never served to any client, this package included.
+ */
+export interface MicrosoftLinkStatus {
+  linked: boolean;
+  msAccountLabel: string | null;
+  msTenantId: string | null;
+  grantedScopes: string[];
+  linkedAt: string | null;
+  lastUsedAt: string | null;
+}
+
+/** The server-constructed consent URL for the user to open. */
+export interface MicrosoftConnectHandoff {
+  authorizeUrl: string;
+  expiresAt: string;
+}
+
 export interface UserSummary {
   /**
    * Version-7 uuid (ENG-1966) — the spelling to pass as a reviewer id.
