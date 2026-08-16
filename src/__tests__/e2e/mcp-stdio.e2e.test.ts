@@ -71,4 +71,137 @@ describe('MCP stdio protocol e2e', () => {
     },
     30_000,
   );
+
+  /**
+   * ENG-2175 — the SDK moved from v1 to the v2 split packages. A connected
+   * client must see no difference on the wire, so the negotiated protocol
+   * version is pinned here: v2's `LATEST_PROTOCOL_VERSION` is `2025-11-25`,
+   * the same as v1 1.30.0. Serving 2026-07-28 is ENG-2176, not this move.
+   */
+  it.each(['2025-11-25', '2024-11-05'])(
+    'negotiates %s unchanged on the v2 SDK',
+    async (requested) => {
+      const { server, baseUrl } = await startMockRockhopperApiServer();
+      const client = new McpStdioClient();
+
+      try {
+        await client.start(
+          {
+            ROCKHOPPER_API_URL: baseUrl,
+            ROCKHOPPER_TOKEN: 'rh_pat_test_token',
+          },
+          requested,
+        );
+
+        const init = client.initializeResponse;
+        expect(init?.error).toBeUndefined();
+        const result = init?.result as {
+          protocolVersion: string;
+          serverInfo: { name: string };
+          capabilities: Record<string, unknown>;
+        };
+        expect(result.protocolVersion).toBe(requested);
+        expect(result.serverInfo.name).toBe('rockhopper');
+        // Measured on v1 1.30.0 with the same registrations: exactly these
+        // three. `completions` is advertised only when a prompt arg is
+        // `completable()` or a resource template carries a complete callback,
+        // and this server uses neither — same gate in both SDK lines.
+        expect(Object.keys(result.capabilities).sort()).toEqual([
+          'prompts',
+          'resources',
+          'tools',
+        ]);
+      } finally {
+        await client.stop();
+        await stopMockRockhopperApiServer(server);
+      }
+    },
+    30_000,
+  );
+});
+
+/**
+ * ENG-2208 — the stdio launch path end to end: the real `cli.ts` subprocess
+ * runs its `/users/me` preflight against the mock API, reads `patScope` off
+ * the response (ENG-2205), and registers only what that scope allows.
+ *
+ * Before this, `cli.ts:125` called `createServer(apiClient)` with one
+ * argument, so all four cases below advertised all nine write tools.
+ */
+describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
+  async function toolNames(
+    patScope: string | null,
+    patScopes?: string[] | null,
+  ): Promise<string[]> {
+    const { server, baseUrl } = await startMockRockhopperApiServer({
+      patScope,
+      patScopes,
+    });
+    const client = new McpStdioClient();
+    try {
+      await client.start({
+        ROCKHOPPER_API_URL: baseUrl,
+        ROCKHOPPER_TOKEN: 'rh_pat_test_token',
+      });
+      const listed = await client.listTools();
+      expect(listed.error).toBeUndefined();
+      const { tools } = listed.result as { tools: Array<{ name: string }> };
+      return tools.map((t) => t.name).sort();
+    } finally {
+      await client.stop();
+      await stopMockRockhopperApiServer(server);
+    }
+  }
+
+  it.each([
+    ['read-write', 16],
+    ['read-only', 7],
+    // An unrecognised scope value, and a backend too old to serve the field
+    // at all (`null` omits it) — both deny, where both used to grant.
+    ['some-future-scope', 7],
+    [null, 7],
+  ])('serves %s a tools/list of %i tools', async (patScope, expected) => {
+    const names = await toolNames(patScope);
+    expect(names).toHaveLength(expected);
+    expect(names.includes('add_comment')).toBe(expected === 16);
+    expect(names).toContain('list_files');
+  }, 30_000);
+
+  /**
+   * ENG-2212 — the families the token reports decide the surface, through the
+   * real `cli.ts` preflight. The coarse scope reads `read-write` for any
+   * non-empty grant, so before this the token below received all nine write
+   * tools including `discard_changes`.
+   */
+  it(
+    'serves a narrowed token only the family it holds',
+    async () => {
+      const names = await toolNames('read-write', ['comments:write']);
+      expect(names.sort()).toEqual(
+        [
+          'add_comment',
+          'get_cell_history',
+          'get_file_comments',
+          'get_file_versions',
+          'get_reviews',
+          'get_unattributed_changes',
+          'list_files',
+          'reply_to_comment',
+          'resolve_comment',
+          'search_files',
+        ].sort(),
+      );
+      expect(names).not.toContain('discard_changes');
+    },
+    30_000,
+  );
+
+  it(
+    'falls back to the coarse scope when the backend serves no families',
+    async () => {
+      // A backend older than ENG-2211 omits `patScopes` entirely.
+      expect(await toolNames('read-write', null)).toHaveLength(16);
+    },
+    30_000,
+  );
 });

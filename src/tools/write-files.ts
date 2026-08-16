@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 
@@ -12,10 +12,10 @@ export function registerWriteFileTool(
       title: 'Rename File',
       description:
         'Rename an enrolled file. The new name is the display name shown across Rockhopper.',
-      inputSchema: {
+      inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         name: z.string().min(1).max(255).describe('New name for the file'),
-      },
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,

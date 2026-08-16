@@ -1,0 +1,80 @@
+name: epic branch
+
+# ENG-2503 — the merge gate for long-lived `epic/**` branches.
+#
+# WHY THIS EXISTS. Agents build an epic in parallel worktrees cut from one base.
+# Each branch validates locally and is genuinely green. The break appears only
+# where two of them MEET — a widened required field against a hand-built literal,
+# a route deleted under a test that used it — and git merges those cleanly, so
+# only a compile or a test run finds them. Since 2026-07-31 every gate in this
+# repo runs on production only (`ci.yml`, `pull_request: branches: [main]` plus
+# `push: main`), which means a merge into an epic branch runs NOTHING. The next
+# agent inherits the failure and reasonably reads it as their own. That happened
+# five times in the week of 2026-08-11.
+#
+# WHAT IT IS FOR. Making a red epic branch announce itself. It is informational
+# by design: no branch protection, no required check, nothing blocks a merge.
+#
+# TRIGGER, NOT A JOB-LEVEL `if:` — the reasoning ci.yml states in its own header:
+# a job-level condition still creates the run and posts skipped checks on every
+# pull request, which is what the CI-budget decision was avoiding. `push` only.
+# Adding `pull_request` would double every run, because the merge that closes
+# the pull request is itself a push to `epic/**`.
+on:
+  push:
+    branches: ['epic/**']
+  workflow_dispatch:
+
+# A busy epic branch takes several merges an hour. Without this, each queues a
+# run nobody is waiting on any more.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    # No job should be able to ride GitHub's 6-hour default ceiling. Measured
+    # locally on the epic branch 2026-08-14: 304 tests across 27 files in 7.8s.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # .nvmrc is the source of truth here (20); `engines` says >=20.0.0.
+          # Do not copy another repo's pin — backend needs 22.
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci`, not `npm install`: a lockfile that two merged branches have
+      # both edited is exactly the collision this gate is looking for, and
+      # `npm install` silently heals it.
+      - name: Install dependencies (strict)
+        run: npm ci --no-audit --no-fund
+
+      # ci.yml leaves this commented out ("TODO(mcp): wire eslint"). It is
+      # included here because it is green on the epic branch today (measured
+      # 2026-08-14, exit 0) and costs seconds. If it ever reds for a reason that
+      # is not the branch's fault, delete this step — do NOT touch ci.yml.
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # `npm test` is the whole vitest run, including `src/__tests__/e2e`. That
+      # is deliberate and is not the e2e class the standing rule excludes: these
+      # specs drive the server in-process or over stdio against a mock
+      # Rockhopper API (`src/__tests__/e2e/harness/`), with no containers, no
+      # database and no network. They are also where a deleted or renamed tool
+      # surfaces, which is the collision this gate is for.
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

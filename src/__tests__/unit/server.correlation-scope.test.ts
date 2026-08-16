@@ -19,7 +19,20 @@ const logMock = {
 
 vi.mock('../../logger.js', () => ({ log: logMock, serviceVersion: '0.0.0-test' }));
 vi.mock('../../resources/index.js', () => ({ registerResources: vi.fn() }));
-vi.mock('../../tools/index.js', () => ({ registerTools: vi.fn() }));
+vi.mock('../../tools/index.js', () => ({
+  registerTools: vi.fn(),
+  // ENG-2208: `createServer` asks the tools module which scopes grant writes.
+  grantsWriteTools: (scope?: string) => scope === 'read-write',
+  // ENG-2212: `createServer` resolves the granted families and builds the
+  // instructions from them. The real resolution is exercised in
+  // `tools.capability-gate.test.ts`; this stands in for it.
+  resolveCapabilities: (options?: { scope?: string; capabilities?: string[] }) =>
+    options?.capabilities !== undefined
+      ? options.capabilities
+      : options?.scope === 'read-write'
+        ? ['comments:write', 'reviews:write', 'versions:write', 'files:write']
+        : [],
+}));
 vi.mock('../../prompts/index.js', () => ({ registerPrompts: vi.fn() }));
 
 // Each construction returns a FRESH server whose original `registerTool` records
@@ -28,7 +41,7 @@ vi.mock('../../prompts/index.js', () => ({ registerPrompts: vi.fn() }));
 // `__recorded[i].cb` is the wrapper we then invoke directly. A fresh instance
 // per call avoids the "wrapper wraps the previous wrapper" trap a shared
 // singleton would hit across `createServer` calls.
-vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+vi.mock('@modelcontextprotocol/server', () => ({
   McpServer: vi.fn(function () {
     const recorded: Array<{
       name: string;

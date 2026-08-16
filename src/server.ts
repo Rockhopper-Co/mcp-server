@@ -1,10 +1,15 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { ApiClient } from './api-client.js';
 import { runWithCorrelationId } from './correlation.js';
 import { log, serviceVersion } from './logger.js';
 import { registerPrompts } from './prompts/index.js';
 import { registerResources } from './resources/index.js';
-import { registerTools, type RegisterToolsOptions } from './tools/index.js';
+import {
+  registerTools,
+  resolveCapabilities,
+  type RegisterToolsOptions,
+} from './tools/index.js';
+import { buildInstructions } from './instructions.js';
 
 /**
  * Phase 1.1 / KI-226 + Phase 1.5 / KI-225 — wrap every tool handler once.
@@ -57,11 +62,58 @@ function installCorrelationScope(server: McpServer): void {
   }) as typeof server.registerTool;
 }
 
+/**
+ * ENG-2176 — what we tell a 2026-07-28 client it may cache, and for how long.
+ *
+ * The SDK requires `ttlMs` + `cacheScope` on every cacheable result and fills
+ * them with `{ ttlMs: 0, cacheScope: 'private' }` when we say nothing. These
+ * are the places where saying nothing is worse than deciding.
+ *
+ * **Everything is `private`, and that is not laziness.** One URL serves every
+ * principal, and two of these results already differ per principal: the tool
+ * list withholds the nine write tools from a read-only token
+ * (`tools/index.ts` `grantsWriteTools`), and `server/discover` returns
+ * scope-dependent `instructions` (below). A shared cache keyed on the URL
+ * would hand one token's surface to another. `public` on the currently
+ * uniform lists would also be a bet that they stay uniform — and the tool
+ * list shows that bet already lost once.
+ *
+ * TTL is where the actual win is, so that is what varies:
+ *
+ * - `tools/list` — five minutes. The set is fixed for a process and changes
+ *   only when the presenting token's scope changes. A stale list is bounded
+ *   and harmless: scope is re-enforced on every call, so a tool that has gone
+ *   away answers method-not-found rather than running.
+ * - `prompts/list` / `resources/list` / `resources/templates/list` — an hour.
+ *   These are the static REGISTRATION sets (never the contents), identical
+ *   for the life of the process; `registerPrompts` and `registerResources`
+ *   take no scope and branch on nothing.
+ * - `server/discover` — an hour. Server identity, capabilities and supported
+ *   versions are constant per process.
+ *
+ * `resources/read` is deliberately ABSENT, keeping the SDK's `ttlMs: 0`.
+ * Its results are live collaborative data — another user committing a version
+ * changes the answer — and we publish no invalidation signal, so any non-zero
+ * TTL would serve a stale review surface with nothing to correct it.
+ */
+const CACHE_HINTS = {
+  'tools/list': { ttlMs: 5 * 60 * 1000, cacheScope: 'private' },
+  'prompts/list': { ttlMs: 60 * 60 * 1000, cacheScope: 'private' },
+  'resources/list': { ttlMs: 60 * 60 * 1000, cacheScope: 'private' },
+  'resources/templates/list': { ttlMs: 60 * 60 * 1000, cacheScope: 'private' },
+  'server/discover': { ttlMs: 60 * 60 * 1000, cacheScope: 'private' },
+} as const;
+
 export function createServer(
   apiClient: ApiClient,
   options?: RegisterToolsOptions,
 ): McpServer {
-  const readOnly = options?.scope === 'read-only';
+  // ENG-2208 / ENG-2212: derived from the SAME resolution that decides which
+  // registrars run, so the instructions can never advertise a write tool the
+  // model has not been given. `=== 'read-only'` used to answer this
+  // separately, and an unrecognised scope was told nine write tools existed;
+  // a coarse boolean then told a `comments:write` token the same nine.
+  const capabilities = resolveCapabilities(options);
 
   const server = new McpServer(
     {
@@ -71,19 +123,10 @@ export function createServer(
       version: serviceVersion,
     },
     {
-      instructions: readOnly
-        ? 'Rockhopper MCP server for reading Excel file metadata. ' +
-          'Use list_files first to discover available files, then drill into ' +
-          'versions, comments, reviews, or cell history. ' +
-          'This token is read-only — write operations are not available. ' +
-          'File IDs use the platformId field (e.g. from list_files output).'
-        : 'Rockhopper MCP server for managing Excel file metadata. ' +
-          'Use list_files first to discover available files, then drill into ' +
-          'versions, comments, reviews, or cell history. Write operations ' +
-          '(add_comment, reply_to_comment, resolve_comment, create_review_request, ' +
-          'approve_review, cancel_review, create_version, discard_changes, ' +
-          'rename_file) require a read-write scoped token. ' +
-          'File IDs use the platformId field (e.g. from list_files output).',
+      instructions: buildInstructions(capabilities),
+      // Consumed only by the 2026-07-28 encode seam; the 2025-era codec has
+      // no cache path, so this cannot change what a 2025 client sees.
+      cacheHints: CACHE_HINTS,
     },
   );
 

@@ -70,9 +70,42 @@ const sampleReview = {
   },
 };
 
+/** ENG-2205: what `/users/me` reports about the presenting token. */
+export interface MockApiOptions {
+  /**
+   * Served as `patScope`. Defaults to `read-write` — the scope the pre-ENG-2208
+   * suite implicitly assumed when the CLI registered every write tool
+   * unconditionally. Pass `null` to omit the field, which is what a backend
+   * older than ENG-2205 answers.
+   */
+  patScope?: string | null;
+  /**
+   * ENG-2212: served as `patScopes` — the write families the token holds.
+   *
+   * Defaults to every family for a `read-write` scope and none otherwise,
+   * which is the only pairing the backend can produce: `scopeForCapabilities`
+   * writes `read-write` exactly when the array is non-empty. The fixture used
+   * to serve `patScopes: []` ALONGSIDE `read-write`, and once the package
+   * started reading the families that combination registered zero write tools
+   * — a state no real token can be in.
+   *
+   * Pass `null` to omit the field, which is what a backend older than
+   * ENG-2211 answers.
+   */
+  patScopes?: string[] | null;
+}
+
+const ALL_WRITE_CAPABILITIES = [
+  'comments:write',
+  'reviews:write',
+  'versions:write',
+  'files:write',
+];
+
 export function handleMockRockhopperRequest(
   req: IncomingMessage,
   res: ServerResponse,
+  options?: MockApiOptions,
 ): void {
   void (async () => {
     const { url = '', method = 'GET' } = req;
@@ -80,7 +113,28 @@ export function handleMockRockhopperRequest(
 
     // --- Users ---
     if (method === 'GET' && path === '/users/me') {
-      sendJson(res, 200, { internalId: 1, firstName: 'Alice', lastName: 'Liddell' });
+      const patScope =
+        options?.patScope === undefined ? 'read-write' : options.patScope;
+      const patScopes =
+        options?.patScopes === undefined
+          ? patScope === 'read-write'
+            ? ALL_WRITE_CAPABILITIES
+            : []
+          : options.patScopes;
+      sendJson(res, 200, {
+        internalId: 1,
+        firstName: 'Alice',
+        lastName: 'Liddell',
+        // ENG-2205 serves these only for a PAT-authenticated caller; every
+        // e2e launch here presents `rh_pat_test_token`.
+        ...(patScope === null
+          ? {}
+          : {
+              patScope,
+              patExpiresAt: null,
+              ...(patScopes === null ? {} : { patScopes }),
+            }),
+      });
       return;
     }
 

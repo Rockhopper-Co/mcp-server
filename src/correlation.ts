@@ -11,9 +11,8 @@ import { randomUUID } from 'node:crypto';
  * traceable as a group in backend logs.
  *
  * The id is a non-sensitive UUID v4 — never co-log the bearer token with it.
- * `randomUUID` comes from `node:crypto` (NOT the global `crypto`) because the
- * package supports Node 18, where global `crypto.randomUUID` is not
- * guaranteed.
+ * `randomUUID` comes from `node:crypto` (NOT the global `crypto`): the explicit
+ * import is the portable form and does not depend on the global being present.
  */
 const als = new AsyncLocalStorage<string>();
 
