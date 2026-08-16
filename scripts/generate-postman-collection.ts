@@ -21,6 +21,7 @@ import { z } from 'zod';
 import { registerPrompts } from '../src/prompts/index.js';
 import { registerResources } from '../src/resources/index.js';
 import { registerTools } from '../src/tools/index.js';
+import { PAT_CAPABILITIES } from '../src/capabilities.js';
 
 // MCP SDK v2: `inputSchema` / `argsSchema` are Zod objects, not the raw
 // `{ field: schema }` record v1 accepted. Only the names are read here.
@@ -68,7 +69,16 @@ class CapturingServer {
 const server = new CapturingServer();
 const api = {} as never;
 
-registerTools(server as never, api);
+// ENG-2598: ask for EVERY family explicitly.
+//
+// This collection documents the tool surface an integrator can call, so it
+// must enumerate all of it. Before ENG-2208 the omitted-options case was
+// fail-OPEN and handed back all 16 tools by accident; that gate is now an
+// allow-list, so the same call silently produced the 7 read tools and the
+// committed collection went stale against it. Passing the full set states
+// the intent the old call only ever had by luck — and if a new family is
+// added, `PAT_CAPABILITIES` carries it here with no edit to this script.
+registerTools(server as never, api, { capabilities: PAT_CAPABILITIES });
 registerResources(server as never, api);
 registerPrompts(server as never, api);
 
