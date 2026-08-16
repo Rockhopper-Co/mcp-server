@@ -261,6 +261,38 @@ describe('refusals name the remedy, not just the status', () => {
     expect(result.content[0].text).toContain('connect_microsoft');
   });
 
+  /**
+   * ENG-2578 — the RESOLVE step now refuses an unlinked session too, not just
+   * the enroll step above. The route stopped resolving on a tenant-wide
+   * application credential, so a session with no linked Microsoft account
+   * cannot look a link up at all. Same remedy, one step earlier: nothing is
+   * written, and the assistant is sent to `connect_microsoft` rather than
+   * being handed a name it should never have seen.
+   */
+  it('sends an unlinked session to connect_microsoft when the RESOLVE is refused', async () => {
+    const api = createMockApiClient();
+    api.resolveEnrollmentUrl.mockRejectedValue(apiError(403, 'ACCESS_UNPROVEN'));
+    const result = await handlerFor(api)({ url: URL, share_with: 'me' });
+
+    expect(outcomeOf(result)).toBe('access_unproven');
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('connect_microsoft');
+    // Nothing was written: the refusal lands before any enroll call.
+    expect(api.createEnrolledFile).not.toHaveBeenCalled();
+  });
+
+  it('sends a stale Microsoft sign-in to connect_microsoft when the RESOLVE is refused', async () => {
+    const api = createMockApiClient();
+    api.resolveEnrollmentUrl.mockRejectedValue(
+      apiError(403, 'MS_SIGN_IN_REQUIRED'),
+    );
+    const result = await handlerFor(api)({ url: URL, share_with: 'me' });
+
+    expect(outcomeOf(result)).toBe('access_unproven');
+    expect(result.content[0].text).toContain('connect_microsoft');
+    expect(api.createEnrolledFile).not.toHaveBeenCalled();
+  });
+
   it('refuses a Google link as unsupported_provider, without asking for another', async () => {
     const api = createMockApiClient();
     api.resolveEnrollmentUrl.mockRejectedValue(
