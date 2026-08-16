@@ -448,6 +448,24 @@ export class ApiClient {
    * can tell `already_enrolled` from `hidden` from `not_enrolled` — the
    * discrimination ENG-1647 lacked, where a name-substring search matched a
    * different file and the assistant reported "already enrolled" about it.
+   *
+   * ENG-2578 — IT NOW NEEDS A LINKED MICROSOFT ACCOUNT, and no code change here
+   * was needed to get one. The route used to resolve on a tenant-wide
+   * application credential, which told any caller in the tenant a file's name
+   * and whether Rockhopper held it, for files in sites they cannot open. It now
+   * resolves on the caller's own delegated Graph token.
+   *
+   * `X-MS-Graph-Token` is deliberately NOT sent and cannot be, exactly as for
+   * {@link createEnrolledFile}: this package holds no delegated Microsoft
+   * assertion. The backend's second rung covers us — it mints a delegated token
+   * from the grant `connect_microsoft` stored (ENG-2198). So a session WITH a
+   * linked account resolves normally, and one without is refused
+   * `ACCESS_UNPROVEN`, which `classifyEnrollmentFailure` already turns into
+   * "run `connect_microsoft`". That is the intended outcome, not a gap.
+   *
+   * One thing it does NOT cover: the route is a POST, so the personal-access-
+   * token verb floor demands a read-write token. A read-only token is refused
+   * at the guard with a bare 403 and no `code`, before any of the above.
    */
   async resolveEnrollmentUrl(webUrl: string): Promise<ResolvedFileUrl> {
     return this.request<ResolvedFileUrl>('/enrolled-files/resolve-url', {
