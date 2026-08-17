@@ -36,7 +36,13 @@ export function registerGetVersionsTool(
             return (
               `- **${ver}** (id: ${v.internalId}) — ${v.createdAt}` +
               (v.description ? ` — ${v.description}` : '') +
-              (v.byUserPlatformId ? ` — by ${v.byUserPlatformId}` : '') +
+              // ENG-2603 — prefer the resolved name; fall back to the
+              // platform id only when the backend could not resolve one.
+              // A uuid answers "who changed this" with something no human
+              // recognises and no model can use.
+              (v.byUserName ?? v.byUserPlatformId
+                ? ` — by ${v.byUserName ?? v.byUserPlatformId}`
+                : '') +
               (flags ? ` [${flags}]` : '')
             );
           })
