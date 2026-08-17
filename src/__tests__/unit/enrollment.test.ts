@@ -53,7 +53,7 @@ describe('classifyEnrollmentFailure', () => {
     expect(blocked.outcome).toBe('admin_approval_required');
     expect(blocked.message).toContain('administrator');
     expect(blocked.message).toContain(
-      'https://docs.rockhopper.co/it-setup/microsoft-permissions',
+      'https://docs.rockhopper.co/it-setup/approve-file-access',
     );
     expect(blocked.message).not.toContain('connect_microsoft');
     expect(blocked.message).toContain('retrying will not help');

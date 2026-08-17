@@ -322,7 +322,7 @@ describe('search_drive_files — the three tenant consent states', () => {
     const text = result.content[0].text;
     expect(text).toContain('administrator');
     expect(text).toContain(
-      'https://docs.rockhopper.co/it-setup/microsoft-permissions',
+      'https://docs.rockhopper.co/it-setup/approve-file-access',
     );
     expect(text).not.toContain('login.microsoftonline.com');
     // A model told only "could not connect" offers to try again, and every

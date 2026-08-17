@@ -272,6 +272,6 @@ export const ADMIN_CONSENT_TEXT =
   'Microsoft 365 administrator approve this — the user cannot grant it ' +
   'themselves, and connecting or signing in again will not change the ' +
   'answer. Ask the user to send their IT administrator to ' +
-  'https://docs.rockhopper.co/it-setup/microsoft-permissions, which has ' +
+  'https://docs.rockhopper.co/it-setup/approve-file-access, which has ' +
   'the approval link and what it grants. Everything else in Rockhopper ' +
   'keeps working meanwhile. Do not retry this search.';

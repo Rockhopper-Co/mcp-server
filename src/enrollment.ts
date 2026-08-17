@@ -142,7 +142,7 @@ export function classifyEnrollmentFailure(error: unknown): ClassifiedFailure {
           '365 administrator approve this — the user cannot grant it ' +
           'themselves, and connecting or signing in again will not change ' +
           'the answer. Ask them to send their IT administrator to ' +
-          'https://docs.rockhopper.co/it-setup/microsoft-permissions, which ' +
+          'https://docs.rockhopper.co/it-setup/approve-file-access, which ' +
           'has the approval link and what it grants. Nothing was changed, ' +
           'and retrying will not help.',
       };
