@@ -138,12 +138,47 @@ export interface DriveSearchResponse {
 }
 
 /**
+ * ENG-2536 — what the enrolment DID, mirrored from the backend's
+ * `EnrollmentOutcome` rather than imported: this package ships to customers
+ * over npm and cannot depend on the backend tree.
+ *
+ * The mirror is the whole risk. A value added on the server is invisible here
+ * until someone edits this line, and until then it arrives as a string this
+ * union says cannot exist. That is survivable ONLY because every read of it is
+ * an exhaustive switch with a `never` arm — see `describeServerOutcome` — so
+ * the moment this union grows a member, every reader fails to compile instead
+ * of dropping the new value into an `else`. That is ENG-2580's defect, and the
+ * `never` arm is the only defence available without a shared package.
+ */
+export type ServerEnrollmentOutcome =
+  | 'enrolled'
+  | 'restored'
+  | 'already_enrolled';
+
+/** One file's outcome on an enroll response. */
+export interface QueuedEnrollmentFile {
+  msId: string;
+  platformId: string;
+  outcome: ServerEnrollmentOutcome;
+}
+
+/**
  * What every enroll route answers. Enrollment is ASYNC — the file is not
  * present when this returns, only accepted, so nothing may claim otherwise.
+ *
+ * ENG-2536 — except for `already_enrolled`, which is the one answer that is
+ * NOT a promise about the future: it means nothing was written and no worker
+ * pass will change the file.
+ *
+ * Optional because the package and the backend ship on separate clocks. A
+ * customer running `npx` picks up `latest` the moment it publishes, so calling
+ * a backend that predates this field is a real case; readers fall back to what
+ * the pre-write lookup said.
  */
 export interface QueuedEnrollment {
   enrollmentId: string;
   status: 'queued';
+  files?: QueuedEnrollmentFile[];
 }
 
 export interface UserSummary {
