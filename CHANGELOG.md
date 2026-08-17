@@ -4,39 +4,29 @@ All notable changes to this project are documented here. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] — 2026-08-10
+## [2.0.0] — 2026-08-16
 
-**No code changed between `0.10.0` and `1.0.0`.** This release exists to fix a
-versioning trap, and states a compatibility promise that was already true.
+Cuts everything that had accumulated under `[Unreleased]` below. Published by
+ENG-2533, the batched release the MCP-spec epic (ENG-2164) deferred to its end.
 
-### Why 1.0.0
+### Why a major
 
-On a `0.x` version npm reads a caret range as **minor-locked**: `^0.9.0` means
-`>=0.9.0 <0.10.0`, not `<1.0.0`. Nobody reads it that way. It cost two releases
-— `mcp-gateway` sat on `^0.9.0` and could not receive `0.10.0`, the very release
-it was waiting for, and before that on the same coupling one release earlier
-(ENG-2165, ENG-2233). At `1.x` a caret finally means "any compatible version".
+`engines.node` moved from `>=18.0.0` to `>=20.0.0` (see Breaking, below) — that
+alone requires it under the 1.0.0 compatibility promise. Separately, and more
+visibly to a caller: **which tools get registered now depends on what the
+presenting token was actually granted.** A `read-only` token that saw all 16
+tools on 1.0.0 sees 7 here, and a token holding one write family sees only that
+family's tools. That is the intended behaviour (ENG-2208, ENG-2212) and it is
+still a change a caller can observe, so it ships behind a major.
 
-### The compatibility promise
+### Note on the 1.0.0 → 2.0.0 gap
 
-From `1.0.0`, a breaking change to any of the following requires a major bump:
-
-- **Tool names and their input schemas.** These are the load-bearing ones. The
-  schemas are runtime `zod` validators that execute **on the caller's machine**,
-  before any request is sent, so narrowing one breaks that caller no matter how
-  compatible the backend is. Widening a schema is not breaking; narrowing it is.
-- **Resource URIs and templates**, and the prompts the server registers.
-- **The CLI's flags and its stdio contract.**
-
-Explicitly **not** covered, and free to change in a minor: internal modules, the
-`dist/` layout, anything reachable only by deep-importing a path this package
-does not document, and log output.
-
-### Note for consumers
-
-Move a `^0.x` range to `^1.0.0`. A `0.x` range will not pick this up.
-
-## [Unreleased]
+The `[Unreleased]` block cut here had accumulated across more than one round:
+`0.7.0`, `0.8.0` and `0.10.0` were published without their own headings, and
+`1.0.0` was cut above it rather than below. The entries below are therefore NOT
+all new since 1.0.0. They are left as written rather than retro-attributed to
+releases nobody recorded at the time — an invented attribution would read as
+fact. Everything from here on is dated.
 
 ### Changed
 - **Moved to the v2 MCP SDK (ENG-2175).** v2 is a package **split**, not a
@@ -250,6 +240,38 @@ Move a `^0.x` range to `^1.0.0`. A `0.x` range will not pick this up.
   `mcp-gateway` repo's setup. Test files relax
   `@typescript-eslint/no-explicit-any` (mock-stub casts) while production
   code keeps the rule on. Lint is clean across `src/`.
+
+## [1.0.0] — 2026-08-10
+
+**No code changed between `0.10.0` and `1.0.0`.** This release exists to fix a
+versioning trap, and states a compatibility promise that was already true.
+
+### Why 1.0.0
+
+On a `0.x` version npm reads a caret range as **minor-locked**: `^0.9.0` means
+`>=0.9.0 <0.10.0`, not `<1.0.0`. Nobody reads it that way. It cost two releases
+— `mcp-gateway` sat on `^0.9.0` and could not receive `0.10.0`, the very release
+it was waiting for, and before that on the same coupling one release earlier
+(ENG-2165, ENG-2233). At `1.x` a caret finally means "any compatible version".
+
+### The compatibility promise
+
+From `1.0.0`, a breaking change to any of the following requires a major bump:
+
+- **Tool names and their input schemas.** These are the load-bearing ones. The
+  schemas are runtime `zod` validators that execute **on the caller's machine**,
+  before any request is sent, so narrowing one breaks that caller no matter how
+  compatible the backend is. Widening a schema is not breaking; narrowing it is.
+- **Resource URIs and templates**, and the prompts the server registers.
+- **The CLI's flags and its stdio contract.**
+
+Explicitly **not** covered, and free to change in a minor: internal modules, the
+`dist/` layout, anything reachable only by deep-importing a path this package
+does not document, and log output.
+
+### Note for consumers
+
+Move a `^0.x` range to `^1.0.0`. A `0.x` range will not pick this up.
 
 ## [0.6.0] — 2026-05-13
 

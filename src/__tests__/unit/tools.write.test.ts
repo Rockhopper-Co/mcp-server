@@ -276,3 +276,56 @@ describe('write tool handlers', () => {
     expect(toolNames).not.toContain('update_file_description');
   });
 });
+
+/**
+ * ENG-2597 — the comparator that picks which version a new one is based on.
+ *
+ * The shared mock serves a single version, and `Array.prototype.sort` never
+ * calls its comparator on a one-element array — so every existing
+ * `create_version` test exercised the base-selection path with the comparator
+ * dead. It went uncovered, and an uncovered comparator here is not cosmetic:
+ * it decides which version the customer's next commit descends from. Pick the
+ * wrong element and the new version silently forks off an old one.
+ */
+describe('create_version base selection (ENG-2597)', () => {
+  /** Out of order on purpose, with a discarded entry above the real latest. */
+  const VERSIONS = [
+    { majorVersion: 1, minorVersion: 0, patchVersion: 0, wasDiscarded: false },
+    { majorVersion: 2, minorVersion: 3, patchVersion: 1, wasDiscarded: false },
+    { majorVersion: 2, minorVersion: 4, patchVersion: 0, wasDiscarded: false },
+    { majorVersion: 2, minorVersion: 3, patchVersion: 9, wasDiscarded: false },
+    { majorVersion: 9, minorVersion: 9, patchVersion: 9, wasDiscarded: true },
+  ];
+
+  async function commit(versionType: 'major' | 'minor' | 'patch') {
+    const server = createMockMcpServer();
+    const api = createMockApiClient();
+    api.getFileVersions.mockResolvedValue(VERSIONS);
+    registerTools(server as any, api as any, { scope: 'read-write' });
+
+    const call = server.registerTool.mock.calls.find(
+      (c) => c[0] === 'create_version',
+    );
+    await call?.[2]({ fileMsId: 'file-1', versionType, description: 'why' });
+    return api.createVersion.mock.calls[0][0].version;
+  }
+
+  // Exercises all three comparator tiers: major ties at 2, minor decides
+  // 2.4.0 over 2.3.x, and patch orders 2.3.9 above 2.3.1.
+  it('bases the next version on the highest NON-discarded version', async () => {
+    expect(await commit('patch')).toMatchObject({
+      majorVersion: 2,
+      minorVersion: 4,
+      patchVersion: 1,
+    });
+  });
+
+  it('ignores a discarded version even when it sorts highest', async () => {
+    // 9.9.9 is discarded, so a major bump must land on 3.0.0, never 10.0.0.
+    expect(await commit('major')).toMatchObject({
+      majorVersion: 3,
+      minorVersion: 0,
+      patchVersion: 0,
+    });
+  });
+});
