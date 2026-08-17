@@ -250,6 +250,82 @@ describe('a file already there', () => {
   });
 });
 
+/**
+ * ENG-2536 — the enroll response now says what it DID, and that answer beats
+ * the one this tool inferred from a lookup taken before the write.
+ *
+ * The lookup happens first, so its answer is always at least one round trip
+ * stale. The gap is real: a teammate adding the same workbook in between, or a
+ * retry after a dropped stream, both leave the tool holding `not_enrolled` for
+ * a file that is now here. Reporting "being added" then sends the user to wait
+ * for a background pass that will never run.
+ */
+describe('the server outcome overrides the pre-write lookup', () => {
+  const queued = (outcome: string) => ({
+    enrollmentId: 'enr-1',
+    status: 'queued',
+    files: [{ msId: 'ms-item-9', platformId: 'ms-item-9', outcome }],
+  });
+
+  it('reports already_enrolled when the server says so, even though the lookup said not_enrolled', async () => {
+    const api = createMockApiClient();
+    api.createEnrolledFile.mockResolvedValue(queued('already_enrolled'));
+
+    const result = await handlerFor(api)({ url: URL, share_with: 'me' });
+
+    expect(outcomeOf(result)).toBe('already_enrolled');
+    // The one sentence that must NOT appear: nothing is being read, so there
+    // is nothing to come back for.
+    expect(result.content[0].text).not.toContain('in the background');
+    expect(result.content[0].text).toContain('nothing to wait for');
+  });
+
+  it('reports restored when the server says so', async () => {
+    const api = createMockApiClient();
+    api.createEnrolledFile.mockResolvedValue(queued('restored'));
+
+    const result = await handlerFor(api)({ url: URL, share_with: 'me' });
+
+    expect(outcomeOf(result)).toBe('restored');
+    expect(result.content[0].text).toContain('being restored');
+  });
+
+  it('still reports enrolled for an ordinary first-time add', async () => {
+    const api = createMockApiClient();
+    api.createEnrolledFile.mockResolvedValue(queued('enrolled'));
+
+    const result = await handlerFor(api)({ url: URL, share_with: 'me' });
+
+    expect(outcomeOf(result)).toBe('enrolled');
+    expect(result.content[0].text).toContain('is being added to Rockhopper');
+  });
+
+  it('falls back to the lookup when the backend is older than the field', async () => {
+    // This package publishes to npm on its own clock and a customer's `npx`
+    // takes `latest` immediately, so an older backend is a live case, not a
+    // theoretical one. The answer must be the one that shipped before.
+    const api = createMockApiClient();
+    api.createEnrolledFile.mockResolvedValue({
+      enrollmentId: 'enr-1',
+      status: 'queued',
+    });
+
+    const result = await handlerFor(api)({ url: URL, share_with: 'me' });
+
+    expect(outcomeOf(result)).toBe('enrolled');
+  });
+
+  it('carries the server verdict through the team-share route too', async () => {
+    const api = createMockApiClient();
+    api.enrollFileSharedWith.mockResolvedValue(queued('already_enrolled'));
+
+    const result = await handlerFor(api)({ url: URL, share_with: 'team' });
+
+    expect(outcomeOf(result)).toBe('already_enrolled');
+    expect(result.content[0].text).toContain('shared with');
+  });
+});
+
 describe('refusals name the remedy, not just the status', () => {
   it('sends an unlinked session to connect_microsoft (ACCESS_UNPROVEN)', async () => {
     const api = createMockApiClient();

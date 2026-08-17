@@ -13,7 +13,13 @@
  */
 
 import { RockhopperApiError } from './api-client.js';
-import type { EnrollmentState, RockhopperId, Team, UserSummary } from './types.js';
+import type {
+  EnrollmentState,
+  RockhopperId,
+  ServerEnrollmentOutcome,
+  Team,
+  UserSummary,
+} from './types.js';
 
 /**
  * Every answer `enroll_file` can give, as a value a model can branch on
@@ -83,6 +89,63 @@ export function outcomeForState(
   if (state === 'enrolled') return 'already_enrolled';
   if (state === 'hidden') return 'restore_confirmation_required';
   return null;
+}
+
+/**
+ * ENG-2536 — turn the outcome the SERVER reported into what the user is told.
+ *
+ * Two things make this worth a function rather than a ternary at the call site.
+ *
+ * First, it is exhaustive with a `never` arm. `ServerEnrollmentOutcome` is a
+ * hand-kept mirror of a backend enum (this package ships over npm and cannot
+ * import the backend tree), so the only moment anybody notices a fourth value
+ * is when they edit that union — and this is what breaks and makes them handle
+ * it. ENG-2580 is the same shape gone wrong: fifteen if-chains where a new
+ * value fell into every `else` and nothing failed.
+ *
+ * Second, `already_enrolled` is the one answer that is not a promise about the
+ * future. Everything else here says "we are reading the workbook, come back";
+ * that one says nothing was written and nothing will be. Saying "Rockhopper
+ * reads the workbook in the background" about a file it read months ago sends
+ * the user to wait for an event that will never arrive — the ENG-1647 dead end
+ * with a friendlier voice.
+ */
+export function describeServerOutcome(
+  serverOutcome: ServerEnrollmentOutcome,
+  fileName: string,
+  who: string,
+): { outcome: EnrollOutcome; text: string } {
+  const subject = `"${fileName || 'The workbook'}"`;
+  const background =
+    'Rockhopper reads the workbook in the background, so its versions and ' +
+    'change history appear shortly — check with `search_files` if the user ' +
+    'wants confirmation.';
+
+  switch (serverOutcome) {
+    case 'enrolled':
+      return {
+        outcome: 'enrolled',
+        text: `${subject} is being added to Rockhopper${who}. ${background}`,
+      };
+    case 'restored':
+      return {
+        outcome: 'restored',
+        text: `${subject} is being restored${who}. ${background}`,
+      };
+    case 'already_enrolled':
+      return {
+        outcome: 'already_enrolled',
+        text:
+          `${subject} was already in Rockhopper, so nothing was added${who}. ` +
+          'Its versions and history are available now through ' +
+          '`get_file_versions` and `get_cell_history` — there is nothing to ' +
+          'wait for.',
+      };
+    default: {
+      const exhaustive: never = serverOutcome;
+      return exhaustive;
+    }
+  }
 }
 
 export interface ClassifiedFailure {

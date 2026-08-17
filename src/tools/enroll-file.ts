@@ -2,12 +2,17 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
 import {
   classifyEnrollmentFailure,
+  describeServerOutcome,
   outcomeForState,
   resolveTeamShareTargets,
   TeamUnresolvedError,
   type ShareWith,
 } from '../enrollment.js';
-import type { EnrollmentState } from '../types.js';
+import type {
+  EnrollmentState,
+  QueuedEnrollment,
+  ServerEnrollmentOutcome,
+} from '../types.js';
 import {
   ENROLL_ANNOTATIONS,
   ENROLL_DESCRIPTION,
@@ -83,10 +88,33 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
     };
   }
 
+  /**
+   * ENG-2536 — the server's own verdict, or null when it did not give one.
+   *
+   * Null is not hypothetical: this package publishes to npm on its own clock
+   * and a customer's `npx` picks up `latest` immediately, so a backend that
+   * predates the field is a live case. The caller falls back to what the
+   * pre-write lookup said, which is exactly the behaviour that shipped before.
+   */
+  function serverOutcomeOf(
+    queued: QueuedEnrollment,
+    target: Target,
+  ): ServerEnrollmentOutcome | null {
+    const files = queued.files ?? [];
+    const mine =
+      files.find((f) => f.msId === target.msId || f.platformId === target.msId) ??
+      (files.length === 1 ? files[0] : undefined);
+    return mine?.outcome ?? null;
+  }
+
   async function enroll(
     target: Target,
     shareWith: ShareWith,
-  ): Promise<{ enrollmentId: string; sharedWith: number }> {
+  ): Promise<{
+    enrollmentId: string;
+    sharedWith: number;
+    serverOutcome: ServerEnrollmentOutcome | null;
+  }> {
     const file = {
       msId: target.msId,
       driveMsId: target.driveMsId,
@@ -94,11 +122,19 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
     };
     if (shareWith === 'me') {
       const queued = await api.createEnrolledFile(file);
-      return { enrollmentId: queued.enrollmentId, sharedWith: 0 };
+      return {
+        enrollmentId: queued.enrollmentId,
+        sharedWith: 0,
+        serverOutcome: serverOutcomeOf(queued, target),
+      };
     }
     const targets = await resolveTeamShareTargets(api);
     const queued = await api.enrollFileSharedWith(file, targets);
-    return { enrollmentId: queued.enrollmentId, sharedWith: targets.length };
+    return {
+      enrollmentId: queued.enrollmentId,
+      sharedWith: targets.length,
+      serverOutcome: serverOutcomeOf(queued, target),
+    };
   }
 
   server.registerTool(
@@ -183,20 +219,28 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
       const restoring = known === 'restore_confirmation_required';
 
       try {
-        const { enrollmentId, sharedWith } = await enroll(target, share_with);
+        const { enrollmentId, sharedWith, serverOutcome } = await enroll(
+          target,
+          share_with,
+        );
         const who =
           share_with === 'team'
             ? ` and shared with ${sharedWith} teammate(s)`
             : ' — visible to you only';
+        // ENG-2536: the SERVER's verdict wins over the one inferred from the
+        // lookup taken before the write. The two can disagree, and when they
+        // do the server is right: the lookup happened earlier, so a file
+        // somebody else added in between reads `not_enrolled` here and would
+        // otherwise be reported as a fresh add. The fallback is what shipped
+        // before, for a backend older than the field.
+        const { outcome, text } = describeServerOutcome(
+          serverOutcome ?? (restoring ? 'restored' : 'enrolled'),
+          target.name,
+          who,
+        );
         return toolResult({
-          outcome: restoring ? 'restored' : 'enrolled',
-          text:
-            (restoring
-              ? `"${target.name || 'The workbook'}" is being restored`
-              : `"${target.name || 'The workbook'}" is being added to Rockhopper`) +
-            `${who}. Rockhopper reads the workbook in the background, so its ` +
-            'versions and change history appear shortly — check with ' +
-            '`search_files` if the user wants confirmation.',
+          outcome,
+          text,
           detail: {
             fileMsId: target.msId,
             name: target.name || null,
