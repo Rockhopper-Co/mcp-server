@@ -60,6 +60,14 @@ export type DriveSearchOutcome =
   | 'search_limit_reached'
   /** No delegated Microsoft grant — the connect link is in the result. */
   | 'microsoft_not_connected'
+  /**
+   * The tenant has not approved Rockhopper and only an administrator can.
+   * Its OWN outcome and not a flavour of `microsoft_not_connected`, because
+   * the two name opposite actions: one is the user's to take and this one
+   * is not. Carries no connect link — there is nothing on the far end of
+   * one for this user yet.
+   */
+  | 'microsoft_admin_approval_required'
   /** Microsoft could not answer, or the caller is searching too fast. */
   | 'search_unavailable'
   /** This Rockhopper deployment serves no drive-search route yet. */
@@ -230,3 +238,40 @@ export function isNoDelegatedToken(error: unknown): boolean {
     error instanceof RockhopperApiError && error.code === 'NO_DELEGATED_TOKEN'
   );
 }
+
+/**
+ * The backend's `reason` for a refusal the USER CANNOT FIX (ENG-2614).
+ *
+ * The tenant has not approved Rockhopper, and Microsoft will not let an
+ * ordinary employee approve it — `Sites.Read.All` is administrator-only. So
+ * this arrives wearing the same coarse `NO_DELEGATED_TOKEN` code as "you
+ * have never connected", and treating the two alike is how the user ends up
+ * in a loop: handed a connect link, sent to Microsoft, refused, handed the
+ * same link again. Only the fine `reason` separates them.
+ */
+const CONSENT_REQUIRED = 'CONSENT_REQUIRED';
+
+export function isAdminConsentRequired(error: unknown): boolean {
+  return (
+    error instanceof RockhopperApiError && error.reason === CONSENT_REQUIRED
+  );
+}
+
+/**
+ * What the assistant is told when an administrator has to act.
+ *
+ * Names the ACTION and who takes it, and says plainly that retrying will not
+ * work — a model that reads "could not connect" will helpfully offer to try
+ * again, and every retry costs the user another dead end. It also does not
+ * hand out a connect link, because there is nothing on the other end of one
+ * for this user yet.
+ */
+export const ADMIN_CONSENT_TEXT =
+  'Rockhopper cannot search this user\'s Microsoft files because their ' +
+  'organisation has not approved Rockhopper yet. Microsoft only lets a ' +
+  'Microsoft 365 administrator approve this — the user cannot grant it ' +
+  'themselves, and connecting or signing in again will not change the ' +
+  'answer. Ask the user to send their IT administrator to ' +
+  'https://docs.rockhopper.co/it-setup/approve-file-access, which has ' +
+  'the approval link and what it grants. Everything else in Rockhopper ' +
+  'keeps working meanwhile. Do not retry this search.';
