@@ -103,6 +103,15 @@ export interface FileVersion {
   wasReverted: boolean;
   byUserPlatformId: string | null;
   byUserPlatformType: string | null;
+  /**
+   * ENG-2603 — the author's resolved display name.
+   *
+   * Optional because it is additive: a backend older than the change that
+   * added it simply omits the field, and the renderer falls back to
+   * `byUserPlatformId` exactly as before. Absent means "not resolved",
+   * never "nobody" — the placeholder is this client's decision.
+   */
+  byUserName?: string | null;
 }
 
 export interface FileChat {
@@ -150,6 +159,15 @@ export interface UnattributedChange {
   newValue: unknown;
   byUserPlatformId: string | null;
   byUserPlatformType: string | null;
+  /**
+   * ENG-2603 — the author's resolved display name.
+   *
+   * Optional because it is additive: a backend older than the change that
+   * added it simply omits the field, and the renderer falls back to
+   * `byUserPlatformId` exactly as before. Absent means "not resolved",
+   * never "nobody" — the placeholder is this client's decision.
+   */
+  byUserName?: string | null;
   processingStatus: string;
   attributionDate: string | null;
   createdAt: string;
