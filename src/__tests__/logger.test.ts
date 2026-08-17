@@ -176,6 +176,16 @@ describe('createDiagnosticLogger', () => {
     expect(fs.readdirSync(dir).filter((n) => /mcp-server/.test(n))).toHaveLength(0);
   });
 
+  // ENG-2597: the disabled branch returns its own no-op flush, and nothing
+  // ever called it — one of four uncovered functions in the package. Shutdown
+  // awaits this promise, so a flush that never resolved would hang the
+  // process on exit for any user who set ROCKHOPPER_MCP_LOG_DISABLE.
+  it('disabled flush() resolves rather than hanging shutdown', async () => {
+    const dir = mkTmp();
+    const { flush } = await createDiagnosticLogger({ dir, disable: true });
+    await expect(flush()).resolves.toBeUndefined();
+  });
+
   it('disabled via ROCKHOPPER_MCP_LOG_DISABLE env is a no-op', async () => {
     const dir = mkTmp();
     const prev = process.env.ROCKHOPPER_MCP_LOG_DISABLE;
