@@ -292,6 +292,83 @@ describe('search_drive_files — no connected Microsoft account', () => {
   });
 });
 
+/**
+ * ENG-2614 — the three tenant states, from the assistant's side.
+ *
+ * All three arrive as HTTP 403 with the same coarse `NO_DELEGATED_TOKEN`
+ * code, so only the fine `reason` tells them apart. Getting this wrong is
+ * not a cosmetic copy bug: it hands a user who cannot consent a link to a
+ * Microsoft screen that refuses them, then offers the same link again.
+ */
+describe('search_drive_files — the three tenant consent states', () => {
+  function refusal(reason: string) {
+    return new RockhopperApiError(
+      403,
+      'no delegated token',
+      'NO_DELEGATED_TOKEN',
+      reason,
+    );
+  }
+
+  it('never consented: names the administrator and offers NO connect link', async () => {
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockRejectedValue(refusal('CONSENT_REQUIRED'));
+    const result = await handlerFor(api)({ query: 'Becklar' });
+
+    expect(outcomeOf(result)).toBe('microsoft_admin_approval_required');
+    // The link is the loop. Minting one here sends the user to a Microsoft
+    // screen that refuses them and returns them to this exact answer.
+    expect(api.beginMicrosoftConnect).not.toHaveBeenCalled();
+    const text = result.content[0].text;
+    expect(text).toContain('administrator');
+    expect(text).toContain(
+      'https://docs.rockhopper.co/it-setup/microsoft-permissions',
+    );
+    expect(text).not.toContain('login.microsoftonline.com');
+    // A model told only "could not connect" offers to try again, and every
+    // retry is another dead end for the user.
+    expect(text).toContain('Do not retry');
+  });
+
+  it('consented but never linked: the ordinary connect link, unchanged', async () => {
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockRejectedValue(refusal('NO_DELEGATED_TOKEN'));
+    const result = await handlerFor(api)({ query: 'Becklar' });
+
+    expect(outcomeOf(result)).toBe('microsoft_not_connected');
+    expect(api.beginMicrosoftConnect).toHaveBeenCalled();
+  });
+
+  it('revoked after the fact: reconnect, NOT ask an administrator', async () => {
+    // The state nobody writes a test for. The tenant DID approve
+    // Rockhopper, so an administrator has nothing left to do — the user's
+    // own grant died and only the user can revive it. Sending them to IT
+    // here wastes an administrator's time and does not fix anything.
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockRejectedValue(
+      refusal('DELEGATED_TOKEN_REJECTED'),
+    );
+    const result = await handlerFor(api)({ query: 'Becklar' });
+
+    expect(outcomeOf(result)).toBe('microsoft_not_connected');
+    expect(api.beginMicrosoftConnect).toHaveBeenCalled();
+    expect(result.content[0].text).not.toContain('administrator');
+  });
+
+  it('a backend that sends no reason at all still gets the connect link', async () => {
+    // Every deployment predating the reason field, and the npm package
+    // ships on its own clock — an absent reason must read as the old
+    // behaviour, not as an administrator problem.
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockRejectedValue(
+      new RockhopperApiError(403, 'no token', 'NO_DELEGATED_TOKEN'),
+    );
+    expect(outcomeOf(await handlerFor(api)({ query: 'Becklar' }))).toBe(
+      'microsoft_not_connected',
+    );
+  });
+});
+
 describe('search_drive_files — confirmation lanes', () => {
   it('asks through input_required on a 2026-07-28 request', async () => {
     const result = await handlerFor(createMockApiClient())(

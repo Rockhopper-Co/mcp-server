@@ -265,6 +265,57 @@ describe('enrollment methods put the backend DTO shapes on the wire', () => {
     vi.unstubAllGlobals();
   });
 
+  it('lifts the backend refusal REASON too (ENG-2614)', async () => {
+    // The drive-search route sends one coarse code for four situations and
+    // puts which one in `reason`. Dropping it makes "your organisation has
+    // not approved us" indistinguishable from "you have not connected yet",
+    // and only the first of those is unfixable by the user.
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      headers: { get: () => null },
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            statusCode: 403,
+            message: 'no',
+            code: 'NO_DELEGATED_TOKEN',
+            reason: 'CONSENT_REQUIRED',
+          }),
+        ),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(
+      client.searchDriveFiles({ q: 'anything' }),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'NO_DELEGATED_TOKEN',
+      reason: 'CONSENT_REQUIRED',
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it('leaves `reason` null when the backend sends none', async () => {
+    // Every deployment predating the field. Absent must mean "fall back to
+    // what the code alone said", never "administrator approval needed".
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      headers: { get: () => null },
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({ statusCode: 403, message: 'no', code: 'NO_DELEGATED_TOKEN' }),
+        ),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(
+      client.searchDriveFiles({ q: 'anything' }),
+    ).rejects.toMatchObject({ reason: null });
+    vi.unstubAllGlobals();
+  });
+
   it('leaves `code` null when the body is not JSON, rather than throwing', async () => {
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: false,

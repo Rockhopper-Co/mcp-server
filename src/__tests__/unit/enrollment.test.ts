@@ -45,6 +45,20 @@ describe('classifyEnrollmentFailure', () => {
     );
   });
 
+  it('sends the admin-consent refusal to IT, never to connect_microsoft (ENG-2614)', () => {
+    // The user CANNOT grant Sites.Read.All — Microsoft reserves it for an
+    // administrator. Telling them to reconnect points at a Microsoft screen
+    // that refuses them and lands them right back here.
+    const blocked = classifyEnrollmentFailure(err(403, 'ADMIN_CONSENT_REQUIRED'));
+    expect(blocked.outcome).toBe('admin_approval_required');
+    expect(blocked.message).toContain('administrator');
+    expect(blocked.message).toContain(
+      'https://docs.rockhopper.co/it-setup/microsoft-permissions',
+    );
+    expect(blocked.message).not.toContain('connect_microsoft');
+    expect(blocked.message).toContain('retrying will not help');
+  });
+
   it('separates an unsupported provider from an unreadable link', () => {
     expect(
       classifyEnrollmentFailure(err(400, 'URL_UNSUPPORTED_PROVIDER')).outcome,

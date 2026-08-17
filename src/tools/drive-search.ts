@@ -11,6 +11,8 @@ import {
   CandidateRegistry,
   SearchBudget,
   classifyDriveSearchFailure,
+  ADMIN_CONSENT_TEXT,
+  isAdminConsentRequired,
   isNoDelegatedToken,
   toCandidate,
   type Candidate,
@@ -186,6 +188,17 @@ export function registerDriveSearchTool(
         });
         items = answer.items;
       } catch (error) {
+        // ORDER MATTERS. Both refusals arrive as `NO_DELEGATED_TOKEN`, so
+        // checking "not connected" first would swallow the administrator
+        // case and hand the user a connect link that Microsoft refuses —
+        // which returns them here, with the same link, forever (ENG-2614).
+        if (isAdminConsentRequired(error)) {
+          return toolResult({
+            outcome: 'microsoft_admin_approval_required',
+            text: ADMIN_CONSENT_TEXT,
+            isError: true,
+          });
+        }
         if (isNoDelegatedToken(error)) return connectAnswer(api);
         const { outcome, message } = classifyDriveSearchFailure(error);
         return toolResult({ outcome, text: message, isError: true });

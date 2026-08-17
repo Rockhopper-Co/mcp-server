@@ -105,26 +105,44 @@ export class RockhopperApiError extends Error {
    * pre-existing caller reads {@link Error.message} and is unaffected.
    */
   readonly code: string | null;
-  constructor(status: number, message: string, code?: string | null) {
+  /**
+   * ENG-2614 — the FINE half of a refusal, where the backend sends one.
+   *
+   * `code` is deliberately coarse on the drive-search route so a client has
+   * exactly one thing to branch on: can I search or not. `reason` is what
+   * says WHICH of four situations produced it — never connected, link
+   * revoked, ciphertext unreadable, or the tenant has not approved
+   * Rockhopper — and only three of those are the user's to fix. Without it
+   * a tenant awaiting administrator approval is handed a connect link that
+   * cannot possibly work, and clicking it returns them here: a loop.
+   */
+  readonly reason: string | null;
+  constructor(
+    status: number,
+    message: string,
+    code?: string | null,
+    reason?: string | null,
+  ) {
     super(message);
     this.name = 'RockhopperApiError';
     this.status = status;
     this.code = code ?? null;
+    this.reason = reason ?? null;
   }
 }
 
 /**
- * Pull the `code` out of an error body without ever letting a malformed body
- * become a second failure. A non-JSON body, a JSON array, or a `code` that is
- * not a string all answer `null` — the caller then falls back to the status,
- * which is the answer it had before this existed.
+ * Pull a string field out of an error body without ever letting a malformed
+ * body become a second failure. A non-JSON body, a JSON array, or a value
+ * that is not a string all answer `null` — the caller then falls back to the
+ * status, which is the answer it had before this existed.
  */
-function parseErrorCode(body: string): string | null {
+function parseErrorField(body: string, field: 'code' | 'reason'): string | null {
   try {
     const parsed: unknown = JSON.parse(body);
     if (parsed === null || typeof parsed !== 'object') return null;
-    const code = (parsed as { code?: unknown }).code;
-    return typeof code === 'string' ? code : null;
+    const value = (parsed as Record<string, unknown>)[field];
+    return typeof value === 'string' ? value : null;
   } catch {
     return null;
   }
@@ -295,7 +313,8 @@ export class ApiClient {
       throw new RockhopperApiError(
         response.status,
         `Rockhopper API ${response.status}: ${response.statusText} — ${body}`,
-        parseErrorCode(body),
+        parseErrorField(body, 'code'),
+        parseErrorField(body, 'reason'),
       );
     }
 

@@ -19,11 +19,14 @@ import type { EnrollmentState, RockhopperId, Team, UserSummary } from './types.j
  * Every answer `enroll_file` can give, as a value a model can branch on
  * instead of reading prose.
  *
- * The six ENROLLMENT results — what happened to the file:
+ * The seven ENROLLMENT results — what happened to the file:
  * - `enrolled` — accepted; the file was not here before.
  * - `restored` — accepted; a file the user had removed is visible again.
  * - `already_enrolled` — nothing to do; it is here and visible.
  * - `access_unproven` — refused: this session has no Microsoft identity.
+ * - `admin_approval_required` — refused: the user's ORGANISATION has not
+ *   approved Rockhopper. Separate from `access_unproven` because the user
+ *   cannot fix it and must not be told to reconnect (ENG-2614).
  * - `unresolvable` — refused: the link does not name a file we can find.
  * - `unsupported_provider` — refused: not a Microsoft link.
  *
@@ -39,6 +42,7 @@ export type EnrollOutcome =
   | 'restored'
   | 'already_enrolled'
   | 'access_unproven'
+  | 'admin_approval_required'
   | 'unresolvable'
   | 'unsupported_provider'
   | 'share_with_required'
@@ -59,6 +63,10 @@ const URL_UNRESOLVABLE = 'URL_UNRESOLVABLE';
 const URL_FOREIGN_TENANT = 'URL_FOREIGN_TENANT';
 const ACCESS_UNPROVEN = 'ACCESS_UNPROVEN';
 const MS_SIGN_IN_REQUIRED = 'MS_SIGN_IN_REQUIRED';
+/** ENG-2614 — the tenant has not approved Rockhopper, and only an
+ * administrator can. Its own code because it is the one refusal in this
+ * list the user cannot act on themselves. */
+const ADMIN_CONSENT_REQUIRED = 'ADMIN_CONSENT_REQUIRED';
 const FILE_ACCESS_DENIED = 'FILE_ACCESS_DENIED';
 
 /**
@@ -121,6 +129,23 @@ export function classifyEnrollmentFailure(error: unknown): ClassifiedFailure {
   }
 
   switch (error.code) {
+    // FIRST, because it is the one refusal here that names an action the
+    // user cannot take. Telling them to run `connect_microsoft` sends them
+    // to a Microsoft screen that refuses them and returns them here — a
+    // loop, and one that reads as our bug rather than a missing approval.
+    case ADMIN_CONSENT_REQUIRED:
+      return {
+        outcome: 'admin_approval_required',
+        message:
+          'Rockhopper cannot add this file because the user\'s organisation ' +
+          'has not approved Rockhopper yet. Microsoft only lets a Microsoft ' +
+          '365 administrator approve this — the user cannot grant it ' +
+          'themselves, and connecting or signing in again will not change ' +
+          'the answer. Ask them to send their IT administrator to ' +
+          'https://docs.rockhopper.co/it-setup/microsoft-permissions, which ' +
+          'has the approval link and what it grants. Nothing was changed, ' +
+          'and retrying will not help.',
+      };
     case ACCESS_UNPROVEN:
       return {
         outcome: 'access_unproven',
