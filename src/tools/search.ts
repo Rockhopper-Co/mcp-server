@@ -258,6 +258,8 @@ function formatChangeRows(
     oldValue: unknown;
     newValue: unknown;
     byUserPlatformId: string | null;
+    /** ENG-2603 — resolved display name; absent on an older backend. */
+    byUserName?: string | null;
     createdAt: string;
   }>,
 ): string {
@@ -266,7 +268,10 @@ function formatChangeRows(
       (c) =>
         `- **${c.sheetName}!${c.cellAddress}** (${c.changeType}): ` +
         `${JSON.stringify(c.oldValue)} → ${JSON.stringify(c.newValue)}` +
-        (c.byUserPlatformId ? ` — by ${c.byUserPlatformId}` : '') +
+        // ENG-2603 — see get-versions: name first, platform id as fallback.
+        (c.byUserName ?? c.byUserPlatformId
+          ? ` — by ${c.byUserName ?? c.byUserPlatformId}`
+          : '') +
         ` — ${c.createdAt}`,
     )
     .join('\n');
