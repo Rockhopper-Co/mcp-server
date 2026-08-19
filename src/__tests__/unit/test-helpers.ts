@@ -2,8 +2,37 @@ import { vi } from 'vitest';
 
 export function createMockApiClient() {
   return {
-    getMe: vi.fn().mockResolvedValue({ internalId: 1, email: 'user@test.com' }),
-    getTeam: vi.fn().mockResolvedValue({ internalId: 2, name: 'Finance' }),
+    getMe: vi.fn().mockResolvedValue({
+      internalId: 1,
+      email: 'user@test.com',
+      msId: 'ms-user-1',
+      // `/users/me` serves these because both relations are `eager: true` on
+      // the backend entities — nothing has to ask for them.
+      teamMembers: [{ team: { id: 'team-uuid-1', internalId: 2, name: 'Finance' } }],
+    }),
+    getTeam: vi.fn().mockResolvedValue({
+      internalId: 2,
+      name: 'Finance',
+      teamMembers: [
+        { user: { msId: 'ms-user-1', email: 'user@test.com' } },
+        { user: { msId: 'ms-user-2', email: 'colleague@test.com' } },
+      ],
+    }),
+    // ENG-2198 — the delegated Microsoft Graph link.
+    beginMicrosoftConnect: vi.fn().mockResolvedValue({
+      authorizeUrl:
+        'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=real-client',
+      expiresAt: '2026-08-14T21:00:00.000Z',
+    }),
+    getMicrosoftLink: vi.fn().mockResolvedValue({
+      linked: false,
+      msAccountLabel: null,
+      msTenantId: null,
+      grantedScopes: [],
+      linkedAt: null,
+      lastUsedAt: null,
+    }),
+    unlinkMicrosoft: vi.fn().mockResolvedValue({ linked: false, removed: true }),
     listEnrolledFiles: vi.fn().mockResolvedValue([
       {
         internalId: 11,
@@ -22,6 +51,58 @@ export function createMockApiClient() {
         hasUncommittedChanges: false,
       },
     ]),
+    // ENG-2204 — drive discovery. Two hits whose names both match, because a
+    // single hit lets a wrong flow look right: the failure being fixed picked
+    // one match and reported it as fact.
+    searchDriveFiles: vi.fn().mockResolvedValue({
+      scope: 'search',
+      items: [
+        {
+          msId: 'ms-item-9',
+          driveMsId: 'drive-9',
+          name: 'Becklar_RMR_Model.xlsx',
+          webUrl: 'https://contoso.sharepoint.com/a.xlsx',
+          lastModifiedAt: '2026-08-01T10:00:00Z',
+          size: 120_000,
+          parentPath: '/Finance/Models',
+          enrollmentState: 'not_enrolled',
+        },
+        {
+          msId: 'ms-item-10',
+          driveMsId: 'drive-9',
+          name: 'Becklar_RMR_Model_OLD.xlsx',
+          webUrl: 'https://contoso.sharepoint.com/b.xlsx',
+          lastModifiedAt: '2025-02-01T10:00:00Z',
+          size: 90_000,
+          parentPath: '/Finance/Archive',
+          enrollmentState: 'enrolled',
+        },
+      ],
+    }),
+    // ENG-2200 — enrollment. Defaults describe the ordinary case: a Microsoft
+    // link that resolves to a file Rockhopper has never seen, and a caller on
+    // a two-person team. Each spec overrides the one field it is about.
+    resolveEnrollmentUrl: vi.fn().mockResolvedValue({
+      msId: 'ms-item-9',
+      driveMsId: 'drive-9',
+      name: 'Becklar_RMR_Model.xlsx',
+      listItemUniqueId: 'liuid-9',
+      webUrl: 'https://contoso.sharepoint.com/:x:/r/sites/finance/Doc.aspx',
+      enrollmentState: 'not_enrolled',
+    }),
+    getEnrollmentInfo: vi.fn().mockResolvedValue([
+      {
+        isEnrolled: false,
+        enrollmentState: 'not_enrolled',
+        isInUserWorkspace: false,
+      },
+    ]),
+    createEnrolledFile: vi
+      .fn()
+      .mockResolvedValue({ enrollmentId: 'enr-1', status: 'queued' }),
+    enrollFileSharedWith: vi
+      .fn()
+      .mockResolvedValue({ enrollmentId: 'enr-2', status: 'queued' }),
     getEnrolledFile: vi.fn().mockResolvedValue({
       internalId: 11,
       platformId: 'file-1',

@@ -36,6 +36,151 @@ export interface TeamMember {
   createdAt: string;
 }
 
+/**
+ * ENG-2198 — the delegated Microsoft Graph grant, as the backend reports it.
+ * Carries no token material by design: the refresh token lives encrypted in
+ * the backend and is never served to any client, this package included.
+ */
+export interface MicrosoftLinkStatus {
+  linked: boolean;
+  msAccountLabel: string | null;
+  msTenantId: string | null;
+  grantedScopes: string[];
+  linkedAt: string | null;
+  lastUsedAt: string | null;
+}
+
+/** The server-constructed consent URL for the user to open. */
+export interface MicrosoftConnectHandoff {
+  authorizeUrl: string;
+  expiresAt: string;
+}
+
+/**
+ * ENG-2541 — THREE states, never a boolean.
+ *
+ * `hidden` is a file this tenant enrolled and then deliberately removed from
+ * its file lists; the row and everything hanging off it (versions, comments,
+ * history) survives. A caller that cannot tell `hidden` from `not_enrolled`
+ * offers the wrong action, and a caller that cannot tell it from `enrolled`
+ * silently undoes a removal somebody meant.
+ */
+export type EnrollmentState = 'enrolled' | 'hidden' | 'not_enrolled';
+
+/** ENG-2195 — `POST /enrolled-files/resolve-url`'s answer. */
+export interface ResolvedFileUrl {
+  /** The Graph driveItem id. */
+  msId: string;
+  /** The Graph drive id containing the item. */
+  driveMsId: string;
+  /** The file name as Microsoft holds it. */
+  name: string;
+  /** The SharePoint listItemUniqueId — stable across rename and move. */
+  listItemUniqueId: string | null;
+  /** The canonical Graph webUrl. */
+  webUrl: string;
+  enrollmentState: EnrollmentState;
+}
+
+/**
+ * ENG-2541 — `POST /enrolled-files/info/bulk`, one entry per requested id, in
+ * the order they were sent.
+ *
+ * The identity fields are WITHHELD (absent) for a `hidden` file and for a
+ * half-written enrolment stub, deliberately: holding them is the caller's
+ * licence to treat the row as a live enrolment, and neither of those is one.
+ */
+export interface EnrollmentInfo {
+  isEnrolled: boolean;
+  enrollmentState: EnrollmentState;
+  isInUserWorkspace: boolean;
+  enrolledFileMsId?: string;
+  driveMsId?: string;
+  internalId?: number;
+  name?: string;
+}
+
+/**
+ * ENG-2203 — one hit from `GET /drive-files/search`.
+ *
+ * These are files Microsoft returned for THIS user's delegated token, so the
+ * set is already permission-trimmed: nothing here needs a second access check
+ * and nothing outside it may be offered to the user.
+ */
+export interface DriveSearchItem {
+  msId: string;
+  /** `null` when Graph withheld the containing drive on this hit. */
+  driveMsId: string | null;
+  name: string;
+  webUrl: string | null;
+  lastModifiedAt: string | null;
+  size: number | null;
+  /**
+   * Containing folder from the tenant drive crawl. `null` when the crawl has
+   * not reached this file — normal, and never a reason to hide it.
+   */
+  parentPath: string | null;
+  /**
+   * Three states, never a boolean: `hidden` is a file Rockhopper still tracks
+   * but the user deliberately removed, and collapsing it into `enrolled`
+   * offers a next step that leads nowhere.
+   */
+  enrollmentState: EnrollmentState;
+}
+
+/** Which discovery question was asked, echoed back with the answer. */
+export type DriveSearchScope = 'search' | 'recent';
+
+/** `GET /drive-files/search`'s answer. */
+export interface DriveSearchResponse {
+  scope: DriveSearchScope;
+  items: DriveSearchItem[];
+}
+
+/**
+ * ENG-2536 — what the enrolment DID, mirrored from the backend's
+ * `EnrollmentOutcome` rather than imported: this package ships to customers
+ * over npm and cannot depend on the backend tree.
+ *
+ * The mirror is the whole risk. A value added on the server is invisible here
+ * until someone edits this line, and until then it arrives as a string this
+ * union says cannot exist. That is survivable ONLY because every read of it is
+ * an exhaustive switch with a `never` arm — see `describeServerOutcome` — so
+ * the moment this union grows a member, every reader fails to compile instead
+ * of dropping the new value into an `else`. That is ENG-2580's defect, and the
+ * `never` arm is the only defence available without a shared package.
+ */
+export type ServerEnrollmentOutcome =
+  | 'enrolled'
+  | 'restored'
+  | 'already_enrolled';
+
+/** One file's outcome on an enroll response. */
+export interface QueuedEnrollmentFile {
+  msId: string;
+  platformId: string;
+  outcome: ServerEnrollmentOutcome;
+}
+
+/**
+ * What every enroll route answers. Enrollment is ASYNC — the file is not
+ * present when this returns, only accepted, so nothing may claim otherwise.
+ *
+ * ENG-2536 — except for `already_enrolled`, which is the one answer that is
+ * NOT a promise about the future: it means nothing was written and no worker
+ * pass will change the file.
+ *
+ * Optional because the package and the backend ship on separate clocks. A
+ * customer running `npx` picks up `latest` the moment it publishes, so calling
+ * a backend that predates this field is a real case; readers fall back to what
+ * the pre-write lookup said.
+ */
+export interface QueuedEnrollment {
+  enrollmentId: string;
+  status: 'queued';
+  files?: QueuedEnrollmentFile[];
+}
+
 export interface UserSummary {
   /**
    * Version-7 uuid (ENG-1966) — the spelling to pass as a reviewer id.
@@ -73,6 +218,26 @@ export interface UserSummary {
   patScopes?: string[];
   /** ENG-2205 — ISO-8601 expiry of the presenting token, or null if it never expires. */
   patExpiresAt?: string | null;
+  /**
+   * ENG-2200 — the caller's team memberships. `/users/me` serves these
+   * because `User.teamMembers` and `TeamMember.team` are both `eager: true`
+   * on the backend entities; no relation has to be requested.
+   *
+   * Optional because nothing else in this package reads it and a user may
+   * belong to no team at all — which is a real state `enroll_file` has to
+   * report rather than silently treat as an empty team.
+   */
+  teamMembers?: TeamMembership[];
+}
+
+/** One row of {@link UserSummary.teamMembers} — the team, not its roster. */
+export interface TeamMembership {
+  team?: {
+    /** Version-7 uuid (ENG-1966). Absent on a backend older than the re-key. */
+    id?: string;
+    internalId?: number;
+    name?: string;
+  } | null;
 }
 
 export interface Workspace {

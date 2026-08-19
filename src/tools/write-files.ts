@@ -2,10 +2,17 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 
+import { registerEnrollFileTool } from './enroll-file.js';
+
 export function registerWriteFileTool(
   server: McpServer,
   api: ApiClient,
 ): void {
+  // ENG-2200 — `enroll_file` rides the same `files:write` family as
+  // `rename_file`: both are file-lifecycle operations, and a token narrowed to
+  // comments must not be able to add a workbook to the workspace.
+  registerEnrollFileTool(server, api);
+
   server.registerTool(
     'rename_file',
     {
