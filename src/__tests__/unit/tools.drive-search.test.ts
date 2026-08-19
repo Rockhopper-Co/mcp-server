@@ -404,7 +404,10 @@ describe('search_drive_files — confirmation lanes', () => {
     expect(api.searchDriveFiles).toHaveBeenCalledTimes(1);
   });
 
-  it('treats a declined or cancelled elicitation as "no file"', async () => {
+  // ENG-2789 — this spec used to expect `declined` for both actions. That is
+  // the defect: a prompt whose candidates were never on screen closed, and the
+  // tool reported a decision the user had not made.
+  it('treats a closed prompt as unanswered, never as a rejection', async () => {
     const handler = handlerFor(createMockApiClient());
     for (const action of ['decline', 'cancel']) {
       const result = await handler(
@@ -417,7 +420,8 @@ describe('search_drive_files — confirmation lanes', () => {
           },
         },
       );
-      expect(outcomeOf(result)).toBe('declined');
+      expect(outcomeOf(result)).toBe('dismissed');
+      expect(result.isError).toBeUndefined();
     }
   });
 
@@ -513,7 +517,7 @@ describe('search_drive_files — the remaining refusals', () => {
     expect(confirmed.content[0].text).toContain('browser bar');
   });
 
-  it('treats a declined elicitation as "no file", not as an error', async () => {
+  it('treats a dismissed elicitation as "no answer", not as an error', async () => {
     const api = createMockApiClient();
     const server = createMockMcpServer();
     (server as unknown as { server: unknown }).server = {
@@ -531,7 +535,7 @@ describe('search_drive_files — the remaining refusals', () => {
         },
       },
     );
-    expect(outcomeOf(result)).toBe('declined');
+    expect(outcomeOf(result)).toBe('dismissed');
     expect(result.isError).toBeUndefined();
     expect(api.createEnrolledFile).not.toHaveBeenCalled();
   });
