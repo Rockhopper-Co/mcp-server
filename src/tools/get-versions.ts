@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import { formatVersion } from '../version-format.js';
 
 export function registerGetVersionsTool(
   server: McpServer,
@@ -26,7 +27,11 @@ export function registerGetVersionsTool(
         const versions = await api.getFileVersions(fileMsId);
         const summary = versions
           .map((v) => {
-            const ver = `v${v.majorVersion}.${v.minorVersion}.${v.patchVersion}`;
+            // ENG-2750 — a negative-semver discard marker renders as what it
+            // is. The `[discarded]` tag below stays: it reports `wasDiscarded`,
+            // a separate field, so a discard recorded WITHOUT the negative
+            // marker keeps its flag.
+            const ver = formatVersion(v);
             const flags = [
               v.wasDiscarded ? 'discarded' : null,
               v.wasReverted ? 'reverted' : null,
