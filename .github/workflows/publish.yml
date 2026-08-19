@@ -137,9 +137,23 @@ jobs:
       # The version is already on the registry (staging published it first, or
       # a re-run). Do not re-publish; move the channel's dist-tag to it if it is
       # not already there. On `latest` this IS the production release.
+      #
+      # MEASURED 2026-08-19 (run 32227933905): Trusted Publishing's OIDC
+      # exchange mints a credential for `npm publish` ONLY — `npm dist-tag add`
+      # answers E401 under it. Promotion therefore needs a real token: the
+      # `npm-publish` environment secret NPM_TOKEN (granular, publish-only,
+      # scoped to this package). Absent, fail LOUDLY with the reason instead of
+      # printing an auth error nobody can act on.
       - name: Promote existing version to channel dist-tag
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.channel.outputs.exists == 'true' && steps.channel.outputs.tag_at != steps.channel.outputs.version }}
-        run: npm dist-tag add "${{ steps.channel.outputs.name }}@${{ steps.channel.outputs.version }}" "${{ steps.channel.outputs.channel }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::Promotion of ${{ steps.channel.outputs.name }}@${{ steps.channel.outputs.version }} to dist-tag '${{ steps.channel.outputs.channel }}' needs the npm-publish environment secret NPM_TOKEN (granular publish token for this package). Trusted Publishing cannot run 'npm dist-tag add'. Add the secret and re-run this workflow." 
+            exit 1
+          fi
+          npm dist-tag add "${{ steps.channel.outputs.name }}@${{ steps.channel.outputs.version }}" "${{ steps.channel.outputs.channel }}"
 
       - name: Nothing to do
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.channel.outputs.exists == 'true' && steps.channel.outputs.tag_at == steps.channel.outputs.version }}
