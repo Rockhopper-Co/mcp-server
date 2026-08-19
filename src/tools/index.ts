@@ -11,6 +11,8 @@ import { registerGetCommentsTool } from './get-comments.js';
 import { registerGetReviewsTool } from './get-reviews.js';
 import { registerGetCellHistoryTool } from './get-cell-history.js';
 import { registerSearchTool } from './search.js';
+import { registerDriveSearchTool } from './drive-search.js';
+import { registerConnectMicrosoftTool } from './connect-microsoft.js';
 import { registerWriteCommentTools } from './write-comments.js';
 import { registerWriteReviewTools } from './write-reviews.js';
 import { registerWriteVersionTools } from './write-versions.js';
@@ -116,6 +118,16 @@ export function registerTools(
   registerGetReviewsTool(server, api);
   registerGetCellHistoryTool(server, api);
   registerSearchTool(server, api);
+  // ENG-2204 — discovery of files Rockhopper has NEVER seen. On the read floor
+  // for the same reason `connect_microsoft` is: finding a file writes nothing,
+  // and a read-only token is exactly the caller who needs to be told a file is
+  // un-enrolled rather than missing.
+  registerDriveSearchTool(server, api);
+  // ENG-2198 — connecting a Microsoft account is an account action, not a
+  // write to Rockhopper data, so it rides with the read floor: a read-only
+  // token can still connect, check and disconnect. The backend requires an
+  // interactive login for the disconnect itself.
+  registerConnectMicrosoftTool(server, api);
 
   // Write tools — one registrar per granted family, so a token holding
   // `comments:write` alone cannot reach `discard_changes`.

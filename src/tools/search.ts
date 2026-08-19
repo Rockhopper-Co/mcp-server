@@ -18,7 +18,23 @@ export function registerSearchTool(
       description:
         'Search enrolled files by name (default), comment text, version ' +
         'descriptions, or all of the above. Returns matching files with ' +
-        'their metadata including uncommitted change status.',
+        'their metadata including uncommitted change status. ' +
+        // ENG-1647 / ENG-2200: this search only sees files ALREADY in
+        // Rockhopper, and it matches on substrings — so "no match" means "not
+        // enrolled", never "no such workbook", and a single match is not proof
+        // it is the file the user meant. The customer in ENG-1647 was told
+        // their file was already enrolled when a different file had matched,
+        // and then that no tool existed to add the real one.
+        'Only files ALREADY added to Rockhopper are searched, and matching is ' +
+        'by name substring — so a file that does not appear here is very ' +
+        'likely one that has never been added, not one that does not exist. ' +
+        // ENG-2204: the named next step, because "ask for a link" is a dead
+        // end when the user does not have one to hand — which is the ENG-1647
+        // customer exactly.
+        'When nothing matches, or when the match does not look like the file ' +
+        'the user described, call `search_drive_files` — it looks across the ' +
+        "user's whole OneDrive and SharePoint, including files Rockhopper has " +
+        'never seen. Confirm the pick with the user there, then `enroll_file`.',
       inputSchema: z.object({
         query: z.string().describe('Search query'),
         matchIn: z
@@ -55,7 +71,14 @@ export function registerSearchTool(
               type: 'text',
               text: files.length
                 ? `Found ${files.length} file(s) matching "${query}":\n\n${summary}`
-                : `No files match "${query}".`,
+                : // ENG-2200: never leave this as a bare negative. "No files
+                  // match" is true of an un-enrolled workbook and of one that
+                  // does not exist, and only one of those is a dead end.
+                  `No files match "${query}". This searches only files already ` +
+                  'added to Rockhopper, so the workbook may simply never have ' +
+                  'been added. Call `search_drive_files` with the same terms ' +
+                  "to look through the user's own OneDrive and SharePoint, " +
+                  'confirm which file they meant, then `enroll_file`.',
             },
           ],
         };
