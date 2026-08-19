@@ -57,17 +57,14 @@ jobs:
           PKG_VERSION=$(node -p "require('./package.json').version")
           TAG="v${PKG_VERSION}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            # ENG-2748: the tag can pre-exist when the version was published to
-            # the `staging` dist-tag first (or hand-tagged). Existence of the
-            # tag is not the same as `latest` pointing at it — check the
-            # registry and dispatch the promotion if `latest` lags.
-            LATEST=$(npm view "$(node -p "require('./package.json').name")" dist-tags.latest 2>/dev/null || true)
-            if [ "$LATEST" = "$PKG_VERSION" ]; then
-              echo "Tag $TAG exists and latest=$LATEST — nothing to do."
-            else
-              echo "Tag $TAG exists but latest=${LATEST:-<unset>} — dispatching publish to promote."
-              gh workflow run publish.yml --ref "$TAG"
-            fi
+            # ENG-2755: the tag already exists, so its publish run already
+            # happened — re-dispatching cannot help, because publish.yml only
+            # ever publishes and npm refuses a version it already holds. This
+            # branch used to consult `dist-tags.latest` and re-dispatch when it
+            # lagged; that existed to trigger a PROMOTION step which no longer
+            # exists. A tag whose release is missing from `latest` means that
+            # tag's publish run FAILED — read that run, do not re-dispatch.
+            echo "Tag $TAG already exists — nothing to do. If $PKG_VERSION is not on npm, read the publish run for $TAG."
           else
             echo "Creating tag $TAG"
             git tag "$TAG"
