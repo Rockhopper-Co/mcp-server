@@ -129,6 +129,36 @@ describe('search_drive_files — finding candidates', () => {
     expect(result.content[0].text).toContain('did not fail');
   });
 
+  it('never tells a caller to retry the route that just came back empty', async () => {
+    // ENG-2792. The two empty answers have DIFFERENT remedies — a name miss
+    // means try another name, an empty `recent` means that route holds
+    // nothing — and one shared string sent the caller back round the loop it
+    // had just run. The assertion is on the round trip, not on the wording:
+    // whatever the message says, it may not name the scope it was called with.
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockResolvedValue({ scope: 'recent', items: [] });
+    const result = await handlerFor(api)({ scope: 'recent' });
+    const text = result.content[0].text;
+
+    expect(outcomeOf(result)).toBe('no_matches');
+    expect(result.isError).toBeUndefined();
+    expect(text).not.toContain('scope="recent"');
+    // It has to say WHICH list is empty, and name a way out that is not the
+    // one just taken: search by name, or take a link from the user.
+    expect(text).toMatch(/recent/i);
+    expect(text).toContain('scope="search"');
+    expect(text).toContain('enroll_file');
+  });
+
+  it('still points a failed NAME search at the recent list', async () => {
+    // The other half of ENG-2792: splitting the message must not cost the
+    // name-search branch its escape hatch.
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockResolvedValue({ scope: 'search', items: [] });
+    const result = await handlerFor(api)({ query: 'nothing' });
+    expect(result.content[0].text).toContain('scope="recent"');
+  });
+
   it('defaults to a modest page rather than the backend maximum', async () => {
     const api = createMockApiClient();
     await handlerFor(api)({ query: 'Becklar' });
