@@ -4,19 +4,22 @@ on:
   # PROD ELEVATIONS ONLY (David, 2026-07-31): CI budget. Gated at the
   # trigger, not per-job — a job-level `if:` still creates the run and posts
   # skipped checks. Run validation locally; workflow_dispatch runs on demand.
+  #
+  # ENG-2807 removed the `push: branches: [main]` trigger. It existed to run
+  # `auto-tag`, which cut `v<version>` and dispatched publish.yml; publishing is
+  # now driven by the merge itself, and publish.yml re-runs typecheck/test/build
+  # on that same push before it publishes anything. Keeping both would have paid
+  # for the identical gate twice on every elevation.
   pull_request:
     branches: [main]
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 jobs:
   verify:
@@ -39,42 +42,3 @@ jobs:
 
       - name: Dry-run npm publish (no auth required)
         run: npm publish --dry-run --access public
-
-  auto-tag:
-    name: Tag release if version bumped
-    needs: verify
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Check for new version and create tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          TAG="v${PKG_VERSION}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            # ENG-2755: the tag already exists, so its publish run already
-            # happened — re-dispatching cannot help, because publish.yml only
-            # ever publishes and npm refuses a version it already holds. This
-            # branch used to consult `dist-tags.latest` and re-dispatch when it
-            # lagged; that existed to trigger a PROMOTION step which no longer
-            # exists. A tag whose release is missing from `latest` means that
-            # tag's publish run FAILED — read that run, do not re-dispatch.
-            echo "Tag $TAG already exists — nothing to do. If $PKG_VERSION is not on npm, read the publish run for $TAG."
-          else
-            echo "Creating tag $TAG"
-            git tag "$TAG"
-            git push origin "$TAG"
-            # --ref is REQUIRED. Without it `gh workflow run` targets the repo
-            # DEFAULT branch (dev), not the tag: the 0.9.0 attempt ran against
-            # dev, which silently skips publish.yml's "Verify package version
-            # matches tag" guard (it is gated on refs/tags/v*) and would publish
-            # whatever dev happened to hold. The explicit dispatch exists because
-            # a GITHUB_TOKEN-pushed tag does not fire `on: push: tags` at all.
-            echo "Dispatching publish workflow for $TAG"
-            gh workflow run publish.yml --ref "$TAG"
-          fi

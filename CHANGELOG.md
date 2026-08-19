@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Patch numbers are now assigned by the release pipeline, not by hand.** A
+  merge to `main` publishes `<major>.<minor>.<build number>` to the `latest`
+  dist-tag; a merge to `staging` publishes the matching
+  `<major>.<minor>.<build number>-staging.<commit>` prerelease to the `staging`
+  dist-tag. Expect the patch digit to jump — `2.1.0` to `2.1.29`, say — rather
+  than increment by one. Major and minor still mean what
+  [Semantic Versioning](https://semver.org/spec/v2.0.0.html) says they mean, and
+  are still chosen by a person; only the patch digit changed hands.
+
+  The reason is that a released version used to require someone to remember to
+  cut a git tag. On 2026-08-19 `2.1.1` reached the registry while `latest` stayed
+  on `2.1.0`, so every `npm install @rockhopper-co/mcp-server` kept receiving the
+  older package and nothing reported a problem. A merge now publishes on its own.
+
 ## [2.0.0] — 2026-08-16
 
 Cuts everything that had accumulated under `[Unreleased]` below. Published by

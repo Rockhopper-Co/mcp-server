@@ -1,5 +1,22 @@
 name: Publish to npm
 
+# ENG-2807 — THE TRIGGER IS A MERGE. There is no hand-cut release tag.
+#
+# `frontend/.github/workflows/publish-packages.yml` predicted this repo's defect
+# in writing and named this repo while doing it: under a tag-driven publish
+# "someone has to remember to cut the tag, nothing watches whether they did."
+# On 2026-08-19 that is exactly what happened — 2.1.1 reached the registry, no
+# `v2.1.1` tag was ever cut, `latest` stayed on 2.1.0, and every customer
+# install received the older version. Nothing noticed. So the tag path is gone.
+# A merge publishes; no human has to remember anything.
+#
+# WHY `main` AND NOT `dev`, unlike frontend. Frontend's packages are private
+# (GitHub Packages) and consumed only by the add-in, so publishing `dev`
+# straight to `latest` is safe there. `@rockhopper-co/mcp-server` is PUBLIC and
+# installed by customers — Cursor, Claude Desktop, anyone running the local
+# server — so `latest` is bound to the branch that already means reviewed and
+# released. The PRINCIPLE is frontend's; the branch deliberately is not.
+#
 # ENG-2755 — PUBLISH ONLY. This pipeline never moves a dist-tag.
 #
 # `npm publish --tag <x>` sets the dist-tag as part of the publish, and that is
@@ -13,21 +30,44 @@ name: Publish to npm
 # blocked pending a credential; it is unreachable, now and later.
 #
 # Two channels, each a plain publish of a DIFFERENT version:
-#   push to `staging` → publish `<pkg version>-staging.<short sha>` --tag staging
-#   push tag v*.*.*   → publish `<pkg version>`                     (--tag latest)
-# The staging build is a prerelease, so the released version is still unpublished
-# when the tag fires and can simply be published to `latest`.
+#   push to `main`    → publish `<major>.<minor>.<run number>`                --tag latest
+#   push to `staging` → publish `<major>.<minor>.<run number>-staging.<sha>`  --tag staging
+#
+# THE VERSION IS DERIVED, NEVER COMMITTED, and that is what makes a collision
+# impossible rather than unlikely. `github.run_number` is monotonic per workflow
+# and is never handed to two different runs, so two runs cannot compute the same
+# version while major.minor is unchanged; and raising major.minor raises the
+# version regardless of the run number, so the sequence is strictly increasing
+# across bumps too. Humans own major.minor in package.json; the machine owns the
+# patch. package.json's patch digit is decorative from here on, and nothing in
+# git is edited to cut a release.
+#
+# The ONE case where a run number repeats is re-running the SAME run
+# (`run_attempt` increments, `run_number` does not). A re-run of a publish that
+# already succeeded therefore collides on purpose, and is refused loudly by
+# "Refuse a version the registry already holds" below. A re-run of a publish
+# that failed BEFORE the publish step recomputes the same unpublished version
+# and succeeds, which is the behaviour that makes a re-run useful.
+#
+# Ordering across the two channels is coherent because both derive from the same
+# counter: `2.1.30-staging.abc1234` sorts above `2.1.29` on `latest` and below
+# the next `latest` publish, so `staging` is always ahead of `latest` and never
+# behind it.
 
 on:
+  # Merges only. No `tags:` filter, and no `dev` trigger — CI runs on prod
+  # elevations only (David, 2026-07-31, Actions budget), and a `dev` publish
+  # would double the run count while the `staging` merge that follows it is
+  # what the gateway actually installs.
   push:
-    tags:
-      - 'v*.*.*'
-    # Pre-main staging QA of the package is REQUIRED. A push to `staging`
-    # publishes a prerelease under the `staging` dist-tag — never `latest` — so
-    # the staging gateway can install `@rockhopper-co/mcp-server@staging` and
-    # serve unreleased tools for QA.
     branches:
+      - main
       - staging
+  # Escape hatch for a publish that failed downstream of the registry. The
+  # channel follows the ref it is dispatched from, exactly as a push would:
+  # from `main` it republishes `latest` under a fresh run number, from anywhere
+  # else it publishes a `staging` prerelease. No dispatch can reach `latest`
+  # from a branch other than `main`.
   workflow_dispatch:
     inputs:
       dry_run:
@@ -39,10 +79,23 @@ permissions:
   contents: read
   id-token: write
 
+# Two pushes to the same branch in quick succession would race on the dist-tag:
+# the versions cannot collide, but `--tag` points wherever the LAST publish
+# lands, which could be the older commit. Serialise per ref; never cancel, since
+# a cancelled run is a version that silently never shipped.
+concurrency:
+  group: publish-npm-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: Build, test, and publish
     runs-on: ubuntu-latest
+    # Named in npm's trusted-publisher configuration alongside this file's path.
+    # Renaming either the environment or this workflow file breaks OIDC. It
+    # carries no protection rules (measured 2026-08-19: `protection_rules: []`,
+    # `deployment_branch_policy: null`), so it gates nothing and adds no human
+    # step — it is an OIDC subject claim, not an approval.
     environment: npm-publish
     steps:
       - name: Checkout
@@ -90,32 +143,27 @@ jobs:
           head -n1 dist/cli.js | grep -q '^#!/usr/bin/env node'
           chmod +x dist/cli.js
 
-      - name: Verify package version matches tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
-            exit 1
-          fi
-
-      # Decide WHAT VERSION to publish and under WHICH dist-tag, from the ref.
-      # A tag publishes the committed version to the default tag `latest`.
-      # Anything else — a `staging` push, or a manual dispatch used to rehearse
-      # one — publishes a prerelease derived from the committed version, under
-      # `staging`. A dispatch on any branch therefore exercises exactly the
-      # staging path rather than a special case of its own, and no non-tag ref
-      # can reach `latest`.
+      # Decide WHAT VERSION to publish and under WHICH dist-tag, from the branch.
+      # `main` is the only ref that can reach `latest`; everything else is a
+      # `staging` prerelease. See the header for why the run number is the patch.
       - name: Resolve version and dist-tag
         id: target
         run: |
           set -euo pipefail
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")
+          # major.minor only — the committed patch is ignored on purpose.
+          BASE=$(printf '%s' "$PKG_VERSION" | cut -d. -f1,2)
+          case "$BASE" in
+            [0-9]*.[0-9]*) ;;
+            *)
+              echo "::error::package.json version '$PKG_VERSION' does not start with <major>.<minor>. Refusing to derive a publish version from it."
+              exit 1
+              ;;
+          esac
           case "$GITHUB_REF" in
-            refs/tags/v*)
-              VERSION="$PKG_VERSION"
+            refs/heads/main)
+              VERSION="${BASE}.${GITHUB_RUN_NUMBER}"
               DIST_TAG=latest
               ;;
             *)
@@ -127,27 +175,78 @@ jobs:
               case "$SHORT_SHA" in
                 0[0-9][0-9][0-9][0-9][0-9][0-9]) SHORT_SHA="g$SHORT_SHA" ;;
               esac
-              VERSION="${PKG_VERSION}-staging.${SHORT_SHA}"
+              VERSION="${BASE}.${GITHUB_RUN_NUMBER}-staging.${SHORT_SHA}"
               DIST_TAG=staging
               ;;
           esac
-          if npm view "$PKG_NAME@$VERSION" version >/dev/null 2>&1; then
-            EXISTS=true
-          else
-            EXISTS=false
-          fi
           echo "name=$PKG_NAME"     >> "$GITHUB_OUTPUT"
           echo "version=$VERSION"   >> "$GITHUB_OUTPUT"
           echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
-          echo "exists=$EXISTS"     >> "$GITHUB_OUTPUT"
-          echo "Publishing $PKG_NAME@$VERSION under dist-tag '$DIST_TAG' (already on registry: $EXISTS)."
+          echo "Publishing $PKG_NAME@$VERSION under dist-tag '$DIST_TAG'."
+
+      # ENG-2807's OWN FAILURE MODE, killed. The step this replaces printed
+      # "Nothing to publish" and exited GREEN when the registry already held the
+      # version — a stage succeeding while achieving nothing, which is precisely
+      # how `latest` sat on 2.1.0 with 2.1.1 published and nobody noticed.
+      #
+      # This can only fire on a re-run of an already-successful run, or after a
+      # hand-edit of major.minor that walks backwards into a published version.
+      # Both are wrong and both now go red.
+      #
+      # `npm view` failing for any other reason (network, registry outage)
+      # leaves FOUND empty and lets the run continue — the publish below is then
+      # the backstop, because npm answers EPUBLISHCONFLICT to a republish and
+      # cannot silently overwrite. Two independent refusals, and this one exists
+      # to name the problem before 4 minutes of build time are spent.
+      - name: Refuse a version the registry already holds
+        env:
+          NAME: ${{ steps.target.outputs.name }}
+          VERSION: ${{ steps.target.outputs.version }}
+        run: |
+          set -euo pipefail
+          FOUND=$(npm view "$NAME@$VERSION" version 2>/dev/null || true)
+          if [ -n "$FOUND" ]; then
+            echo "::error::$NAME@$VERSION is already on the registry. A published version is never re-published and this pipeline never moves a dist-tag, so there is nothing this run can do. Re-running a publish that already succeeded cannot help — read the run that published it."
+            exit 1
+          fi
+          echo "$NAME@$VERSION is not on the registry."
+
+      # Since npm 11.0.0 (npm/cli#7939) the CLI refuses a publish outright
+      # rather than moving `latest` backwards, and the pin above is npm 11. That
+      # refusal names neither version, so this step makes the same call first
+      # and says which two versions are involved. Cannot fire under the derived
+      # scheme unless major.minor is hand-lowered in package.json.
+      - name: Refuse to move `latest` backwards
+        if: ${{ steps.target.outputs.dist_tag == 'latest' }}
+        env:
+          NAME: ${{ steps.target.outputs.name }}
+          VERSION: ${{ steps.target.outputs.version }}
+        run: |
+          set -euo pipefail
+          CURRENT=$(npm view "$NAME" dist-tags.latest 2>/dev/null || true)
+          if [ -z "$CURRENT" ]; then
+            echo "No current 'latest' dist-tag to compare against — first publish."
+            exit 0
+          fi
+          node -e '
+            const cmp = (x, y) => {
+              const a = x.split(".").map(Number), b = y.split(".").map(Number);
+              for (let i = 0; i < 3; i++) { if (a[i] !== b[i]) return a[i] - b[i]; }
+              return 0;
+            };
+            const [next, current] = process.argv.slice(1);
+            if (cmp(next, current) <= 0) {
+              console.error(`::error::Refusing to publish ${next} to latest — latest is already ${current}. npm 11 rejects a backwards latest anyway; raise major.minor in package.json.`);
+              process.exit(1);
+            }
+            console.log(`${next} > ${current}, latest moves forward.`);
+          ' "$VERSION" "$CURRENT"
 
       # Never committed — the checkout is thrown away with the runner. npm reads
       # the version from package.json at publish time, and the package reads it
       # back at runtime for its own version banner, so this is the whole of what
-      # makes the published artifact a prerelease.
-      - name: Stamp the derived prerelease version
-        if: ${{ steps.target.outputs.dist_tag == 'staging' }}
+      # makes the published artifact carry the derived version.
+      - name: Stamp the derived version
         run: |
           set -euo pipefail
           npm version --no-git-tag-version --allow-same-version "${{ steps.target.outputs.version }}"
@@ -159,16 +258,9 @@ jobs:
 
       # Trusted Publishing: no NPM_TOKEN. npm CLI exchanges the GitHub OIDC
       # token for a short-lived registry credential automatically, and
-      # provenance is implied (cannot be disabled). See:
-      # https://docs.npmjs.com/trusted-publishers
+      # provenance is implied (cannot be disabled). Provenance is also what
+      # replaces the retired git tag as the link from a published version back
+      # to its commit. See: https://docs.npmjs.com/trusted-publishers
       - name: Publish to npm (Trusted Publishing + provenance)
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.target.outputs.exists == 'false' }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
         run: npm publish --access public --tag "${{ steps.target.outputs.dist_tag }}"
-
-      # The registry already holds this exact version, so there is nothing to
-      # publish and nothing to move. On `staging` that means the same commit was
-      # re-run; on `latest` it means the tag's publish already succeeded.
-      - name: Nothing to publish
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.target.outputs.exists == 'true' }}
-        run: |
-          echo "${{ steps.target.outputs.name }}@${{ steps.target.outputs.version }} is already on the registry — no-op. A published version is never re-published, and this pipeline never moves a dist-tag."

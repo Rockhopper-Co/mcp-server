@@ -36,10 +36,7 @@
     "generate:postman": "tsx scripts/generate-postman-collection.ts && tsx scripts/generate-postman-environments.ts",
     "generate:postman:check": "npm run generate:postman && git diff --exit-code -- postman/",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run build",
-    "release:patch": "npm version patch -m 'release: v%s' && git push && git push --tags",
-    "release:minor": "npm version minor -m 'release: v%s' && git push && git push --tags",
-    "release:major": "npm version major -m 'release: v%s' && git push && git push --tags"
+    "prepublishOnly": "npm run build"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -58,6 +55,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.7.0",
     "globals": "^17.11.0",
+    "js-yaml": "^5.3.0",
     "tsx": "^4.23.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
