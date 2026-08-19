@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*.*.*'
+    # ENG-2748 (David, 2026-08-19): pre-main staging QA of the package is
+    # REQUIRED. A push to `staging` publishes package.json's version under the
+    # `staging` dist-tag — never `latest` — so the staging gateway can install
+    # `@rockhopper-co/mcp-server@staging` and serve unreleased tools for QA.
+    branches:
+      - staging
   workflow_dispatch:
     inputs:
       dry_run:
@@ -76,14 +82,65 @@ jobs:
             exit 1
           fi
 
+      # ENG-2748 — decide the CHANNEL from the ref, and whether there is
+      # anything to publish at all. Two channels, one rule each:
+      #   tag v*.*.*   → `latest`  (production release; the existing path)
+      #   staging push → `staging` (pre-main QA; never touches `latest`)
+      # A version already on the registry is not re-published (npm refuses
+      # anyway); on the `latest` channel it is PROMOTED via dist-tag instead,
+      # which is the normal case once staging published it first. On the
+      # `staging` channel an existing version is a no-op unless it lacks the
+      # tag, in which case only the tag moves.
+      - name: Resolve publish channel
+        id: channel
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          case "$GITHUB_REF" in
+            refs/tags/v*)         CHANNEL=latest ;;
+            refs/heads/staging)   CHANNEL=staging ;;
+            *)
+              if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                # Dispatch on a branch other than staging → treat as staging
+                # for a dry-run only; a real dispatch publish must come from a
+                # tag (latest) or from staging.
+                CHANNEL=staging
+              else
+                echo "Unsupported ref $GITHUB_REF" >&2; exit 1
+              fi ;;
+          esac
+          if npm view "$PKG_NAME@$PKG_VERSION" version >/dev/null 2>&1; then
+            EXISTS=true
+          else
+            EXISTS=false
+          fi
+          CURRENT_TAG_VERSION=$(npm view "$PKG_NAME" "dist-tags.$CHANNEL" 2>/dev/null || true)
+          echo "channel=$CHANNEL"          >> "$GITHUB_OUTPUT"
+          echo "exists=$EXISTS"            >> "$GITHUB_OUTPUT"
+          echo "version=$PKG_VERSION"      >> "$GITHUB_OUTPUT"
+          echo "name=$PKG_NAME"            >> "$GITHUB_OUTPUT"
+          echo "tag_at=$CURRENT_TAG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL version=$PKG_VERSION exists=$EXISTS ${CHANNEL}→${CURRENT_TAG_VERSION:-<unset>}"
+
       - name: Publish dry-run
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: npm publish --dry-run --access public
+        run: npm publish --dry-run --access public --tag "${{ steps.channel.outputs.channel }}"
 
       # Trusted Publishing: no NPM_TOKEN. npm CLI exchanges the GitHub OIDC
       # token for a short-lived registry credential automatically, and
       # provenance is implied (cannot be disabled). See:
       # https://docs.npmjs.com/trusted-publishers
       - name: Publish to npm (Trusted Publishing + provenance)
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
-        run: npm publish --access public
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.channel.outputs.exists == 'false' }}
+        run: npm publish --access public --tag "${{ steps.channel.outputs.channel }}"
+
+      # The version is already on the registry (staging published it first, or
+      # a re-run). Do not re-publish; move the channel's dist-tag to it if it is
+      # not already there. On `latest` this IS the production release.
+      - name: Promote existing version to channel dist-tag
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.channel.outputs.exists == 'true' && steps.channel.outputs.tag_at != steps.channel.outputs.version }}
+        run: npm dist-tag add "${{ steps.channel.outputs.name }}@${{ steps.channel.outputs.version }}" "${{ steps.channel.outputs.channel }}"
+
+      - name: Nothing to do
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.channel.outputs.exists == 'true' && steps.channel.outputs.tag_at == steps.channel.outputs.version }}
+        run: echo "${{ steps.channel.outputs.name }}@${{ steps.channel.outputs.version }} already carries dist-tag ${{ steps.channel.outputs.channel }} — no-op."
