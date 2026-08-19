@@ -421,6 +421,34 @@ export const BUDGET_EXHAUSTED_TEXT =
   "searching and ask the user to paste the workbook's SharePoint or OneDrive " +
   'link, then call `enroll_file` with that link. Nothing was searched.';
 
+/**
+ * ENG-2792 — the two empty answers, and why they are two.
+ *
+ * A search that matched no name and a `recent` list with nothing in it used to
+ * share one string, which ended by suggesting `scope="recent"`. Told to a
+ * caller who had just run `scope="recent"`, that is an instruction to repeat
+ * the call that produced it, and it cost real time in the ENG-2743 QA before
+ * ENG-2786 found why `recent` was empty at all. That cause is fixed; a
+ * legitimately empty `recent` still happens, and this is what it says.
+ *
+ * The rule both strings obey: never name the route the caller just took.
+ */
+
+/** Told to the model when a NAME search matched nothing. */
+export const NO_MATCHES_TEXT =
+  'Microsoft returned no spreadsheets matching that. The search ran and came ' +
+  'back empty — it did not fail. Ask the user to try a different part of the ' +
+  'name, or call again with scope="recent" to list what they have worked on ' +
+  'lately.';
+
+/** Told to the model when `scope="recent"` came back with nothing in it. */
+export const RECENT_EMPTY_TEXT =
+  'This user has no recent spreadsheets. The list ran and came back empty — ' +
+  'it did not fail, and asking for the recent list again will return the same ' +
+  'empty list. Two routes remain: ask the user for part of the file name and ' +
+  'call again with that name and scope="search", or ask them to paste the ' +
+  "workbook's SharePoint or OneDrive link and call `enroll_file` with it.";
+
 /** Told to the model when the user has no delegated Microsoft grant. */
 export function connectPrompt(authorizeUrl: string, expiresAt: string): string {
   return (

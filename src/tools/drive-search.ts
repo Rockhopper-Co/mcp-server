@@ -24,6 +24,8 @@ import {
   DRIVE_SEARCH_ANNOTATIONS,
   DRIVE_SEARCH_DESCRIPTION,
   DRIVE_SEARCH_INPUT_SCHEMA,
+  NO_MATCHES_TEXT,
+  RECENT_EMPTY_TEXT,
   confirmationForm,
   confirmationPrompt,
   confirmedAnswer,
@@ -250,13 +252,13 @@ export function registerDriveSearchTool(
       );
 
       if (items.length === 0) {
+        // ENG-2792 — branch on the route TAKEN, not on the query. An empty
+        // `recent` and a name that matched nothing have different remedies,
+        // and one shared string told a caller who had just listed `recent` to
+        // list `recent`. Neither message may name the route just taken.
         return toolResult({
           outcome: 'no_matches',
-          text:
-            'Microsoft returned no spreadsheets matching that. The search ran ' +
-            'and came back empty — it did not fail. Ask the user to try a ' +
-            'different part of the name, or call again with scope="recent" ' +
-            'to list what they have worked on lately.',
+          text: scope === 'recent' ? RECENT_EMPTY_TEXT : NO_MATCHES_TEXT,
         });
       }
 
