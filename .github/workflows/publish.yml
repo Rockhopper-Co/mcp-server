@@ -16,6 +16,13 @@ on:
         description: 'Dry run (no publish)'
         type: boolean
         default: false
+      verify_promotion_credential:
+        description: >-
+          Credential probe ONLY. Skips build, test and publish entirely and
+          instead proves the npm-publish NPM_TOKEN can actually move a
+          dist-tag, using a throwaway tag. Never touches latest or staging.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -24,6 +31,9 @@ permissions:
 jobs:
   publish:
     name: Build, test, and publish
+    # The credential probe below is mutually exclusive with publishing: when it
+    # is requested, nothing is built, tested or published.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.verify_promotion_credential) }}
     runs-on: ubuntu-latest
     environment: npm-publish
     steps:
@@ -158,3 +168,120 @@ jobs:
       - name: Nothing to do
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.channel.outputs.exists == 'true' && steps.channel.outputs.tag_at == steps.channel.outputs.version }}
         run: echo "${{ steps.channel.outputs.name }}@${{ steps.channel.outputs.version }} already carries dist-tag ${{ steps.channel.outputs.channel }} — no-op."
+
+  # ENG-2748 — ATTACK THE GUARDRAIL, do not assume it works.
+  #
+  # The `npm-publish` environment secret NPM_TOKEN is the ONLY credential that
+  # can move a dist-tag: Trusted Publishing's OIDC exchange mints a
+  # publish-only credential and answers E401 to `npm dist-tag add` (measured
+  # 2026-08-19, run 32227933905). A secret that has never been exercised is a
+  # hypothesis, not a guarantee — the first time it runs must not be the night
+  # a release is waiting on it.
+  #
+  # This job exercises the real token against the real registry on a
+  # DISPOSABLE tag, then proves the two real channels never moved.
+  #
+  # ACCEPTED COST, stated plainly: the throwaway tag is briefly visible on the
+  # public npm registry between the add and the rm (seconds). That is the price
+  # of testing the actual credential instead of a simulation of it.
+  verify-promotion-credential:
+    name: Probe the npm promotion credential (no build, no publish)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_promotion_credential }}
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    env:
+      PROBE_TAG: ci-credential-probe
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org/
+
+      # Same pin as the publish job on purpose: the probe must exercise the npm
+      # CLI the real promote step runs under, not a different one.
+      - name: Upgrade npm CLI
+        run: npm install -g npm@^11.5.1
+
+      - name: Require the NPM_TOKEN secret
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::The npm-publish environment secret NPM_TOKEN is absent, so there is nothing to probe. Add a granular npm publish token scoped to @rockhopper-co/mcp-server and re-run."
+            exit 1
+          fi
+          echo "NPM_TOKEN is present (${#NODE_AUTH_TOKEN} characters). Value never printed."
+
+      - name: Resolve package and probe target
+        id: target
+        run: |
+          set -euo pipefail
+          PKG_NAME=$(node -p "require('./package.json').name")
+          # Probe an ALREADY-PUBLISHED version, so a failure can only mean the
+          # credential. Whatever `staging` points at is published by
+          # construction; fall back to `latest`.
+          TARGET=$(npm view --prefer-online "$PKG_NAME" dist-tags.staging 2>/dev/null || true)
+          if [ -z "$TARGET" ]; then
+            TARGET=$(npm view --prefer-online "$PKG_NAME" dist-tags.latest)
+          fi
+          echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "Probing $PKG_NAME@$TARGET with throwaway dist-tag '$PROBE_TAG'."
+
+      - name: dist-tags BEFORE
+        id: before
+        run: |
+          set -euo pipefail
+          PKG='${{ steps.target.outputs.name }}'
+          echo "--- npm dist-tag ls $PKG (BEFORE) ---"
+          npm dist-tag ls --prefer-online "$PKG"
+          echo "latest=$(npm view --prefer-online "$PKG" dist-tags.latest)" >> "$GITHUB_OUTPUT"
+          echo "staging=$(npm view --prefer-online "$PKG" dist-tags.staging)" >> "$GITHUB_OUTPUT"
+
+      # THIS is the test. If the token cannot write a dist-tag, it fails here
+      # with the same E401 the promote step hit.
+      - name: Add throwaway dist-tag
+        run: |
+          set -euo pipefail
+          npm dist-tag add '${{ steps.target.outputs.name }}@${{ steps.target.outputs.target }}' "$PROBE_TAG"
+
+      # Runs even if the add failed, so a partial state can never be left
+      # behind on the public registry.
+      - name: Remove throwaway dist-tag
+        if: always()
+        run: |
+          if npm dist-tag rm --prefer-online '${{ steps.target.outputs.name }}' "$PROBE_TAG"; then
+            echo "Removed throwaway dist-tag '$PROBE_TAG'."
+          else
+            echo "::warning::'$PROBE_TAG' could not be removed — it was either never added, or the token cannot remove tags. The assertion step below is the authority."
+          fi
+
+      - name: dist-tags AFTER, and assert latest/staging untouched
+        if: always()
+        run: |
+          set -uo pipefail
+          PKG='${{ steps.target.outputs.name }}'
+          echo "--- npm dist-tag ls $PKG (AFTER) ---"
+          npm dist-tag ls --prefer-online "$PKG" | tee /tmp/after.txt
+          AFTER_LATEST=$(npm view --prefer-online "$PKG" dist-tags.latest)
+          AFTER_STAGING=$(npm view --prefer-online "$PKG" dist-tags.staging)
+          FAIL=0
+          if [ "$AFTER_LATEST" != '${{ steps.before.outputs.latest }}' ]; then
+            echo "::error::latest moved: '${{ steps.before.outputs.latest }}' -> '$AFTER_LATEST'"
+            FAIL=1
+          fi
+          if [ "$AFTER_STAGING" != '${{ steps.before.outputs.staging }}' ]; then
+            echo "::error::staging moved: '${{ steps.before.outputs.staging }}' -> '$AFTER_STAGING'"
+            FAIL=1
+          fi
+          if grep -q "^${PROBE_TAG}:" /tmp/after.txt; then
+            echo "::error::throwaway dist-tag '$PROBE_TAG' is STILL on the registry. Remove it by hand: npm dist-tag rm $PKG $PROBE_TAG"
+            FAIL=1
+          fi
+          if [ "$FAIL" -eq 0 ]; then
+            echo "latest=$AFTER_LATEST and staging=$AFTER_STAGING are unchanged, and '$PROBE_TAG' is gone."
+          fi
+          exit "$FAIL"
