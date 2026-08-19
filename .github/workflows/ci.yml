@@ -57,7 +57,17 @@ jobs:
           PKG_VERSION=$(node -p "require('./package.json').version")
           TAG="v${PKG_VERSION}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists — skipping."
+            # ENG-2748: the tag can pre-exist when the version was published to
+            # the `staging` dist-tag first (or hand-tagged). Existence of the
+            # tag is not the same as `latest` pointing at it — check the
+            # registry and dispatch the promotion if `latest` lags.
+            LATEST=$(npm view "$(node -p "require('./package.json').name")" dist-tags.latest 2>/dev/null || true)
+            if [ "$LATEST" = "$PKG_VERSION" ]; then
+              echo "Tag $TAG exists and latest=$LATEST — nothing to do."
+            else
+              echo "Tag $TAG exists but latest=${LATEST:-<unset>} — dispatching publish to promote."
+              gh workflow run publish.yml --ref "$TAG"
+            fi
           else
             echo "Creating tag $TAG"
             git tag "$TAG"
