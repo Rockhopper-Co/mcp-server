@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import { formatVersion } from '../version-format.js';
 
 function bumpVersion(
   major: number,
@@ -86,7 +87,7 @@ export function registerWriteVersionTools(
           version: { ...next, description },
         });
 
-        const tag = `v${version.majorVersion}.${version.minorVersion}.${version.patchVersion}`;
+        const tag = formatVersion(version);
         return {
           content: [
             {
