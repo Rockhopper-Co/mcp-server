@@ -1,0 +1,36 @@
+# Expiry date of the npm publish token stored as the GitHub Actions secret
+# NPM_TOKEN on the `npm-publish` environment of Rockhopper-Co/mcp-server.
+#
+# WHAT THE TOKEN IS
+#   A granular npm access token, publish-only, scoped to the single package
+#   @rockhopper-co/mcp-server. It exists because Trusted Publishing (OIDC)
+#   mints a credential that can `npm publish` and NOTHING ELSE — the release
+#   pipeline's promotion step runs `npm dist-tag add`, which answers E401 under
+#   OIDC (measured 2026-08-19, run 32227933905). Without this token, promoting
+#   a staging build to `latest` fails and the release stops.
+#
+# WHAT BREAKS WHEN IT EXPIRES
+#   Publishing still works (that is OIDC). Promotion — moving the `latest`
+#   dist-tag onto an already-published version — fails. In practice: every
+#   production release from `main` stops until the token is replaced.
+#
+# HOW TO ROTATE
+#   1. npmjs.com -> Access Tokens -> Generate New Token -> Granular Access
+#      Token. Packages: @rockhopper-co/mcp-server only. Permission:
+#      Read and write. Expiration: 90 days.
+#   2. Store the value in 1Password, vault "Rockhopper Engineering", item
+#      title NPM_TOKEN_MCP_SERVER. Never paste it into a shell, a file, or a
+#      chat.
+#   3. GitHub -> Rockhopper-Co/mcp-server -> Settings -> Environments ->
+#      npm-publish -> Environment secrets -> NPM_TOKEN -> update.
+#   4. Update the date on the last line of this file to the new expiry and
+#      push. That is what silences the weekly warning.
+#   5. Prove the new token works before trusting it:
+#        gh workflow run publish.yml --ref dev -f verify_promotion_credential=true
+#      That probe adds and immediately removes a throwaway dist-tag and asserts
+#      `latest` and `staging` never moved.
+#
+# READ BY: .github/workflows/npm-token-expiry.yml (weekly). Lines starting with
+# `#` and blank lines are ignored; the first remaining line is the date, in
+# YYYY-MM-DD.
+2026-11-17
