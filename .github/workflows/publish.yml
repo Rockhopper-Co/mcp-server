@@ -1,26 +1,37 @@
 name: Publish to npm
 
+# ENG-2755 — PUBLISH ONLY. This pipeline never moves a dist-tag.
+#
+# `npm publish --tag <x>` sets the dist-tag as part of the publish, and that is
+# the ONLY registry write this workflow makes. There is deliberately no
+# `npm dist-tag add` anywhere: Trusted Publishing (OIDC) mints a publish-only
+# credential and answers E401 to a dist-tag write (measured 2026-08-19, run
+# 32227933905), and a granular npm token answers EOTP — requires a one-time
+# password (run 32233011522) because npm restricted 2FA-bypass granular tokens
+# in early August 2026. Those tokens also lose direct publishing around January
+# 2027, and npm's stated replacement is Trusted Publishing. So promotion is not
+# blocked pending a credential; it is unreachable, now and later.
+#
+# Two channels, each a plain publish of a DIFFERENT version:
+#   push to `staging` → publish `<pkg version>-staging.<short sha>` --tag staging
+#   push tag v*.*.*   → publish `<pkg version>`                     (--tag latest)
+# The staging build is a prerelease, so the released version is still unpublished
+# when the tag fires and can simply be published to `latest`.
+
 on:
   push:
     tags:
       - 'v*.*.*'
-    # ENG-2748 (David, 2026-08-19): pre-main staging QA of the package is
-    # REQUIRED. A push to `staging` publishes package.json's version under the
-    # `staging` dist-tag — never `latest` — so the staging gateway can install
-    # `@rockhopper-co/mcp-server@staging` and serve unreleased tools for QA.
+    # Pre-main staging QA of the package is REQUIRED. A push to `staging`
+    # publishes a prerelease under the `staging` dist-tag — never `latest` — so
+    # the staging gateway can install `@rockhopper-co/mcp-server@staging` and
+    # serve unreleased tools for QA.
     branches:
       - staging
   workflow_dispatch:
     inputs:
       dry_run:
         description: 'Dry run (no publish)'
-        type: boolean
-        default: false
-      verify_promotion_credential:
-        description: >-
-          Credential probe ONLY. Skips build, test and publish entirely and
-          instead proves the npm-publish NPM_TOKEN can actually move a
-          dist-tag, using a throwaway tag. Never touches latest or staging.
         type: boolean
         default: false
 
@@ -31,9 +42,6 @@ permissions:
 jobs:
   publish:
     name: Build, test, and publish
-    # The credential probe below is mutually exclusive with publishing: when it
-    # is requested, nothing is built, tested or published.
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.verify_promotion_credential) }}
     runs-on: ubuntu-latest
     environment: npm-publish
     steps:
@@ -92,196 +100,75 @@ jobs:
             exit 1
           fi
 
-      # ENG-2748 — decide the CHANNEL from the ref, and whether there is
-      # anything to publish at all. Two channels, one rule each:
-      #   tag v*.*.*   → `latest`  (production release; the existing path)
-      #   staging push → `staging` (pre-main QA; never touches `latest`)
-      # A version already on the registry is not re-published (npm refuses
-      # anyway); on the `latest` channel it is PROMOTED via dist-tag instead,
-      # which is the normal case once staging published it first. On the
-      # `staging` channel an existing version is a no-op unless it lacks the
-      # tag, in which case only the tag moves.
-      - name: Resolve publish channel
-        id: channel
+      # Decide WHAT VERSION to publish and under WHICH dist-tag, from the ref.
+      # A tag publishes the committed version to the default tag `latest`.
+      # Anything else — a `staging` push, or a manual dispatch used to rehearse
+      # one — publishes a prerelease derived from the committed version, under
+      # `staging`. A dispatch on any branch therefore exercises exactly the
+      # staging path rather than a special case of its own, and no non-tag ref
+      # can reach `latest`.
+      - name: Resolve version and dist-tag
+        id: target
         run: |
+          set -euo pipefail
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")
           case "$GITHUB_REF" in
-            refs/tags/v*)         CHANNEL=latest ;;
-            refs/heads/staging)   CHANNEL=staging ;;
+            refs/tags/v*)
+              VERSION="$PKG_VERSION"
+              DIST_TAG=latest
+              ;;
             *)
-              if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-                # Dispatch on a branch other than staging → treat as staging
-                # for a dry-run only; a real dispatch publish must come from a
-                # tag (latest) or from staging.
-                CHANNEL=staging
-              else
-                echo "Unsupported ref $GITHUB_REF" >&2; exit 1
-              fi ;;
+              SHORT_SHA="${GITHUB_SHA:0:7}"
+              # A prerelease identifier that is all digits with a leading zero
+              # is not valid semver, and a 7-char hex sha is that ~0.4% of the
+              # time. Prefix those, git-describe style, rather than fail a
+              # release on a coin flip.
+              case "$SHORT_SHA" in
+                0[0-9][0-9][0-9][0-9][0-9][0-9]) SHORT_SHA="g$SHORT_SHA" ;;
+              esac
+              VERSION="${PKG_VERSION}-staging.${SHORT_SHA}"
+              DIST_TAG=staging
+              ;;
           esac
-          if npm view "$PKG_NAME@$PKG_VERSION" version >/dev/null 2>&1; then
+          if npm view "$PKG_NAME@$VERSION" version >/dev/null 2>&1; then
             EXISTS=true
           else
             EXISTS=false
           fi
-          CURRENT_TAG_VERSION=$(npm view "$PKG_NAME" "dist-tags.$CHANNEL" 2>/dev/null || true)
-          echo "channel=$CHANNEL"          >> "$GITHUB_OUTPUT"
-          echo "exists=$EXISTS"            >> "$GITHUB_OUTPUT"
-          echo "version=$PKG_VERSION"      >> "$GITHUB_OUTPUT"
-          echo "name=$PKG_NAME"            >> "$GITHUB_OUTPUT"
-          echo "tag_at=$CURRENT_TAG_VERSION" >> "$GITHUB_OUTPUT"
-          echo "channel=$CHANNEL version=$PKG_VERSION exists=$EXISTS ${CHANNEL}→${CURRENT_TAG_VERSION:-<unset>}"
+          echo "name=$PKG_NAME"     >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"   >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+          echo "exists=$EXISTS"     >> "$GITHUB_OUTPUT"
+          echo "Publishing $PKG_NAME@$VERSION under dist-tag '$DIST_TAG' (already on registry: $EXISTS)."
+
+      # Never committed — the checkout is thrown away with the runner. npm reads
+      # the version from package.json at publish time, and the package reads it
+      # back at runtime for its own version banner, so this is the whole of what
+      # makes the published artifact a prerelease.
+      - name: Stamp the derived prerelease version
+        if: ${{ steps.target.outputs.dist_tag == 'staging' }}
+        run: |
+          set -euo pipefail
+          npm version --no-git-tag-version --allow-same-version "${{ steps.target.outputs.version }}"
+          echo "package.json version is now $(node -p "require('./package.json').version")"
 
       - name: Publish dry-run
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: npm publish --dry-run --access public --tag "${{ steps.channel.outputs.channel }}"
+        run: npm publish --dry-run --access public --tag "${{ steps.target.outputs.dist_tag }}"
 
       # Trusted Publishing: no NPM_TOKEN. npm CLI exchanges the GitHub OIDC
       # token for a short-lived registry credential automatically, and
       # provenance is implied (cannot be disabled). See:
       # https://docs.npmjs.com/trusted-publishers
       - name: Publish to npm (Trusted Publishing + provenance)
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.channel.outputs.exists == 'false' }}
-        run: npm publish --access public --tag "${{ steps.channel.outputs.channel }}"
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.target.outputs.exists == 'false' }}
+        run: npm publish --access public --tag "${{ steps.target.outputs.dist_tag }}"
 
-      # The version is already on the registry (staging published it first, or
-      # a re-run). Do not re-publish; move the channel's dist-tag to it if it is
-      # not already there. On `latest` this IS the production release.
-      #
-      # MEASURED 2026-08-19 (run 32227933905): Trusted Publishing's OIDC
-      # exchange mints a credential for `npm publish` ONLY — `npm dist-tag add`
-      # answers E401 under it. Promotion therefore needs a real token: the
-      # `npm-publish` environment secret NPM_TOKEN (granular, publish-only,
-      # scoped to this package). Absent, fail LOUDLY with the reason instead of
-      # printing an auth error nobody can act on.
-      - name: Promote existing version to channel dist-tag
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.channel.outputs.exists == 'true' && steps.channel.outputs.tag_at != steps.channel.outputs.version }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # The registry already holds this exact version, so there is nothing to
+      # publish and nothing to move. On `staging` that means the same commit was
+      # re-run; on `latest` it means the tag's publish already succeeded.
+      - name: Nothing to publish
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.target.outputs.exists == 'true' }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::Promotion of ${{ steps.channel.outputs.name }}@${{ steps.channel.outputs.version }} to dist-tag '${{ steps.channel.outputs.channel }}' needs the npm-publish environment secret NPM_TOKEN (granular publish token for this package). Trusted Publishing cannot run 'npm dist-tag add'. Add the secret and re-run this workflow." 
-            exit 1
-          fi
-          npm dist-tag add "${{ steps.channel.outputs.name }}@${{ steps.channel.outputs.version }}" "${{ steps.channel.outputs.channel }}"
-
-      - name: Nothing to do
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && steps.channel.outputs.exists == 'true' && steps.channel.outputs.tag_at == steps.channel.outputs.version }}
-        run: echo "${{ steps.channel.outputs.name }}@${{ steps.channel.outputs.version }} already carries dist-tag ${{ steps.channel.outputs.channel }} — no-op."
-
-  # ENG-2748 — ATTACK THE GUARDRAIL, do not assume it works.
-  #
-  # The `npm-publish` environment secret NPM_TOKEN is the ONLY credential that
-  # can move a dist-tag: Trusted Publishing's OIDC exchange mints a
-  # publish-only credential and answers E401 to `npm dist-tag add` (measured
-  # 2026-08-19, run 32227933905). A secret that has never been exercised is a
-  # hypothesis, not a guarantee — the first time it runs must not be the night
-  # a release is waiting on it.
-  #
-  # This job exercises the real token against the real registry on a
-  # DISPOSABLE tag, then proves the two real channels never moved.
-  #
-  # ACCEPTED COST, stated plainly: the throwaway tag is briefly visible on the
-  # public npm registry between the add and the rm (seconds). That is the price
-  # of testing the actual credential instead of a simulation of it.
-  verify-promotion-credential:
-    name: Probe the npm promotion credential (no build, no publish)
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_promotion_credential }}
-    runs-on: ubuntu-latest
-    environment: npm-publish
-    env:
-      PROBE_TAG: ci-credential-probe
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          registry-url: https://registry.npmjs.org/
-
-      # Same pin as the publish job on purpose: the probe must exercise the npm
-      # CLI the real promote step runs under, not a different one.
-      - name: Upgrade npm CLI
-        run: npm install -g npm@^11.5.1
-
-      - name: Require the NPM_TOKEN secret
-        run: |
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::The npm-publish environment secret NPM_TOKEN is absent, so there is nothing to probe. Add a granular npm publish token scoped to @rockhopper-co/mcp-server and re-run."
-            exit 1
-          fi
-          echo "NPM_TOKEN is present (${#NODE_AUTH_TOKEN} characters). Value never printed."
-
-      - name: Resolve package and probe target
-        id: target
-        run: |
-          set -euo pipefail
-          PKG_NAME=$(node -p "require('./package.json').name")
-          # Probe an ALREADY-PUBLISHED version, so a failure can only mean the
-          # credential. Whatever `staging` points at is published by
-          # construction; fall back to `latest`.
-          TARGET=$(npm view --prefer-online "$PKG_NAME" dist-tags.staging 2>/dev/null || true)
-          if [ -z "$TARGET" ]; then
-            TARGET=$(npm view --prefer-online "$PKG_NAME" dist-tags.latest)
-          fi
-          echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
-          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
-          echo "Probing $PKG_NAME@$TARGET with throwaway dist-tag '$PROBE_TAG'."
-
-      - name: dist-tags BEFORE
-        id: before
-        run: |
-          set -euo pipefail
-          PKG='${{ steps.target.outputs.name }}'
-          echo "--- npm dist-tag ls $PKG (BEFORE) ---"
-          npm dist-tag ls --prefer-online "$PKG"
-          echo "latest=$(npm view --prefer-online "$PKG" dist-tags.latest)" >> "$GITHUB_OUTPUT"
-          echo "staging=$(npm view --prefer-online "$PKG" dist-tags.staging)" >> "$GITHUB_OUTPUT"
-
-      # THIS is the test. If the token cannot write a dist-tag, it fails here
-      # with the same E401 the promote step hit.
-      - name: Add throwaway dist-tag
-        run: |
-          set -euo pipefail
-          npm dist-tag add '${{ steps.target.outputs.name }}@${{ steps.target.outputs.target }}' "$PROBE_TAG"
-
-      # Runs even if the add failed, so a partial state can never be left
-      # behind on the public registry.
-      - name: Remove throwaway dist-tag
-        if: always()
-        run: |
-          if npm dist-tag rm --prefer-online '${{ steps.target.outputs.name }}' "$PROBE_TAG"; then
-            echo "Removed throwaway dist-tag '$PROBE_TAG'."
-          else
-            echo "::warning::'$PROBE_TAG' could not be removed — it was either never added, or the token cannot remove tags. The assertion step below is the authority."
-          fi
-
-      - name: dist-tags AFTER, and assert latest/staging untouched
-        if: always()
-        run: |
-          set -uo pipefail
-          PKG='${{ steps.target.outputs.name }}'
-          echo "--- npm dist-tag ls $PKG (AFTER) ---"
-          npm dist-tag ls --prefer-online "$PKG" | tee /tmp/after.txt
-          AFTER_LATEST=$(npm view --prefer-online "$PKG" dist-tags.latest)
-          AFTER_STAGING=$(npm view --prefer-online "$PKG" dist-tags.staging)
-          FAIL=0
-          if [ "$AFTER_LATEST" != '${{ steps.before.outputs.latest }}' ]; then
-            echo "::error::latest moved: '${{ steps.before.outputs.latest }}' -> '$AFTER_LATEST'"
-            FAIL=1
-          fi
-          if [ "$AFTER_STAGING" != '${{ steps.before.outputs.staging }}' ]; then
-            echo "::error::staging moved: '${{ steps.before.outputs.staging }}' -> '$AFTER_STAGING'"
-            FAIL=1
-          fi
-          if grep -q "^${PROBE_TAG}:" /tmp/after.txt; then
-            echo "::error::throwaway dist-tag '$PROBE_TAG' is STILL on the registry. Remove it by hand: npm dist-tag rm $PKG $PROBE_TAG"
-            FAIL=1
-          fi
-          if [ "$FAIL" -eq 0 ]; then
-            echo "latest=$AFTER_LATEST and staging=$AFTER_STAGING are unchanged, and '$PROBE_TAG' is gone."
-          fi
-          exit "$FAIL"
+          echo "${{ steps.target.outputs.name }}@${{ steps.target.outputs.version }} is already on the registry — no-op. A published version is never re-published, and this pipeline never moves a dist-tag."
