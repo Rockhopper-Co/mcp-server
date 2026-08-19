@@ -138,6 +138,61 @@ export interface DriveSearchResponse {
 }
 
 /**
+ * ENG-2788 — one row of `GET /drive-files/inventory`.
+ *
+ * A row EXISTS because Microsoft, answering this user's own delegated token,
+ * disclosed that file to them. It is a stored entitlement, not a cached
+ * directory listing, and that distinction is the whole reason this endpoint may
+ * return names in bulk at all.
+ */
+export interface DriveInventoryItem {
+  msId: string;
+  driveMsId: string;
+  name: string;
+  webUrl: string | null;
+  /** Containing folder, when the observation carried one. */
+  parentPath: string | null;
+  lastModifiedAt: string | null;
+  size: number | null;
+  /**
+   * Three states, never a boolean. `hidden` is a file Rockhopper still holds
+   * that the user deliberately removed — it is offerable again, and calling it
+   * `not_enrolled` loses the fact that its history is still there.
+   */
+  enrollmentState: EnrollmentState;
+  /** When this user's own credential last confirmed they can see the file. */
+  entitlementObservedAt: string;
+}
+
+/**
+ * ENG-2788 — how old the answer is, stated rather than implied.
+ *
+ * The endpoint serves stored rows and never blocks on Microsoft, so every
+ * answer is possibly stale BY CONSTRUCTION. These fields are what stop a
+ * surface presenting it as live, and `lastFailureReason` is what separates "you
+ * have no un-enrolled files" from "we have never managed to look".
+ */
+export interface DriveInventoryFreshness {
+  /** `null` when no refresh has ever succeeded for this user. */
+  asOf: string | null;
+  stale: boolean;
+  refreshing: boolean;
+  lastFailureAt: string | null;
+  /** Coarse reason code. Never a Microsoft error body — those quote names. */
+  lastFailureReason: string | null;
+  consecutiveFailures: number;
+}
+
+/** Which slice of the inventory was asked for. */
+export type DriveInventoryEnrollment = 'all' | 'enrolled' | 'not_enrolled';
+
+/** `GET /drive-files/inventory`'s answer. */
+export interface DriveInventoryResponse {
+  items: DriveInventoryItem[];
+  freshness: DriveInventoryFreshness;
+}
+
+/**
  * ENG-2536 — what the enrolment DID, mirrored from the backend's
  * `EnrollmentOutcome` rather than imported: this package ships to customers
  * over npm and cannot depend on the backend tree.
