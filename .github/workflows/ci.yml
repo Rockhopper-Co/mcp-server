@@ -40,5 +40,20 @@ jobs:
       - run: npm test
       - run: npm run build
 
-      - name: Dry-run npm publish (no auth required)
-        run: npm publish --dry-run --access public
+      # ENG-2810 — the `npm publish --dry-run` step that stood here is DELETED,
+      # not authenticated. It ran unauthenticated, so npm packed the tarball
+      # with no registry preflight: run 32297416574 packed `2.1.1` green while
+      # `2.1.1` was already published, and the same command authenticated exits
+      # 1 with "You cannot publish over the previously published versions".
+      # It answered "does this tarball build" and was read as "will this
+      # publish succeed" — a check that cannot fail for the reason it is
+      # trusted to catch, spending the attention a real one would get.
+      #
+      # Authenticating it here would not have helped. Since ENG-2807 the
+      # published version is DERIVED from `github.run_number` and package.json's
+      # patch is decorative, so the version a dry-run packs on this runner is
+      # never the version that publishes — a refusal here would be about a
+      # version nobody ships. The registry question belongs where the derived
+      # version exists: publish.yml's "Refuse a version the registry already
+      # holds", which reds against the live registry and is attacked in
+      # src/__tests__/unit/publish-workflow.test.ts.
