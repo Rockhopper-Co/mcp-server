@@ -50,6 +50,10 @@ The two steps are one flow and the middle one is not optional:
 
 Only files that came back from the search can be confirmed. A pick that names anything else answers `unknown_candidate` and adds nothing.
 
+**`declined` and `dismissed` are not the same answer.** `declined` means the user read the candidates and said none of them is the file — the search missed, so try a different word. `dismissed` means the prompt closed without them answering it: they have told you nothing, so do **not** search again and do not treat it as a rejection. List the candidates in the conversation yourself, ask which one they meant, and say they can paste the workbook's link instead.
+
+**`link_supplied`** means the user pasted the workbook's own address rather than picking a row. Call `enroll_file` with that `url` alone — no `driveMsId`, no `msId`.
+
 **Searching is capped per session.** A fixed number of searches, after which `search_limit_reached` is the only answer and waiting does not restore it. Search deliberately — two or three well-chosen queries, not a browse. If the cap is reached, ask the user for the workbook link and use `enroll_file` directly.
 
 **No Microsoft account connected?** `search_drive_files` answers `microsoft_not_connected` and hands back a sign-in link Rockhopper built. Give the user that link verbatim. Never compose a Microsoft sign-in URL yourself — a link the assistant made up sends the user's consent wherever whoever wrote it wanted.

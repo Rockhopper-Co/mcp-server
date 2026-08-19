@@ -29,8 +29,11 @@ import {
   confirmedAnswer,
   connectPrompt,
   declinedAnswer,
+  dismissedAnswer,
+  linkSuppliedAnswer,
   toolResult,
   unknownCandidateAnswer,
+  usableLink,
 } from './drive-search.contract.js';
 import {
   CONFIRM_KEY,
@@ -86,6 +89,34 @@ export function registerDriveSearchTool(
     return candidate ? confirmedAnswer(candidate) : unknownCandidateAnswer();
   }
 
+  /** The set this session offered under `nonce`, for re-asking in prose. */
+  function offered(nonce: string | null) {
+    return (nonce ? registry.recall(nonce) : null) ?? undefined;
+  }
+
+  /**
+   * Read a filled-in elicitation form.
+   *
+   * Order matters and it is not the obvious one: a pasted LINK beats a picked
+   * row. The link is the user typing the file's own address, which
+   * `enroll_file` calls the only input that names one file with no guessing,
+   * while a row is a position in a list a search produced. If someone took the
+   * trouble to paste an address, that is the file they mean.
+   *
+   * An EMPTY form is `dismissed`, never `declined`. Nothing is required any
+   * more (ENG-2789), so Accept with nothing filled in is a reachable state, and
+   * it means the user answered nothing — which is a different fact from "none
+   * of these is my file" and leads to a different next move.
+   */
+  function resolveForm(nonce: string | null, content: unknown) {
+    const filled = content as { choice?: string; link?: string } | undefined;
+    const link = usableLink(filled?.link);
+    if (link) return linkSuppliedAnswer(link);
+    const choice = filled?.choice;
+    if (choice === undefined || choice === '') return dismissedAnswer(offered(nonce));
+    return resolvePick(nonce, choice);
+  }
+
   /**
    * Put the question through the best lane this request can reach.
    *
@@ -110,14 +141,13 @@ export function registerDriveSearchTool(
     if (lane === 'elicitation' && ctx?.mcpReq?.elicitInput) {
       try {
         const answer = await ctx.mcpReq.elicitInput({ ...form, mode: 'form' });
-        if (answer?.action === 'accept') {
-          const choice = (answer.content as { choice?: string } | undefined)
-            ?.choice;
-          return resolvePick(nonce, choice ?? DECLINE_CHOICE);
-        }
-        // Declined or cancelled. Both mean the user did not choose a file, and
-        // neither is an error: a person is allowed to say no.
-        return declinedAnswer();
+        if (answer?.action === 'accept') return resolveForm(nonce, answer.content);
+        // Declined or cancelled. Neither is an error — a person is allowed to
+        // close a prompt — and neither is `declined` either: the user pressed a
+        // button, they did not tell us anything about these ten files. Saying
+        // "the user rejected the candidates" here is the ENG-2789 failure, and
+        // it is how three unreadable prompts reported themselves as decisions.
+        return dismissedAnswer(candidates);
       } catch {
         // The client advertised elicitation and could not deliver it. Falling
         // back to the universal lane keeps the question answerable instead of
@@ -150,10 +180,9 @@ export function registerDriveSearchTool(
       // return a different set than the one the user was looking at.
       const embedded = inputResponse(ctx?.mcpReq?.inputResponses, CONFIRM_KEY);
       if (embedded.kind === 'elicit') {
-        if (embedded.action !== 'accept') return declinedAnswer();
-        const choice = (embedded.content as { choice?: string } | undefined)
-          ?.choice;
-        return resolvePick(readRequestState(ctx), choice ?? DECLINE_CHOICE);
+        const answered = readRequestState(ctx);
+        if (embedded.action !== 'accept') return dismissedAnswer(offered(answered));
+        return resolveForm(answered, embedded.content);
       }
 
       // The universal lane's confirmation: the model relaying a number the
