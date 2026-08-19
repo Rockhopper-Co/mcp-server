@@ -278,6 +278,35 @@ describe('the hand-cut release tag is gone from every surface', () => {
     expect(Object.keys(ciWorkflow.jobs)).not.toContain('auto-tag');
   });
 
+  /**
+   * ENG-2810 — ci.yml's `npm publish --dry-run` is gone, and must not return.
+   *
+   * It ran unauthenticated, so npm packed the tarball with no registry
+   * preflight and the step could not fail for the reason it was read as
+   * checking. Measured: run 32297416574 packed `2.1.1` GREEN while `2.1.1`
+   * was already published; the same command authenticated exits 1 with "You
+   * cannot publish over the previously published versions: 2.1.1".
+   *
+   * Authenticating it would not fix it either, and this is the part that is
+   * easy to miss: since ENG-2807 the published version is DERIVED from
+   * `github.run_number`, so the committed version a dry-run would pack is
+   * never the version that publishes. The registry question belongs where
+   * the derived version exists — "Refuse a version the registry already
+   * holds" in publish.yml, attacked in the describe above.
+   */
+  it('ci.yml runs no publish check that cannot see the registry', () => {
+    const ciRuns = Object.values(ciWorkflow.jobs)
+      .flatMap((j) => j.steps)
+      .map((s) => s.run ?? '')
+      .join('\n');
+    expect(ciRuns).not.toContain('npm publish');
+  });
+
+  it('the registry refusal lives in publish.yml, where the version is derived', () => {
+    const names = publishWorkflow.jobs.publish.steps.map((s) => s.name);
+    expect(names).toContain('Refuse a version the registry already holds');
+  });
+
   it('package.json carries no release script that pushes a tag', () => {
     const scripts = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')).scripts as Record<
       string,
