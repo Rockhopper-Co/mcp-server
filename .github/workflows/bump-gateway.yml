@@ -1,0 +1,368 @@
+# Moves `Rockhopper-Co/mcp-gateway` onto the @rockhopper-co/mcp-server version
+# this repository has just published under the `staging` dist-tag.
+#
+# WHY THIS EXISTS (ENG-2796). The two halves of the gateway deploy had no link.
+# Merging this repo's `dev` -> `staging` publishes `2.1.<run>-staging.<sha>` to
+# npm; the gateway image is rebuilt only on a push to the GATEWAY's own
+# `staging` branch. Nothing in the first event caused the second, so a publish
+# reached the registry and stopped there — and the failure is silent in the
+# direction that hides it: the gateway stays healthy, `tools/list` answers,
+# every check is green, it is simply serving an older package.
+#
+# WHY IT LIVES IN THE PUBLISHER AND NOT THE CONSUMER (ENG-2813). It used to be
+# `mcp-gateway/.github/workflows/bump-mcp-server.yml`, polling this registry
+# once a day. That shape cannot be immediate: a workflow's per-run GITHUB_TOKEN
+# cannot trigger a workflow in another repository, so "fire on publish" from
+# over there needs a cross-repo dispatch credential. Moved HERE, `publish.yml`
+# and this file sit in the same repository, so `workflow_run` chains them on
+# the per-run token and immediacy costs no new credential at all. The App token
+# below is for the PUSH into the gateway — exactly as
+# `frontend/.github/workflows/bump-addin-packages.yml` already does it, which
+# is the same problem already solved and running in production.
+#
+# WHY A BUMP PULL REQUEST AND NOT A DISPATCH INTO THE GATEWAY. Copied from that
+# frontend original, which measured the alternative: "24 publishes in 5 days. A
+# pull request per publish rebuilds the pointer-bump chore that deleting the
+# submodule was meant to end." One branch, force-pushed, so there is never more
+# than one open bump pull request — the newest supersedes rather than queues.
+#
+# WHY THE `staging` DIST-TAG. THE BRANCH IS THE CHANNEL. The gateway's
+# `dev`/`staging` serve the staging prerelease; its `main` serves the stable
+# version behind `latest`. This workflow only ever opens a pull request into the
+# gateway's `dev`, so it can never move production. The elevation to `main` is
+# where a human re-pins to the stable version, and the gateway's `ci.yml` fails
+# that pull request closed if they forget.
+name: Bump the gateway to the published mcp-server
+
+on:
+  # THE IMMEDIATE PATH (ENG-2813). David, 2026-08-19: "we might promote to
+  # staging 10 times in one day. it should take 5 minutes for it to be updated
+  # automatically." `workflow_run` fires when the publish RUN finishes, so the
+  # gap between a promotion and an open bump pull request is one job, not a day.
+  #
+  # The name must match `publish.yml`'s `name:` EXACTLY — a rename there silently
+  # stops this from ever firing again, which is the same silent-stall family as
+  # ENG-2796 itself. `src/__tests__/unit/bump-gateway-workflow.test.ts` reads
+  # both files and fails if the two strings drift apart.
+  #
+  # `types: [completed]` is the only type this event offers for a finished run;
+  # the conclusion is filtered on the job below, because a FAILED publish
+  # published nothing and must not open a bump.
+  workflow_run:
+    workflows: ["Publish to npm"]
+    types: [completed]
+  schedule:
+    # 13:45 UTC — early morning Pacific, so a pending bump is already open and
+    # its install and test run proven before anyone starts work.
+    #
+    # THE CRON STAYS, and it is not redundant with the trigger above. It is the
+    # backstop for the day `workflow_run` stops firing — a rename, a disabled
+    # workflow, a GitHub incident, a publish that succeeded while this job was
+    # cancelled. Removing it swaps a guaranteed daily catch-up for a silent
+    # stall, which is the exact failure this whole ticket line exists to end.
+    #
+    # Scheduled workflows only fire from the default branch, which for this repo
+    # is `dev` (measured 2026-08-19: `gh repo view --json defaultBranchRef`), so
+    # this is live the moment it merges. `workflow_run` has the same rule.
+    - cron: "45 13 * * *"
+  workflow_dispatch:
+
+# Nothing here needs the per-run GITHUB_TOKEN for anything: the checkout, the
+# push and the pull request all use the App installation token, and
+# @rockhopper-co/mcp-server is on the PUBLIC npm registry.
+#
+# NO `packages: read` AND NO NODE_AUTH_TOKEN, deliberately, unlike the frontend
+# original — its packages live on GitHub Packages and need both. Mapping the
+# @rockhopper-co scope to npm.pkg.github.com here would 404 every install: this
+# package is public, neither repo commits an `.npmrc`, and it must stay that way.
+permissions:
+  contents: read
+
+concurrency:
+  # COALESCING, and this is the one place that deliberately differs from the
+  # frontend original's `cancel-in-progress: false`. Ten promotions in a day
+  # under `false` means ten full install-and-test runs queued back to back, each
+  # superseded by the next before a human sees it — the Actions allowance has
+  # been exhausted once already. Under `true` a newer publish cancels the older
+  # run and only the last one pays.
+  #
+  # Cancelling loses nothing, because every run re-derives from the registry
+  # rather than carrying state: the run that cancels its predecessor resolves
+  # the same-or-newer dist-tag and force-pushes the same branch. A cancelled run
+  # can only be cancelled BY a newer run, and the newest run in any chain is
+  # never cancelled — so the pull request always ends up open, naming the newest
+  # published version.
+  group: bump-gateway
+  cancel-in-progress: true
+
+jobs:
+  bump:
+    name: Open or update the bump pull request
+    runs-on: ubuntu-latest
+    # A failed, cancelled or skipped publish published nothing. Bumping after
+    # one would either no-op or, worse, walk an OLDER version forward under the
+    # banner of a fresh publish.
+    #
+    # `head_branch == 'staging'` because a `main` publish moves `latest`, which
+    # this job never reads — it would resolve the unchanged `staging` dist-tag,
+    # find nothing pending and exit green, costing a runner for nothing.
+    #
+    # Neither condition applies to the cron or a dispatch: those carry no
+    # `workflow_run` payload, so both fields are empty and the first clause is
+    # what lets them through.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'staging')
+    steps:
+      # FAIL LOUDLY AND NAME THE SECRET, rather than letting the mint below die
+      # on an empty input with a message about the action's own schema.
+      #
+      # Measured 2026-08-19: `gh secret list` returns NOTHING for this
+      # repository. Until David adds both secrets and installs the package-sync
+      # App on `mcp-gateway`, every run of this workflow stops here and says so.
+      # That is the accepted landing shape (SP09: "the workflow files themselves
+      # can land first — they fail visibly, not silently"); a green no-op would
+      # be strictly worse, because a stage that succeeds while achieving nothing
+      # is how ENG-2801 hid.
+      #
+      # Only the NAMES are printed. The values are never echoed.
+      - name: Refuse to run without the package-sync credential
+        env:
+          APP_ID: ${{ secrets.PACKAGE_SYNC_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.PACKAGE_SYNC_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -n "${APP_ID:-}" ] || missing="$missing PACKAGE_SYNC_APP_ID"
+          [ -n "${PRIVATE_KEY:-}" ] || missing="$missing PACKAGE_SYNC_PRIVATE_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. This workflow pushes a branch into Rockhopper-Co/mcp-gateway, which needs the package-sync GitHub App: add both secrets to Rockhopper-Co/mcp-server (same values as Rockhopper-Co/frontend) and install the App on Rockhopper-Co/mcp-gateway with contents and pull-request write. Until then every run stops here."
+            exit 1
+          fi
+          echo "Both package-sync secrets are present."
+
+      # Minted per run and revoked when the job ends. There is no long-lived
+      # cross-repo token here to store or rotate.
+      #
+      # If this step dies with `error:1E08010C:DECODER routines::unsupported`,
+      # the stored PEM's line breaks were lost — the header parses as PKCS#1 and
+      # the body then fails to decode. Re-save it FROM THE FILE rather than by
+      # pasting: `gh secret set PACKAGE_SYNC_PRIVATE_KEY --repo
+      # Rockhopper-Co/mcp-server < <app>.private-key.pem`.
+      - name: Mint an installation token
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          # `app-id` warns that `client-id` is preferred. The secret holds the
+          # numeric App ID, not the `Iv23li…` client id, so this is the input
+          # that matches the value actually stored. Warning only.
+          app-id: ${{ secrets.PACKAGE_SYNC_APP_ID }}
+          private-key: ${{ secrets.PACKAGE_SYNC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      # The App installation IS the blast radius, and this step measures it
+      # rather than asserting it. The token is deliberately not narrowed with
+      # `repositories:` so that this list is the installation's real reach: if
+      # the App is ever installed on a fourth repository, the next run says so
+      # in its log instead of the grant widening silently.
+      - name: What this token can reach
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: gh api /installation/repositories --jq '.repositories[].full_name'
+
+      # Full history: a force-push from a shallow clone is rejected with
+      # "shallow update not allowed". `ref: dev` is explicit so a dispatch or a
+      # `workflow_run` from `staging` still bumps the gateway's `dev` — the
+      # branch this opens its pull request against.
+      - name: Check out the gateway
+        uses: actions/checkout@v7
+        with:
+          repository: Rockhopper-Co/mcp-gateway
+          ref: dev
+          path: gateway
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - uses: actions/setup-node@v7
+        with:
+          # The GATEWAY's Node, not this repository's — its suite, typecheck and
+          # build are what run below.
+          node-version-file: gateway/.nvmrc
+
+      - name: Resolve the published staging version
+        id: published
+        working-directory: gateway
+        env:
+          # True only on the immediate path. A publish just finished, so the
+          # dist-tag is EXPECTED to have moved — and npm's registry read is
+          # CDN-fronted and can lag the write by tens of seconds. Without this
+          # wait the immediate path would frequently resolve the version the
+          # gateway already pins, find nothing pending, and exit green: a race
+          # the daily cron never had, converted straight back into a silent
+          # stall. On the cron and dispatch paths there is nothing to wait for,
+          # so a single read is taken and no warning is possible.
+          #
+          # POLL_ATTEMPTS / POLL_SLEEP are deliberately not set here — the
+          # defaults below (10 × 15s ≈ 2.5 minutes) are the CI values.
+          # `bump-gateway-workflow.test.ts` overrides them so the retry is
+          # exercised without ten real sleeps.
+          EXPECT_CHANGE: ${{ github.event_name == 'workflow_run' }}
+        run: |
+          set -euo pipefail
+          current=$(node -p "require('./package.json').dependencies['@rockhopper-co/mcp-server'] || ''")
+          attempts=1
+          if [ "${EXPECT_CHANGE:-false}" = "true" ]; then
+            attempts="${POLL_ATTEMPTS:-10}"
+          fi
+          v=""
+          i=0
+          while [ "$i" -lt "$attempts" ]; do
+            i=$((i + 1))
+            # Errors are swallowed for the retry, never for the verdict: an
+            # unreachable registry leaves `v` empty and is refused below, the
+            # same as a missing dist-tag. Silence is not a measurement.
+            v=$(npm view @rockhopper-co/mcp-server dist-tags.staging 2>/dev/null || true)
+            if [ -n "$v" ] && [ "$v" != "$current" ]; then
+              break
+            fi
+            if [ "$i" -lt "$attempts" ]; then
+              sleep "${POLL_SLEEP:-15}"
+            fi
+          done
+          # An absent dist-tag prints an empty string and exits 0, and
+          # `npm install pkg@` then silently resolves `latest` — which would
+          # walk a stable version into `dev` under the banner of a staging
+          # bump. Refuse it.
+          if [ -z "$v" ]; then
+            echo "::error::@rockhopper-co/mcp-server has no staging dist-tag, or the registry could not be read after $attempts attempt(s). Publish from mcp-server's staging branch first, or re-run once npm is reachable."
+            exit 1
+          fi
+          if [ "${EXPECT_CHANGE:-false}" = "true" ] && [ "$v" = "$current" ]; then
+            echo "::warning::A publish run completed but the staging dist-tag is still $v after $attempts checks. Either the publish was a dry run, or the registry has not propagated. The daily cron will catch it."
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Published on staging: $v (gateway currently pins ${current:-nothing})"
+
+      - name: Move the pin and the lockfile together
+        working-directory: gateway
+        env:
+          V: ${{ steps.published.outputs.version }}
+        run: |
+          set -euo pipefail
+          # `--package-lock-only` writes package.json AND package-lock.json
+          # without materialising node_modules; the strict `npm ci` two steps
+          # down is what proves the lockfile it just wrote.
+          npm install --package-lock-only --save-exact --no-audit --no-fund \
+            "@rockhopper-co/mcp-server@$V"
+          # THE EXACT PIN IS LOAD-BEARING, so assert it rather than trusting
+          # npm's save-prefix default. A caret is wrong twice here:
+          # `^2.1.1-staging.a` matches only other prereleases of 2.1.1, so it is
+          # not the slack it looks like, and any range at all reintroduces the
+          # "rebuilding this commit can bake a different bundle" defect
+          # ENG-2796 exists to kill.
+          got=$(node -p "require('./package.json').dependencies['@rockhopper-co/mcp-server']")
+          if [ "$got" != "$V" ]; then
+            echo "::error::@rockhopper-co/mcp-server is \"$got\", expected the exact \"$V\". Refusing to open a pull request that changes the range shape."
+            exit 1
+          fi
+
+      - name: Is a bump actually pending
+        id: pending
+        working-directory: gateway
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Gateway already pins the published staging version. Nothing to open."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git --no-pager diff --stat
+          fi
+
+      # THE INSTALL PROOF, and it gates the pull request rather than following
+      # it. A bump that does not install is worse than no bump because it looks
+      # like progress; failing here means no branch is pushed and no pull
+      # request exists to mislead a reviewer. Strict `npm ci` — it honours the
+      # lockfile just written, which is the artifact under test.
+      - name: Install proof — strict npm ci on the bumped tree
+        if: steps.pending.outputs.changed == 'true'
+        working-directory: gateway
+        run: npm ci --no-audit --no-fund
+
+      # THE RUN PROOF. "It installs" is not "it works", and the defect the
+      # gateway is exposed to lives in the PAIR: mcp-server is fine on its own,
+      # the gateway compiles against the shape it knew, and only the two
+      # together are broken. `src/scope-challenge.ts` and `src/pat-scope.ts`
+      # carry hand-maintained mirrors of the tool set and scope gates that this
+      # package enforces, and `src/__tests__/scope-challenge.e2e.test.ts`
+      # asserts the mirror still tracks the package — so a tool added here and
+      # unmirrored there fails in THIS job, naming itself, instead of surfacing
+      # as a 200-with-an-error to a customer.
+      #
+      # No trigger is needed in the gateway for any of it: CI runs on prod
+      # elevations only, deliberately (David, 2026-07-31 — the GitHub Actions
+      # allowance was exhausted, not merely strained), so this job is the only
+      # place the bumped pair is ever exercised before a human sees it.
+      #
+      # Ordered BEFORE the push, like the install proof and for the same reason.
+      - name: Run proof — typecheck, build and the gateway suite on the bumped tree
+        if: steps.pending.outputs.changed == 'true'
+        working-directory: gateway
+        run: |
+          npm run typecheck
+          npm run build
+          npm test
+
+      - name: Push the single bump branch
+        if: steps.pending.outputs.changed == 'true'
+        working-directory: gateway
+        env:
+          V: ${{ steps.published.outputs.version }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          git config user.name "$SLUG[bot]"
+          git config user.email "$SLUG[bot]@users.noreply.github.com"
+          git checkout -b chore/mcp-server-sync
+          git add package.json package-lock.json
+          git commit -m "chore(deps): pin mcp-server to $V"
+          # FORCE, and it is the debounce. The branch is re-cut from the
+          # gateway's `dev` every run, so the newest bump replaces the previous
+          # one instead of stacking a second pull request. Anything pushed onto
+          # this branch by hand is discarded — fix a bump on a branch of your own.
+          git push --force origin chore/mcp-server-sync
+
+      # NOT auto-merged, and nothing here deploys. The pull request lands on the
+      # gateway's `dev`; a human merges it and a human elevates.
+      - name: Open the pull request, or update the one already open
+        if: steps.pending.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          V: ${{ steps.published.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TRIGGER: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          case "$TRIGGER" in
+            workflow_run) why="a publish that just finished" ;;
+            schedule)     why="the daily backstop cron" ;;
+            *)            why="a manual dispatch" ;;
+          esac
+          body=$(printf '%s\n' \
+            "Pins \`@rockhopper-co/mcp-server\` to **$V**, the version on npm's \`staging\` dist-tag, manifest and lockfile together." \
+            "" \
+            "- **Why** — a publish used to reach npm and stop; only a push to the gateway's own \`staging\` branch rebuilt the image (ENG-2796)." \
+            "- **Opened by** — $why (ENG-2813: publish-driven, with the daily cron kept as the backstop)." \
+            "- **Install proof** — strict \`npm ci\` on this exact tree passed before the branch was pushed: $RUN_URL" \
+            "- **Run proof** — typecheck, build and the gateway suite ran against the bumped tree in the same run." \
+            "- **Staging only** — this is a prerelease and \`ci.yml\` fails the elevation to \`main\` closed until someone re-pins to \`latest\`." \
+            "- **Superseding** — this branch is force-pushed on every publish. Do not push fixes onto it.")
+          open=$(gh pr list --repo Rockhopper-Co/mcp-gateway --head chore/mcp-server-sync --state open --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh pr edit "$open" --repo Rockhopper-Co/mcp-gateway \
+              --title "chore(deps): pin mcp-server to $V" --body "$body"
+            echo "Updated https://github.com/Rockhopper-Co/mcp-gateway/pull/$open"
+          else
+            gh pr create --repo Rockhopper-Co/mcp-gateway --base dev --head chore/mcp-server-sync \
+              --title "chore(deps): pin mcp-server to $V" --body "$body"
+          fi
