@@ -86,6 +86,11 @@ export const DRIVE_SEARCH_DESCRIPTION =
   'identifiers to hand to `enroll_file`. Never enroll a file the user has not ' +
   'named, and never claim a file is already in Rockhopper because one search ' +
   'result looked similar. ' +
+  'Read the outcome rather than assuming: `declined` means the user saw the ' +
+  'candidates and rejected them, `dismissed` means the prompt closed with no ' +
+  'answer at all — put the list to them yourself and do not search again — ' +
+  'and `link_supplied` means they pasted the workbook address, which goes to ' +
+  '`enroll_file` as `url` on its own. ' +
   'Searching is capped per session, so search deliberately rather than ' +
   'browsing. Requires a connected Microsoft account — if none is connected, ' +
   'this returns the link the user must open.';
@@ -123,15 +128,38 @@ export function toolResult(answer: DriveSearchAnswer) {
   };
 }
 
-/** How one candidate reads to a user, without its identifiers. */
+/**
+ * How one candidate reads to a user, without its identifiers.
+ *
+ * ENG-2787 — the enrolment marking comes FIRST, and that ordering is the whole
+ * fix. The flag was already on the wire; the client truncated it off the END of
+ * the row, so ten candidates rendered as
+ * `RE_Forecast.xlsx · /drives/b!YmtA8jQX3OSHJRQ88O…` and the tool
+ * description's promise that "each candidate comes back marked as already in
+ * Rockhopper or not" was true of the payload and false of the screen. A marking
+ * whose position depends on the length of a customer's file name is not
+ * visible; one at position zero always is.
+ *
+ * `lastModifiedAt` and `parentPath` are dropped for the same reason they did
+ * harm: an ISO timestamp and a raw `/drives/b!…` id are forty characters
+ * nobody can read, sitting in front of the one phrase that decides whether
+ * this row is worth picking. Both still appear in the prompt's own message,
+ * which wraps instead of truncating.
+ */
 export function candidateLabel(candidate: Candidate): string {
-  const parts: string[] = [candidate.name];
-  if (candidate.parentPath) parts.push(candidate.parentPath);
-  if (candidate.lastModifiedAt) {
-    parts.push(`modified ${candidate.lastModifiedAt}`);
-  }
-  parts.push(ENROLLMENT_NOTE[candidate.enrollmentState]);
-  return parts.join(' · ');
+  return `${ENROLLMENT_NOTE[candidate.enrollmentState]} · ${candidate.name}`;
+}
+
+/**
+ * The same facts MINUS the name, for the places that print the name already.
+ *
+ * A picker row has to stand alone, so {@link candidateLabel} repeats the name;
+ * prose that has just written `**Becklar_RMR_Model.xlsx**` has not.
+ */
+function candidateNote(candidate: Candidate): string {
+  return [ENROLLMENT_NOTE[candidate.enrollmentState]]
+    .concat(candidate.parentPath ?? [])
+    .join(' · ');
 }
 
 /**
@@ -151,7 +179,7 @@ const ENROLLMENT_NOTE: Record<Candidate['enrollmentState'], string> = {
 /** The numbered list the user picks from, and the model quotes back. */
 export function renderCandidates(candidates: readonly Candidate[]): string {
   return candidates
-    .map((c, index) => `${index + 1}. **${c.name}** — ${candidateLabel(c)}`)
+    .map((c, index) => `${index + 1}. **${c.name}** — ${candidateNote(c)}`)
     .join('\n');
 }
 
@@ -171,14 +199,48 @@ export function confirmationPrompt(
   );
 }
 
-/** The elicitation form both richer lanes send. */
+/**
+ * What the user READS before they touch anything (ENG-2789).
+ *
+ * The candidates are written into the message because the message is the only
+ * part of an elicitation this client renders unprompted. The prompt David
+ * photographed on 2026-08-19 showed exactly two things on screen — this
+ * sentence, and a field collapsed to the words `not set` — while ten workbooks
+ * sat behind a `→` documented in a footnote under the buttons. Three
+ * consecutive real attempts returned `declined` from a prompt whose options
+ * were never on screen.
+ *
+ * So the list is prose now, and the field is a way to answer a question the
+ * user has already read rather than the only place the question exists.
+ */
+function pickerMessage(candidates: readonly Candidate[]): string {
+  return (
+    `Which of these ${candidates.length} workbooks did you mean? ` +
+    'Rockhopper will not add anything until you say.\n\n' +
+    `${renderCandidates(candidates)}\n\n` +
+    'Pick one by number in the File field below.\n\n' +
+    'If none of them is the right file, you can paste the workbook\'s own ' +
+    'link instead: open it in your browser and copy the address from the bar ' +
+    'into the Link field. That names the file exactly, so nothing has to be ' +
+    'guessed from its name.'
+  );
+}
+
+/**
+ * The elicitation form both richer lanes send.
+ *
+ * NOTHING IS REQUIRED, and that is deliberate (ENG-2789). A required `choice`
+ * is what turned an unreadable prompt into a trap: the only visible buttons
+ * were Accept and Decline, and Accept was REFUSED because the invisible field
+ * was unset, leaving Decline as the sole affordance that did anything. An
+ * unanswered form now comes back as `dismissed` — a state the tool can name
+ * and act on — instead of a button the user is herded into pressing.
+ */
 export function confirmationForm(
   candidates: readonly Candidate[],
 ): Omit<ElicitRequestFormParams, 'mode'> {
   return {
-    message:
-      'Which workbook did you mean? Rockhopper will not add anything until ' +
-      'you pick one.',
+    message: pickerMessage(candidates),
     requestedSchema: {
       type: 'object',
       properties: {
@@ -191,15 +253,28 @@ export function confirmationForm(
             ...candidates.map((_, index) => String(index + 1)),
             DECLINE_CHOICE,
           ],
+          // Numbered so a row the client truncates is still resolvable
+          // against the list in the message above it.
           enumNames: [
-            ...candidates.map((c) => candidateLabel(c)),
+            ...candidates.map((c, index) => `${index + 1}. ${candidateLabel(c)}`),
             'None of these',
           ],
           title: 'File',
           description: 'The workbook to add to Rockhopper.',
         },
+        // ENG-2784. The link route used to be spoken only to the MODEL, in the
+        // text returned after the user had already given up: whether they ever
+        // heard it depended on the assistant choosing to relay it. A recovery
+        // path that needs the agent to speak IS the defect, so it is a field on
+        // the prompt the user is already looking at.
+        link: {
+          type: 'string',
+          title: 'Link',
+          description:
+            'Or paste the workbook\'s address here — open it in your browser ' +
+            'and copy the address from the bar.',
+        },
       },
-      required: ['choice'],
     },
   };
 }
@@ -230,7 +305,7 @@ export function confirmedAnswer(candidate: Candidate) {
   return toolResult({
     outcome: 'confirmed',
     text:
-      `The user confirmed "${candidate.name}" (${candidateLabel(candidate)}). ` +
+      `The user confirmed "${candidate.name}" (${candidateNote(candidate)}). ` +
       'Now call `enroll_file` with the `driveMsId` and `msId` below. ' +
       '`enroll_file` will ask who may see the file — put that question to the ' +
       'user too, and never answer it yourself.',
@@ -248,10 +323,83 @@ export function declinedAnswer() {
   return toolResult({
     outcome: 'declined',
     text:
-      'The user did not pick any of those files, so nothing was added. Ask ' +
-      'them to describe the workbook differently and search again, or to ' +
-      'paste its SharePoint or OneDrive link for `enroll_file`.',
+      'The user looked at the candidates and said none of them is the file, ' +
+      'so nothing was added. Ask them to describe the workbook differently ' +
+      'and search again, or to paste its SharePoint or OneDrive link for ' +
+      '`enroll_file`.',
   });
+}
+
+/**
+ * The answer when the prompt closed without the user answering it (ENG-2789).
+ *
+ * Its own outcome and not a flavour of `declined`, because the two say opposite
+ * things about what the user knows. `declined` means they read ten workbooks
+ * and none was theirs — searching again with a different word is the right next
+ * move. This means they never told us anything, and the honest next move is to
+ * put the same list to them in the conversation, where it cannot be collapsed.
+ * Folding them together is what let three unreadable prompts report themselves
+ * as a decision the user had made.
+ */
+export function dismissedAnswer(candidates?: readonly Candidate[]) {
+  const list = candidates?.length
+    ? `\n\n${renderCandidates(candidates)}\n\n`
+    : ' ';
+  return toolResult({
+    outcome: 'dismissed',
+    text:
+      'The user closed the file picker without answering it, so nothing was ' +
+      'added and they have told us nothing about which file they meant. Do ' +
+      'NOT treat this as a rejection and do not search again yet.' +
+      list +
+      'List these candidates in the conversation, ask which one they meant, ' +
+      'and say they can paste the workbook\'s OneDrive or SharePoint link ' +
+      'instead if none is right.',
+  });
+}
+
+/**
+ * The answer when the user pasted a link rather than picking a row (ENG-2784).
+ *
+ * The URL is the user's own typing, from a field only they can fill — it is
+ * not a model-chosen argument, and it is handed straight to `enroll_file`,
+ * which is the tool that resolves and validates it. Nothing here tries to
+ * parse it: `enroll_file`'s own description calls a pasted address "the only
+ * input that names one specific file with no guessing", and re-deriving that
+ * judgement in a second place is how two answers start to differ.
+ */
+export function linkSuppliedAnswer(url: string) {
+  return toolResult({
+    outcome: 'link_supplied',
+    text:
+      'The user did not pick from the list. They pasted the workbook\'s own ' +
+      'address instead, which names the file exactly. Call `enroll_file` with ' +
+      'the `url` below and nothing else — no `driveMsId`, no `msId`. ' +
+      '`enroll_file` will ask who may see the file; put that question to the ' +
+      'user too, and never answer it yourself.',
+    detail: { url },
+  });
+}
+
+/**
+ * A pasted value this tool will pass on, or `null`.
+ *
+ * The only check is that it is an http(s) address, and it exists so an empty
+ * box or a stray keystroke does not get announced to the model as "the user
+ * gave us the file". Anything further — which tenant, which drive, whether the
+ * file exists — is `enroll_file`'s to decide against Microsoft, not this
+ * tool's to guess from a string.
+ */
+export function usableLink(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    const { protocol } = new URL(trimmed);
+    return protocol === 'https:' || protocol === 'http:' ? trimmed : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The answer when a confirmation names something this session never offered. */

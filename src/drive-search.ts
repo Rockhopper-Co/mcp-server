@@ -54,8 +54,28 @@ export type DriveSearchOutcome =
   | 'no_matches'
   /** The user picked one; its identifiers are in the result, ready to enroll. */
   | 'confirmed'
-  /** The user was asked and said no. Nothing was searched further or written. */
+  /**
+   * The user read the candidates and said none of them is the file. An
+   * ANSWER, and the reason it is separate from {@link dismissed}: it means the
+   * search itself missed, so trying a different word is the right next move.
+   */
   | 'declined'
+  /**
+   * The prompt closed without the user answering it (ENG-2789).
+   *
+   * Distinct from `declined` because the two describe opposite states of the
+   * user's knowledge, and collapsing them is a measured failure rather than a
+   * tidiness point: three consecutive prompts whose candidates were never on
+   * screen reported themselves as `declined`, which reads as "the user
+   * considered these and rejected them" and sent the model off to search
+   * again. Nobody had considered anything.
+   */
+  | 'dismissed'
+  /**
+   * The user pasted the workbook's own address instead of picking a row.
+   * The URL is in the result, ready for `enroll_file`.
+   */
+  | 'link_supplied'
   /** This session has used its whole search budget. Refused BEFORE the call. */
   | 'search_limit_reached'
   /** No delegated Microsoft grant — the connect link is in the result. */
