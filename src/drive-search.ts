@@ -19,13 +19,18 @@
  *
  * 1. {@link SearchBudget} is a HARD per-session ceiling on how many times the
  *    drive can be searched at all.
- * 2. {@link CandidateRegistry} means a confirmation can only ever name a file
- *    THIS session's search actually returned. The confirmed pick is looked up
- *    in server memory by a nonce; nothing that arrives from the client is
- *    trusted to describe a file.
+ * 2. {@link createConfirmationCodec} means a confirmation can only ever name a
+ *    file THIS session's search actually returned. The candidate set rides the
+ *    round trip under an HMAC keyed on the session's own credential and is
+ *    verified fail-closed; nothing the client merely ASSERTS about a file is
+ *    trusted.
  */
 
-import { RockhopperApiError } from './api-client.js';
+import {
+  createRequestStateCodec,
+  type RequestStateCodec,
+} from '@modelcontextprotocol/server';
+import { RockhopperApiError, type ApiClient } from './api-client.js';
 import type { DriveSearchItem } from './types.js';
 
 /**
@@ -138,55 +143,70 @@ export interface Candidate {
 }
 
 /**
- * The candidate sets THIS session has actually seen, keyed by a nonce.
+ * How long a confirmation stays answerable, in seconds.
  *
- * Why server memory rather than the round-trip. The 2026-07-28 confirmation
- * lane hands the client a `requestState` string and gets it back on retry, and
- * the SDK is explicit that the returned value is attacker-controlled: it
- * travels through the client, nothing signs it, and `requestState()` hands
- * back whatever came in. Putting the candidate list in there would mean a
- * confirmation could describe ANY file — including one Microsoft never
- * returned for this user — and the tool would then hand its identifiers to
- * `enroll_file`. So the wire carries a lookup key and nothing else, and the
- * files it can name are only ever the ones {@link remember} was given.
- *
- * Bounded because a long-lived stdio session is a long-lived process: only the
- * most recent {@link MAX_REMEMBERED} sets are kept.
+ * Long enough that a person can read ten rows, open a workbook to check, and
+ * come back; short enough that a captured prompt is not answerable tomorrow.
+ * Past it the pick is refused rather than resolved, and the remedy printed by
+ * {@link unknownCandidateAnswer} — search again and confirm against the list
+ * that comes back — is the right one for an expiry as well as for a forgery.
  */
-export class CandidateRegistry {
-  static readonly MAX_REMEMBERED = 8;
+export const CONFIRMATION_TTL_SECONDS = 1800;
 
-  private readonly sets = new Map<string, readonly Candidate[]>();
+/** Domain separator, so this key can never verify some other feature's state. */
+const CONFIRMATION_KEY_DOMAIN = 'rockhopper.drive-search.confirmation.v1';
 
-  remember(nonce: string, candidates: readonly Candidate[]): void {
-    this.sets.set(nonce, candidates);
-    while (this.sets.size > CandidateRegistry.MAX_REMEMBERED) {
-      const oldest = this.sets.keys().next().value;
-      if (oldest === undefined) break;
-      this.sets.delete(oldest);
-    }
+/**
+ * The candidate set a confirmation is answering, sealed for the round trip.
+ *
+ * **ENG-2816 — why this is signed state and no longer a server-memory Map.**
+ * The original design kept the candidate sets in a per-server `Map` keyed by a
+ * nonce, and put only the nonce on the wire, reasoning that a confirmation
+ * must resolve against something the client cannot author. The reasoning was
+ * right and the CARRIER was wrong: a confirmation is a SECOND request, the
+ * gateway builds a fresh server per request (`mcp-handler.ts` — "Stateless and
+ * per-request"), and production runs two replicas. So the Map that held the
+ * answer had already been discarded by the time the answer arrived, and every
+ * confirmation over the gateway resolved to nothing and was refused as
+ * `unknown_candidate`. It never worked once in the deployed serving; the specs
+ * missed it because a test reuses one server for both rounds.
+ *
+ * The security property is unchanged, not relaxed. The wire value is
+ * HMAC-SHA256 over the payload under a key derived from this session's own
+ * credential ({@link ApiClient.deriveStateKey}), verified fail-closed before
+ * the candidates are read. A model that has read a hostile file name still
+ * cannot conjure a `driveMsId` and have this tool bless it — it would have to
+ * forge a signature — and a different principal derives a different key, so
+ * one session's confirmation cannot be replayed into another's.
+ *
+ * Signed, NOT encrypted: the client can decode and read the payload. That is
+ * acceptable here and only here — the payload is the candidate list this same
+ * user was just shown on screen. Never put anything else in it.
+ */
+export function createConfirmationCodec(
+  api: Pick<ApiClient, 'deriveStateKey'>,
+): RequestStateCodec<readonly Candidate[]> {
+  return createRequestStateCodec<readonly Candidate[]>({
+    key: api.deriveStateKey(CONFIRMATION_KEY_DOMAIN),
+    ttlSeconds: CONFIRMATION_TTL_SECONDS,
+  });
+}
+
+/**
+ * The candidate at a 0-based position, or `null`.
+ *
+ * `null` for a non-integer and for an out-of-range index alike: both mean the
+ * confirmation is describing something this search did not offer, and the
+ * caller's answer to that is the same refusal.
+ */
+export function candidateAt(
+  candidates: readonly Candidate[],
+  index: number,
+): Candidate | null {
+  if (!Number.isInteger(index) || index < 0 || index >= candidates.length) {
+    return null;
   }
-
-  /**
-   * The candidate this session offered under `nonce` at `index`, or `null`.
-   *
-   * `null` for an unknown nonce and for an out-of-range index alike: both mean
-   * the confirmation is describing something this session did not offer, and
-   * the caller's answer to that is the same refusal.
-   */
-  resolve(nonce: string, index: number): Candidate | null {
-    const set = this.sets.get(nonce);
-    if (!set) return null;
-    if (!Number.isInteger(index) || index < 0 || index >= set.length) {
-      return null;
-    }
-    return set[index];
-  }
-
-  /** The set offered under `nonce`, for re-rendering the question on retry. */
-  recall(nonce: string): readonly Candidate[] | null {
-    return this.sets.get(nonce) ?? null;
-  }
+  return candidates[index];
 }
 
 /** Turn a backend item into a candidate, dropping fields nothing renders. */

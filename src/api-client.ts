@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 import { getCorrelationId } from './correlation.js';
 import { log } from './logger.js';
@@ -201,6 +201,36 @@ export class ApiClient {
    */
   setAuthExpiredHandler(handler: () => void): void {
     this.authExpiredHandler = handler;
+  }
+
+  /**
+   * ENG-2816 — a signing key for state that must survive a round trip through
+   * the client, derived from this session's credential and never the
+   * credential itself.
+   *
+   * **Why the token is the key material.** The 2026-07-28 confirmation lane
+   * hands the client a `requestState` string and reads it back on a SECOND
+   * request, and the gateway builds a fresh server per request across two
+   * production replicas (measured 2026-08-19: `rockhopper-production-mcp`
+   * runs `desiredCount: 2`). So nothing in process memory is there on the way
+   * back, and a shared secret is the only thing every replica already agrees
+   * on. The PAT is exactly that: the same session presents the same token to
+   * whichever replica answers, and a DIFFERENT principal derives a different
+   * key — which is the spec's user-binding requirement satisfied by
+   * construction rather than by a separate `bind` callback.
+   *
+   * **The token does not leave.** It is the HMAC key, so what the caller
+   * receives is a 32-byte digest and what the client eventually holds is a
+   * signature over a payload. Neither is invertible, and `token` stays
+   * private. `domain` separates one use from another so a key minted for the
+   * enrolment picker can never verify anything else.
+   *
+   * A rotated PAT invalidates a confirmation that is already in flight. That
+   * fails CLOSED — the pick is refused and the user searches again — which is
+   * the same answer this tool gives any state it cannot verify.
+   */
+  deriveStateKey(domain: string): Buffer {
+    return createHmac('sha256', this.token).update(domain).digest();
   }
 
   /**

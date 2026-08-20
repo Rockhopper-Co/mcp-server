@@ -1,14 +1,17 @@
+import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { RockhopperApiError } from '../../api-client.js';
 import {
-  CandidateRegistry,
   DRIVE_SEARCH_SESSION_BUDGET,
   SearchBudget,
+  candidateAt,
   classifyDriveSearchFailure,
+  createConfirmationCodec,
   isNoDelegatedToken,
   toCandidate,
   type Candidate,
 } from '../../drive-search.js';
+import { createMockApiClient } from './test-helpers.js';
 
 /**
  * ENG-2204 — the two guards, tested where they live.
@@ -68,38 +71,64 @@ describe('SearchBudget', () => {
   });
 });
 
-describe('CandidateRegistry', () => {
-  it('resolves a position in a set it was given', () => {
-    const registry = new CandidateRegistry();
-    registry.remember('nonce-1', [candidate('A.xlsx', 'ms-a'), candidate('B.xlsx', 'ms-b')]);
-    expect(registry.resolve('nonce-1', 1)?.msId).toBe('ms-b');
+describe('the confirmation codec (ENG-2816)', () => {
+  const codec = createConfirmationCodec(createMockApiClient() as never);
+  const ctx = {} as never;
+  const offered = [candidate('A.xlsx', 'ms-a'), candidate('B.xlsx', 'ms-b')];
+
+  it('carries the set across a round trip a different server verifies', async () => {
+    // The gateway builds a fresh server per request over two production
+    // replicas, so "the same process minted this" is never a safe assumption.
+    // A SECOND codec over the same session credential is what a retry meets.
+    const state = await codec.mint(offered, ctx);
+    const other = createConfirmationCodec(createMockApiClient() as never);
+    expect((await other.verify(state, ctx)).map((c) => c.msId)).toEqual([
+      'ms-a',
+      'ms-b',
+    ]);
   });
 
-  it('refuses a nonce it never issued', () => {
-    const registry = new CandidateRegistry();
-    registry.remember('nonce-1', [candidate('A.xlsx', 'ms-a')]);
-    // The whole point: the nonce round-trips through the client and nothing
-    // signs it. An unrecognised one must find nothing rather than be trusted
-    // to describe a file.
-    expect(registry.resolve('forged', 0)).toBeNull();
+  it('refuses a set the session never signed', async () => {
+    // The whole point: the state round-trips through the client. A payload it
+    // authored must not be readable back as a candidate set, or a model that
+    // read a hostile file name could name any file it liked.
+    const forged =
+      'v1.' +
+      Buffer.from(
+        JSON.stringify({
+          p: [candidate('Payroll.xlsx', 'ms-not-offered')],
+          exp: Math.floor(Date.now() / 1000) + 600,
+        }),
+      ).toString('base64url') +
+      '.' +
+      Buffer.from('not-a-real-mac').toString('base64url');
+    await expect(codec.verify(forged, ctx)).rejects.toThrow();
   });
 
-  it('refuses a position outside the set it offered', () => {
-    const registry = new CandidateRegistry();
-    registry.remember('nonce-1', [candidate('A.xlsx', 'ms-a')]);
-    expect(registry.resolve('nonce-1', 1)).toBeNull();
-    expect(registry.resolve('nonce-1', -1)).toBeNull();
-    expect(registry.resolve('nonce-1', 0.5)).toBeNull();
-    expect(registry.resolve('nonce-1', Number.NaN)).toBeNull();
+  it('refuses a state signed for a DIFFERENT principal', async () => {
+    // ENG-2816's 12:08 case generalised: one session must never be able to
+    // answer with another's list. The key is derived from the credential, so
+    // a different principal cannot verify — no separate check needed.
+    const stranger = createConfirmationCodec({
+      deriveStateKey: () => createHmac('sha256', 'someone-else').update('x').digest(),
+    } as never);
+    const state = await stranger.mint(offered, ctx);
+    await expect(codec.verify(state, ctx)).rejects.toThrow();
+  });
+});
+
+describe('candidateAt', () => {
+  const offered = [candidate('A.xlsx', 'ms-a'), candidate('B.xlsx', 'ms-b')];
+
+  it('resolves a position in the set it was given', () => {
+    expect(candidateAt(offered, 1)?.msId).toBe('ms-b');
   });
 
-  it('forgets the oldest sets so a long session cannot grow without bound', () => {
-    const registry = new CandidateRegistry();
-    for (let i = 0; i <= CandidateRegistry.MAX_REMEMBERED; i += 1) {
-      registry.remember(`nonce-${i}`, [candidate('A.xlsx', `ms-${i}`)]);
-    }
-    expect(registry.recall('nonce-0')).toBeNull();
-    expect(registry.recall(`nonce-${CandidateRegistry.MAX_REMEMBERED}`)).not.toBeNull();
+  it('refuses a position outside the set that was offered', () => {
+    expect(candidateAt(offered, 2)).toBeNull();
+    expect(candidateAt(offered, -1)).toBeNull();
+    expect(candidateAt(offered, 0.5)).toBeNull();
+    expect(candidateAt(offered, Number.NaN)).toBeNull();
   });
 });
 

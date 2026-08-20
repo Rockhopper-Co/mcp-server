@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   inputRequired,
   inputResponse,
@@ -8,9 +7,10 @@ import {
 } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
 import {
-  CandidateRegistry,
   SearchBudget,
+  candidateAt,
   classifyDriveSearchFailure,
+  createConfirmationCodec,
   ADMIN_CONSENT_TEXT,
   isAdminConsentRequired,
   isNoDelegatedToken,
@@ -55,11 +55,19 @@ import {
  * 1. **The search set IS the permission trim.** Every candidate came back from
  *    a delegated Microsoft call made as this user. Nothing is added to it,
  *    nothing is inferred into it, and no file outside it is ever offered.
- * 2. **A confirmation resolves against SERVER memory, never against what the
- *    client sent.** The confirmation carries a position and a nonce; the file
- *    it names is looked up in the set this session actually returned. A model
- *    that has read a hostile file name cannot conjure a `driveMsId` and have
- *    the tool bless it.
+ * 2. **A confirmation resolves against a SIGNED set, never against what the
+ *    client asserts.** The confirmation carries a position plus the candidate
+ *    set this search returned, sealed under an HMAC keyed on the session's own
+ *    credential and verified fail-closed on the way back. A model that has
+ *    read a hostile file name cannot conjure a `driveMsId` and have the tool
+ *    bless it — it would have to forge a signature.
+ *
+ *    ENG-2816: this was a per-server `Map` until 2026-08-19, and over the
+ *    gateway it never resolved a single confirmation. A confirmation is a
+ *    SECOND request; the gateway builds a fresh server per request across two
+ *    production replicas, so the Map holding the answer was gone before the
+ *    answer arrived. Server memory is the wrong carrier for a stateless
+ *    server, and signing is what keeps the property the Map was there for.
  * 3. **The budget is claimed BEFORE the network call.** A cap that discards an
  *    answer already fetched has not capped anything — the enumeration already
  *    happened, and Microsoft already answered it.
@@ -67,33 +75,53 @@ import {
 export function registerDriveSearchTool(
   server: McpServer,
   api: ApiClient,
-  session?: { budget?: SearchBudget; registry?: CandidateRegistry },
+  session?: { budget?: SearchBudget },
 ): void {
   // Per-server, never per-module: two servers in one process (a test file, a
   // gateway serving two sessions) must not share a ceiling, and a module-level
   // counter is exactly the shape that silently does.
   const budget = session?.budget ?? new SearchBudget();
-  const registry = session?.registry ?? new CandidateRegistry();
+  const confirmations = createConfirmationCodec(api);
 
   /**
-   * Resolve a (nonce, position) pair against what this session offered.
+   * The candidate set a confirmation is echoing back, or `null`.
    *
-   * Position, never identifier — the only thing a client can send is a number,
-   * and a number that does not index a set this session returned resolves to
-   * nothing. `0` and the elicitation form's "none of these" are the same
-   * answer: the user was asked and chose no file.
+   * ENG-2816 — this used to be a lookup in a per-server `Map`, which is why
+   * no confirmation over the gateway ever resolved: the second request runs
+   * on a server built after the first one was torn down. The set now rides
+   * the round trip signed, and `verify` is the fail-closed gate — a bad
+   * signature, an expired state and a malformed one all answer `null`, which
+   * the callers treat exactly as they treated an unknown nonce.
    */
-  function resolvePick(nonce: string | null, choice: string | number) {
-    if (choice === DECLINE_CHOICE || choice === 0) return declinedAnswer();
-    if (!nonce) return unknownCandidateAnswer();
-    const position = typeof choice === 'number' ? choice : Number(choice);
-    const candidate = registry.resolve(nonce, position - 1);
-    return candidate ? confirmedAnswer(candidate) : unknownCandidateAnswer();
+  async function offered(
+    state: string | null,
+    ctx: ServerContext | undefined,
+  ): Promise<readonly Candidate[] | null> {
+    if (!state) return null;
+    try {
+      return await confirmations.verify(state, ctx as ServerContext);
+    } catch {
+      return null;
+    }
   }
 
-  /** The set this session offered under `nonce`, for re-asking in prose. */
-  function offered(nonce: string | null) {
-    return (nonce ? registry.recall(nonce) : null) ?? undefined;
+  /**
+   * Resolve a position against the set the confirmation carried.
+   *
+   * Position, never identifier — the only thing a client can send is a number,
+   * and a number that does not index the verified set resolves to nothing.
+   * `0` and the elicitation form's "none of these" are the same answer: the
+   * user was asked and chose no file.
+   */
+  function resolvePick(
+    candidates: readonly Candidate[] | null,
+    choice: string | number,
+  ) {
+    if (choice === DECLINE_CHOICE || choice === 0) return declinedAnswer();
+    if (!candidates) return unknownCandidateAnswer();
+    const position = typeof choice === 'number' ? choice : Number(choice);
+    const candidate = candidateAt(candidates, position - 1);
+    return candidate ? confirmedAnswer(candidate) : unknownCandidateAnswer();
   }
 
   /**
@@ -110,13 +138,18 @@ export function registerDriveSearchTool(
    * it means the user answered nothing — which is a different fact from "none
    * of these is my file" and leads to a different next move.
    */
-  function resolveForm(nonce: string | null, content: unknown) {
+  function resolveForm(
+    candidates: readonly Candidate[] | null,
+    content: unknown,
+  ) {
     const filled = content as { choice?: string; link?: string } | undefined;
     const link = usableLink(filled?.link);
     if (link) return linkSuppliedAnswer(link);
     const choice = filled?.choice;
-    if (choice === undefined || choice === '') return dismissedAnswer(offered(nonce));
-    return resolvePick(nonce, choice);
+    if (choice === undefined || choice === '') {
+      return dismissedAnswer(candidates ?? undefined);
+    }
+    return resolvePick(candidates, choice);
   }
 
   /**
@@ -128,7 +161,6 @@ export function registerDriveSearchTool(
   async function ask(
     ctx: ServerContext | undefined,
     candidates: readonly Candidate[],
-    nonce: string,
   ) {
     const lane = selectLane(ctx, server.server?.getClientCapabilities?.());
     const form = confirmationForm(candidates);
@@ -136,14 +168,17 @@ export function registerDriveSearchTool(
     if (lane === 'input_required') {
       return inputRequired({
         inputRequests: { [CONFIRM_KEY]: inputRequired.elicit(form) },
-        requestState: nonce,
+        requestState: await confirmations.mint(candidates, ctx as ServerContext),
       });
     }
 
     if (lane === 'elicitation' && ctx?.mcpReq?.elicitInput) {
       try {
         const answer = await ctx.mcpReq.elicitInput({ ...form, mode: 'form' });
-        if (answer?.action === 'accept') return resolveForm(nonce, answer.content);
+        // This lane answers INSIDE the call, so the set is still in scope and
+        // nothing has to survive a round trip.
+        if (answer?.action === 'accept')
+          return resolveForm(candidates, answer.content);
         // Declined or cancelled. Neither is an error — a person is allowed to
         // close a prompt — and neither is `declined` either: the user pressed a
         // button, they did not tell us anything about these ten files. Saying
@@ -157,10 +192,14 @@ export function registerDriveSearchTool(
       }
     }
 
+    // The universal lane carries the SAME signed state as its `confirm_token`
+    // (ENG-2816). It is a second tool call, so it is a second request, and it
+    // lost the server-memory set for exactly the reason the modern lane did.
+    const token = await confirmations.mint(candidates, ctx as ServerContext);
     return toolResult({
       outcome: 'candidates',
-      text: confirmationPrompt(candidates, nonce),
-      detail: { confirmToken: nonce, candidateCount: candidates.length },
+      text: confirmationPrompt(candidates, token),
+      detail: { confirmToken: token, candidateCount: candidates.length },
     });
   }
 
@@ -182,15 +221,20 @@ export function registerDriveSearchTool(
       // return a different set than the one the user was looking at.
       const embedded = inputResponse(ctx?.mcpReq?.inputResponses, CONFIRM_KEY);
       if (embedded.kind === 'elicit') {
-        const answered = readRequestState(ctx);
-        if (embedded.action !== 'accept') return dismissedAnswer(offered(answered));
+        const answered = await offered(readRequestState(ctx), ctx);
+        if (embedded.action !== 'accept') {
+          return dismissedAnswer(answered ?? undefined);
+        }
         return resolveForm(answered, embedded.content);
       }
 
       // The universal lane's confirmation: the model relaying a number the
-      // user said out loud. Same resolution, same server-side lookup.
+      // user said out loud. Same resolution, same verified candidate set.
       if (confirm_index !== undefined || confirm_token !== undefined) {
-        return resolvePick(confirm_token ?? null, confirm_index ?? NaN);
+        return resolvePick(
+          await offered(confirm_token ?? null, ctx),
+          confirm_index ?? NaN,
+        );
       }
 
       if (!budget.claim()) {
@@ -262,10 +306,7 @@ export function registerDriveSearchTool(
         });
       }
 
-      const candidates = items.map(toCandidate);
-      const nonce = randomUUID();
-      registry.remember(nonce, candidates);
-      return ask(ctx, candidates, nonce);
+      return ask(ctx, items.map(toCandidate));
     },
   );
 }

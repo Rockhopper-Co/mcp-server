@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createServer } from '../server.js';
 import { ApiClient } from '../api-client.js';
@@ -49,6 +50,10 @@ function createMockApiClient(): ApiClient {
     getUnattributedChanges: vi.fn().mockResolvedValue([]),
     getCellHistory: vi.fn().mockResolvedValue([]),
     getMe: vi.fn().mockResolvedValue({ internalId: 1, email: 'test@test.com' }),
+    // ENG-2816 — `search_drive_files` derives its confirmation-signing key at
+    // registration, so every stub that reaches `createServer` needs one.
+    deriveStateKey: (domain: string) =>
+      createHmac('sha256', 'test-pat-for-state-signing').update(domain).digest(),
   } as unknown as ApiClient;
 
   return mock;

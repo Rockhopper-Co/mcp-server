@@ -1,7 +1,16 @@
+import { createHmac } from 'node:crypto';
 import { vi } from 'vitest';
 
 export function createMockApiClient() {
   return {
+    // ENG-2816 — a FIXED key, deliberately. Every mock client derives the same
+    // one, so a spec that mints on one server and verifies on another models
+    // the gateway's two replicas serving one session. A per-instance random
+    // key would make that spec pass for the wrong reason.
+    deriveStateKey: (domain: string) =>
+      createHmac('sha256', 'test-pat-for-state-signing')
+        .update(domain)
+        .digest(),
     getMe: vi.fn().mockResolvedValue({
       internalId: 1,
       email: 'user@test.com',
