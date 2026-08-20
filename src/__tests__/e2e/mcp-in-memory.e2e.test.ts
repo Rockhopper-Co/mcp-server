@@ -162,12 +162,21 @@ describe('MCP in-memory protocol e2e', () => {
     expect(JSON.stringify(result.content)).toContain('Failed to get versions');
   });
 
-  it('get_file_versions returns the empty-result message', async () => {
+  // ENG-2824 — an enrolled file with no versions is one Rockhopper has not
+  // finished reading, never one that has none, so the empty answer this used
+  // to assert is the defect. Proven over the real JSON-RPC transport: this is
+  // the shape a connector actually receives seconds after `enroll_file`.
+  it('get_file_versions refuses instead of reporting an empty version list', async () => {
     const result = await client.callTool({
       name: 'get_file_versions',
       arguments: { fileMsId: 'empty-file' },
     });
-    expect(JSON.stringify(result.content)).toContain('No versions found');
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBe(true);
+    expect(text).toContain('CHANGE_HISTORY_NOT_READY');
+    expect(text).toContain('enrollment_incomplete');
+    expect(text).toContain('retryAfterSeconds');
+    expect(text).not.toContain('No versions found');
   });
 
   it('get_file_comments returns threaded comments', async () => {

@@ -33,7 +33,14 @@ export type NotReadyReason =
    * an unknown completeness state is not permission to serve rows. This is the
    * one reason that is NOT a statement about the file.
    */
-  | 'completeness_unknown';
+  | 'completeness_unknown'
+  /**
+   * ENG-2824 — the file is enrolled but its initial read has not landed yet.
+   * Distinct from `change_history_incomplete`, which is a FOLD rewriting an
+   * existing window: here there is no window and no version, because enrolment
+   * saves the file row before it writes Initial 1.0.0 / Live 0.0.0.
+   */
+  | 'enrollment_incomplete';
 
 /** Grep marker; also the first token of every refusal an assistant sees. */
 export const NOT_READY_MARKER = 'CHANGE_HISTORY_NOT_READY';
@@ -121,22 +128,71 @@ export function notReadyToolResult(err: unknown): NotReadyToolResult {
     retryAfterSeconds: e.retryAfterSeconds,
     fileMsId: e.fileMsId,
   };
+  // ENG-2824 — the enrolment case is not a change-history statement, and
+  // saying "computing this file's change history" over a file whose bytes
+  // have not been read yet invites exactly the wrong follow-up ("so it has
+  // no versions"). Name the state the caller is actually in.
+  const body =
+    e.reason === 'enrollment_incomplete'
+      ? `Rockhopper is still reading this workbook for the first time, so no ` +
+        `versions and no changes can be served yet.\n` +
+        `Do NOT say the file has no versions, no history or no changes, that ` +
+        `it is empty, or that enrolment failed — none of that is known.\n`
+      : `Rockhopper has not finished computing this file's change history, ` +
+        `so no rows can be served.\n` +
+        `Do NOT say there are no changes, that nothing changed, or that the ` +
+        `history is empty — none of that is known.\n`;
   return {
     content: [
       {
         type: 'text',
         text:
           `${NOT_READY_MARKER} — this is NOT a result and NOT an empty result.\n` +
-          `Rockhopper has not finished computing this file's change history, ` +
-          `so no rows can be served.\n` +
-          `Do NOT say there are no changes, that nothing changed, or that the ` +
-          `history is empty — none of that is known.\n` +
+          body +
           `Retry in ${e.retryAfterSeconds} seconds.\n` +
           JSON.stringify(payload),
       },
     ],
     isError: true,
   };
+}
+
+/**
+ * ENG-2824 — throws {@link ChangeHistoryNotReadyError} when the file's initial
+ * read has not landed, judged by its version list being EMPTY.
+ *
+ * Why the version list is the right signal, and why the existing probe cannot
+ * be it. `assertChangeHistoryComplete` asks the commit-diff QUEUE, and the
+ * enrolment write enqueues no fold at all — `initial` is named among the
+ * never-enqueued classes in `backend/src/queue/commit-diff-fold-status.sql.ts`
+ * ("the never-enqueued classes (initial, …) are all correctly reported as
+ * nothing pending"). So during the ~90 seconds a workbook is being read for
+ * the first time the probe answers `foldPending: false` truthfully, and every
+ * change-history surface reads that as permission to serve an empty list.
+ *
+ * The backend already treats "row exists, zero versions" as enrolment that has
+ * not finished: `enrolled-files.service.ts` short-circuits a repeat POST only
+ * when the row has "at least one saved FileVersion", and calls a versionless
+ * row a "half-enrolled stub" on the Google path. Enrolment saves the file row
+ * first and Initial 1.0.0 / Live 0.0.0 after, on BOTH platform paths, so there
+ * is no enrolled-and-complete file with zero versions.
+ *
+ * Existence is not being inferred here: `FileUserAccessGuard` denies an unknown
+ * or unauthorised id outright, so a 200 carrying an empty array means the file
+ * is ours and is still being read — not that it might not exist.
+ */
+export function assertEnrollmentComplete(
+  fileMsId: string,
+  versions: readonly unknown[],
+): void {
+  if (versions.length > 0) return;
+  throw new ChangeHistoryNotReadyError({
+    reason: 'enrollment_incomplete',
+    fileMsId,
+    detail:
+      'the file is enrolled but has no versions yet, so its initial read has ' +
+      'not finished',
+  });
 }
 
 /** The completeness probe this module needs from the API client. */

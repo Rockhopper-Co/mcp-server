@@ -10,6 +10,12 @@ import {
   type RegisterToolsOptions,
 } from './tools/index.js';
 import { buildInstructions } from './instructions.js';
+import {
+  classifyToolResult,
+  describeError,
+  emitToolTelemetry,
+  type ToolTelemetrySink,
+} from './tool-telemetry.js';
 
 /**
  * Phase 1.1 / KI-226 + Phase 1.5 / KI-225 — wrap every tool handler once.
@@ -26,7 +32,10 @@ import { buildInstructions } from './instructions.js';
  * `ToolCallback` union. On a handler throw we log then re-throw — behavior
  * (the error surfacing to the SDK) is preserved.
  */
-function installCorrelationScope(server: McpServer): void {
+function installCorrelationScope(
+  server: McpServer,
+  telemetry?: ToolTelemetrySink,
+): void {
   const baseRegisterTool = server.registerTool.bind(server);
   server.registerTool = ((
     name: string,
@@ -39,16 +48,35 @@ function installCorrelationScope(server: McpServer): void {
         const start = Date.now();
         try {
           const result = await handler(...args);
-          log.info(
-            { event: 'tool_call', tool: name, durationMs: Date.now() - start, outcome: 'ok' },
-            'tool_call',
-          );
+          // ENG-2823: an MCP tool refuses by RETURNING `isError`, never by
+          // throwing, so this branch is where every refusal lands. Reporting
+          // it as `ok` made a refused enrolment and a successful one the same
+          // line — see `tool-telemetry.ts`.
+          const outcome = classifyToolResult(result);
+          const durationMs = Date.now() - start;
+          log.info({ event: 'tool_call', tool: name, durationMs, outcome }, 'tool_call');
+          emitToolTelemetry(telemetry, {
+            event: 'tool_call',
+            tool: name,
+            outcome,
+            durationMs,
+          });
           return result;
         } catch (err) {
+          const durationMs = Date.now() - start;
           log.error(
-            { event: 'tool_call_failed', tool: name, durationMs: Date.now() - start, err },
+            { event: 'tool_call_failed', tool: name, durationMs, err },
             'tool_call_failed',
           );
+          // The sink gets the error's TYPE and status, never `err` itself —
+          // the local file may carry the message, a collected log may not.
+          emitToolTelemetry(telemetry, {
+            event: 'tool_call',
+            tool: name,
+            outcome: 'failed',
+            durationMs,
+            ...describeError(err),
+          });
           throw err;
         }
       });
@@ -104,9 +132,24 @@ const CACHE_HINTS = {
   'server/discover': { ttlMs: 60 * 60 * 1000, cacheScope: 'private' },
 } as const;
 
+/**
+ * ENG-2823 — everything `registerTools` needs, plus where this HOST wants tool
+ * telemetry to go. Separate from `RegisterToolsOptions` because the sink is
+ * not a registration input: it changes nothing about which tools exist.
+ */
+export interface CreateServerOptions extends RegisterToolsOptions {
+  /**
+   * Optional per-call telemetry destination. Omitted on the stdio surface,
+   * whose only writable destination is the local file (stdout is the
+   * transport). The gateway supplies its request logger, which is stdout and
+   * therefore CloudWatch.
+   */
+  telemetry?: ToolTelemetrySink;
+}
+
 export function createServer(
   apiClient: ApiClient,
-  options?: RegisterToolsOptions,
+  options?: CreateServerOptions,
 ): McpServer {
   // ENG-2208 / ENG-2212: derived from the SAME resolution that decides which
   // registrars run, so the instructions can never advertise a write tool the
@@ -130,7 +173,7 @@ export function createServer(
     },
   );
 
-  installCorrelationScope(server);
+  installCorrelationScope(server, options?.telemetry);
   registerResources(server, apiClient);
   registerTools(server, apiClient, options);
   registerPrompts(server, apiClient);
