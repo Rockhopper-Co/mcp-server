@@ -111,6 +111,13 @@ A refusal means **nothing is known yet**. It is not an empty history, not zero c
 and not evidence that the file is unmodified. Wait `retryAfterSeconds` and ask again;
 never answer a user's question about what changed from a not-ready response.
 
+**Right after `enroll_file`, expect it.** Rockhopper reads the workbook for the first
+time after the file row exists, so for roughly the first minute `get_file_versions`,
+`get_unattributed_changes` and both resources refuse with
+`"reason": "enrollment_incomplete"`. That is the enrolment still running, not a failure
+and not a file without history — do not tell the user the workbook has no versions,
+and do not re-enrol it. Wait `retryAfterSeconds` and ask again.
+
 ## 4. Commenting workflow
 
 Comments are scoped to a version. The default version is the latest **committed** one.
