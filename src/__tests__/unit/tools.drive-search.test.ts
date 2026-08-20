@@ -1,6 +1,7 @@
+import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { RockhopperApiError } from '../../api-client.js';
-import { SearchBudget } from '../../drive-search.js';
+import { SearchBudget, createConfirmationCodec } from '../../drive-search.js';
 import { registerDriveSearchTool } from '../../tools/drive-search.js';
 import { registerTools } from '../../tools/index.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
@@ -64,6 +65,17 @@ const MODERN_CTX = {
     requestState: () => undefined,
   },
 };
+
+/** The retry a 2026-07-28 client sends once the user has answered the picker. */
+function retryCtx(state: string, content: unknown, action = 'accept') {
+  return {
+    mcpReq: {
+      envelope: MODERN_CTX.mcpReq.envelope,
+      requestState: () => state,
+      inputResponses: { confirm_file: { action, content } },
+    },
+  };
+}
 
 describe('search_drive_files registration', () => {
   it('rides the read floor — a read-only token can find an un-enrolled file', () => {
@@ -410,23 +422,14 @@ describe('search_drive_files — confirmation lanes', () => {
     expect(result.requestState).toBeTruthy();
   });
 
-  it('resolves a retried input_required answer against server memory', async () => {
+  it('resolves a retried input_required answer against the signed set', async () => {
     const api = createMockApiClient();
     const handler = handlerFor(api);
     const asked = await handler({ query: 'Becklar' }, MODERN_CTX);
-    const nonce = asked.requestState as string;
 
     const retry = await handler(
       { query: 'Becklar' },
-      {
-        mcpReq: {
-          envelope: MODERN_CTX.mcpReq.envelope,
-          requestState: () => nonce,
-          inputResponses: {
-            confirm_file: { action: 'accept', content: { choice: '1' } },
-          },
-        },
-      },
+      retryCtx(asked.requestState as string, { choice: '1' }),
     );
     expect(outcomeOf(retry)).toBe('confirmed');
     expect(detailOf(retry).msId).toBe('ms-item-9');
@@ -453,6 +456,112 @@ describe('search_drive_files — confirmation lanes', () => {
       expect(outcomeOf(result)).toBe('dismissed');
       expect(result.isError).toBeUndefined();
     }
+  });
+
+  /**
+   * ENG-2816 — the defect this whole file could not see.
+   *
+   * Every spec above drives ONE handler for both halves of the round trip, so
+   * the candidate set was still in the process that had to answer. The gateway
+   * does not work like that: `mcp-handler.ts` builds a fresh server per HTTP
+   * request ("Stateless and per-request"), and production runs two replicas
+   * (measured 2026-08-19: `rockhopper-production-mcp` desiredCount 2). A
+   * confirmation IS a second request. So the set had always been discarded by
+   * the time the pick came back, and staging returned `unknown_candidate` to
+   * two consecutive real picks on a fresh search.
+   *
+   * `freshRequestHandler()` per round is the whole point — reuse one handler
+   * here and the spec goes green against the broken code.
+   */
+  describe('ENG-2816 — a confirmation survives a stateless round trip', () => {
+    function freshRequestHandler(): Handler {
+      return handlerFor(createMockApiClient());
+    }
+
+    it('resolves a pick when the retry lands on a different server', async () => {
+      const asked = await freshRequestHandler()({ query: 'Becklar' }, MODERN_CTX);
+      const retry = await freshRequestHandler()(
+        { query: 'Becklar' },
+        retryCtx(asked.requestState as string, { choice: '1' }),
+      );
+      expect(outcomeOf(retry)).toBe('confirmed');
+      expect(detailOf(retry).msId).toBe('ms-item-9');
+    });
+
+    it('resolves the universal lane across two servers too', async () => {
+      const found = await freshRequestHandler()({ query: 'Becklar' });
+      const confirmed = await freshRequestHandler()({
+        confirm_index: 2,
+        confirm_token: detailOf(found).confirmToken as string,
+      });
+      expect(outcomeOf(confirmed)).toBe('confirmed');
+      expect(detailOf(confirmed).msId).toBe('ms-item-10');
+    });
+
+    it('answers a STALE prompt against its own list, never the newest one', async () => {
+      // The 12:08 case on ENG-2816, and the property that must not be traded
+      // away to fix the 17:20 one. A prompt from an earlier `TPE` search was
+      // answered after a later search had run. Position 1 must mean position 1
+      // of the list the user was LOOKING AT — resolving it against whatever
+      // the session searched most recently would enrol a file nobody picked.
+      const earlierApi = createMockApiClient();
+      earlierApi.searchDriveFiles.mockResolvedValue({
+        scope: 'search',
+        items: [
+          {
+            msId: 'ms-tpe',
+            driveMsId: 'drive-tpe',
+            name: 'TPE_Rollup.xlsx',
+            webUrl: 'https://contoso.sharepoint.com/tpe.xlsx',
+            lastModifiedAt: null,
+            size: 1,
+            parentPath: null,
+            enrollmentState: 'not_enrolled',
+          },
+        ],
+      });
+      const stale = await handlerFor(earlierApi)({ query: 'TPE' }, MODERN_CTX);
+
+      // A later search on a different server, offering a DIFFERENT file first.
+      const answered = await freshRequestHandler()(
+        { query: 'Becklar' },
+        retryCtx(stale.requestState as string, { choice: '1' }),
+      );
+      expect(outcomeOf(answered)).toBe('confirmed');
+      expect(detailOf(answered).msId).toBe('ms-tpe');
+      expect(detailOf(answered).msId).not.toBe('ms-item-9');
+    });
+
+    it('refuses a state the session never signed, on both lanes', async () => {
+      const forgedState = await createConfirmationCodec({
+        deriveStateKey: () =>
+          createHmac('sha256', 'an-attacker-key').update('x').digest(),
+      } as never).mint(
+        [
+          {
+            msId: 'ms-payroll',
+            driveMsId: 'drive-payroll',
+            name: 'Payroll.xlsx',
+            parentPath: null,
+            lastModifiedAt: null,
+            enrollmentState: 'not_enrolled',
+          },
+        ],
+        {} as never,
+      );
+
+      const viaModern = await freshRequestHandler()(
+        { query: 'Becklar' },
+        retryCtx(forgedState, { choice: '1' }),
+      );
+      expect(outcomeOf(viaModern)).toBe('unknown_candidate');
+
+      const viaUniversal = await freshRequestHandler()({
+        confirm_index: 1,
+        confirm_token: forgedState,
+      });
+      expect(outcomeOf(viaUniversal)).toBe('unknown_candidate');
+    });
   });
 
   it('degrades to the tool-result question when no richer lane exists', async () => {
