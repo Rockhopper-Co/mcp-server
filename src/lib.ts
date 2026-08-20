@@ -13,6 +13,12 @@
  *
  * Stable API surface (semver-bound):
  *   - `createServer(apiClient, options?): McpServer`
+ *   - `ToolTelemetrySink` (ENG-2823) — where a HOST wants one structured line
+ *     per tool call to go. The stdio surface omits it and keeps the local
+ *     file, because stdout is the transport there; the gateway supplies its
+ *     request logger so the line reaches CloudWatch. The package never picks
+ *     a destination, and the event's key set is fixed so no host can widen it
+ *     into arguments or content.
  *   - `grantsWriteTools(scope)` — the write allow-list (ENG-2208), exported so
  *     the gateway asks the same question instead of writing a second copy of
  *     the rule that would drift from this one.
@@ -25,7 +31,12 @@
  *   - All `types` (Team, EnrolledFile, FileVersion, ...)
  */
 
-export { createServer } from './server.js';
+export { createServer, type CreateServerOptions } from './server.js';
+export {
+  type ToolOutcome,
+  type ToolTelemetryEvent,
+  type ToolTelemetrySink,
+} from './tool-telemetry.js';
 export {
   grantsWriteTools,
   resolveCapabilities,
