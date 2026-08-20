@@ -1,6 +1,7 @@
 import { ResourceTemplate } from '@modelcontextprotocol/server';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
+import { assertEnrollmentComplete } from '../not-ready.js';
 
 export function registerVersionResources(
   server: McpServer,
@@ -19,6 +20,11 @@ export function registerVersionResources(
     },
     async (uri, { fileMsId }) => {
       const versions = await api.getFileVersions(fileMsId as string);
+      // ENG-2824 — a resource read has no `isError` channel, so the
+      // freshly-enrolled state THROWS here for the same reason the change
+      // resource does: `[]` rendered as JSON is indistinguishable from a file
+      // that genuinely has no versions, and no enrolled file ever does.
+      assertEnrollmentComplete(fileMsId as string, versions);
       return {
         contents: [
           {

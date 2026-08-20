@@ -279,4 +279,168 @@ describe('strict no-partial — change-history surfaces', () => {
       vi.unstubAllGlobals();
     });
   });
+
+  /**
+   * ENG-2824 — the freshly-enrolled window. `assertChangeHistoryComplete`
+   * asks the commit-diff QUEUE, and enrolment's initial version write enqueues
+   * no fold at all (`backend/src/queue/commit-diff-fold-status.sql.ts:26-30`
+   * lists `initial` among the never-enqueued classes), so the probe answers
+   * "nothing pending" for a file whose bytes have not been read yet and every
+   * read serves a confident empty answer.
+   *
+   * The signal the backend already trusts is the version list: enrolment saves
+   * the row FIRST and Initial 1.0.0 / Live 0.0.0 after
+   * (`enrolled-files.service.ts:363-434`), and both enrolment paths call a row
+   * with no versions a "half-enrolled stub" (`:227-229`). The access guard
+   * denies an unknown or unauthorised file outright, so an EMPTY version list
+   * from a 200 means exactly one thing: this file is still being read.
+   */
+  describe('a freshly enrolled file (ENG-2824)', () => {
+    const stillEnrolling = (api: ReturnType<typeof createMockApiClient>) => {
+      api.getFileVersions.mockResolvedValue([]);
+      return api;
+    };
+
+    it('get_file_versions refuses instead of reporting no versions', async () => {
+      const api = stillEnrolling(createMockApiClient());
+
+      const result = await toolHandler(api, 'get_file_versions')({
+        fileMsId: 'file-1',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain(NOT_READY_MARKER);
+      expect(result.content[0].text).toContain('enrollment_incomplete');
+      expect(result.content[0].text).not.toContain('No versions found');
+    });
+
+    it('get_file_versions names a retry interval', async () => {
+      const api = stillEnrolling(createMockApiClient());
+
+      const result = await toolHandler(api, 'get_file_versions')({
+        fileMsId: 'file-1',
+      });
+
+      const json = result.content[0].text.slice(
+        result.content[0].text.indexOf('{'),
+      );
+      expect(JSON.parse(json)).toEqual({
+        status: 'not_ready',
+        reason: 'enrollment_incomplete',
+        retryAfterSeconds: expect.any(Number),
+        fileMsId: 'file-1',
+      });
+      expect(JSON.parse(json).retryAfterSeconds).toBeGreaterThan(0);
+    });
+
+    it('get_file_versions still lists versions once enrolment has landed', async () => {
+      const api = createMockApiClient();
+
+      const result = await toolHandler(api, 'get_file_versions')({
+        fileMsId: 'file-1',
+      });
+
+      expect(result.isError).toBeUndefined();
+      expect(result.content[0].text).toContain('version(s)');
+    });
+
+    it('get_unattributed_changes refuses the file-wide empty answer', async () => {
+      const api = stillEnrolling(createMockApiClient());
+      api.getUnattributedChangesPaginated.mockResolvedValue({
+        changes: [],
+        totalCount: 0,
+        nextCursor: null,
+      });
+
+      const result = await toolHandler(api, 'get_unattributed_changes')({
+        fileMsId: 'file-1',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('enrollment_incomplete');
+      expect(result.content[0].text).not.toContain(
+        'No unattributed changes found',
+      );
+    });
+
+    it('get_unattributed_changes refuses the sheet-filtered empty answer', async () => {
+      const api = stillEnrolling(createMockApiClient());
+      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+
+      const result = await toolHandler(api, 'get_unattributed_changes')({
+        fileMsId: 'file-1',
+        sheetName: 'Sheet1',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('enrollment_incomplete');
+      expect(result.content[0].text).not.toContain(
+        'No unattributed changes on sheet',
+      );
+    });
+
+    it('reports a GENUINE absence when the file is enrolled and simply has no changes', async () => {
+      const api = createMockApiClient();
+      api.getUnattributedChangesPaginated.mockResolvedValue({
+        changes: [],
+        totalCount: 0,
+        nextCursor: null,
+      });
+
+      const result = await toolHandler(api, 'get_unattributed_changes')({
+        fileMsId: 'file-1',
+      });
+
+      expect(result.isError).toBeUndefined();
+      expect(result.content[0].text).toContain(
+        'No unattributed changes found',
+      );
+    });
+
+    it('costs no extra call when there are rows to serve', async () => {
+      const api = createMockApiClient();
+
+      await toolHandler(api, 'get_unattributed_changes')({
+        fileMsId: 'file-1',
+      });
+
+      expect(api.getFileVersions).not.toHaveBeenCalled();
+    });
+
+    it('the versions resource throws rather than serving an empty array (ENG-2824)', async () => {
+      const api = createMockApiClient();
+      api.getFileVersions.mockResolvedValue([]);
+      const server = createMockMcpServer();
+      registerResources(server as never, api as never);
+      const call = server.registerResource.mock.calls.find(
+        (c) => c[0] === 'file-versions',
+      );
+      const handler = call?.[3] as (
+        uri: { href: string },
+        vars: Record<string, unknown>,
+      ) => Promise<unknown>;
+
+      await expect(
+        handler({ href: 'rockhopper://files/file-1/versions' }, {
+          fileMsId: 'file-1',
+        }),
+      ).rejects.toThrow(NOT_READY_MARKER);
+    });
+
+    it('the changes resource throws on an empty envelope from a file still being read (ENG-2824)', async () => {
+      const api = createMockApiClient();
+      api.getFileVersions.mockResolvedValue([]);
+      api.getUnattributedChangesPaginated.mockResolvedValue({
+        changes: [],
+        totalCount: 0,
+        nextCursor: null,
+      });
+
+      await expect(
+        resourceHandler(api)({ href: 'rockhopper://files/file-1/changes' }, {
+          fileMsId: 'file-1',
+        }),
+      ).rejects.toThrow(NOT_READY_MARKER);
+    });
+  });
 });

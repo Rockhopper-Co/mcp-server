@@ -1,7 +1,10 @@
 import { ResourceTemplate } from '@modelcontextprotocol/server';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
-import { assertChangeHistoryComplete } from '../not-ready.js';
+import {
+  assertChangeHistoryComplete,
+  assertEnrollmentComplete,
+} from '../not-ready.js';
 
 export function registerChangeResources(
   server: McpServer,
@@ -37,6 +40,15 @@ export function registerChangeResources(
       const page = await api.getUnattributedChangesPaginated(
         fileMsId as string,
       );
+      // ENG-2824 — the fold probe above cannot see a file that is still being
+      // read for the first time (enrolment enqueues no fold), so an empty
+      // envelope is checked against the version list before it is served.
+      if (page.totalCount === 0) {
+        assertEnrollmentComplete(
+          fileMsId as string,
+          await api.getFileVersions(fileMsId as string),
+        );
+      }
       return {
         contents: [
           {

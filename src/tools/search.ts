@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import {
   assertChangeHistoryComplete,
+  assertEnrollmentComplete,
   isNotReady,
   notReadyToolResult,
 } from '../not-ready.js';
@@ -153,6 +154,17 @@ export function registerSearchTool(
             fileMsId,
             sheetName,
           );
+          // ENG-2824: an empty answer is the only ambiguous one, so it is the
+          // only one that pays for the version read. A file still being read
+          // for the first time has no versions and no parsed cells, and the
+          // fold probe above cannot see that state — enrolment enqueues no
+          // fold. See `assertEnrollmentComplete`.
+          if (changes.length === 0) {
+            assertEnrollmentComplete(
+              fileMsId,
+              await api.getFileVersions(fileMsId),
+            );
+          }
           const body = formatChangeRows(changes);
           return {
             content: [
@@ -177,6 +189,15 @@ export function registerSearchTool(
         );
 
         if (page.changes.length === 0) {
+          // ENG-2824 — same rule as the sheet mode above. `totalCount === 0`
+          // over a file whose initial read has not landed is a premature
+          // absence, not a fact about the workbook.
+          if (page.totalCount === 0) {
+            assertEnrollmentComplete(
+              fileMsId,
+              await api.getFileVersions(fileMsId),
+            );
+          }
           return {
             content: [
               {
