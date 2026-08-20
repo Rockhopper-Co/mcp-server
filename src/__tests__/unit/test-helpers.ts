@@ -54,6 +54,32 @@ export function createMockApiClient() {
     // ENG-2204 — drive discovery. Two hits whose names both match, because a
     // single hit lets a wrong flow look right: the failure being fixed picked
     // one match and reported it as fact.
+    // ENG-2785 — the stored inventory behind `list_unenrolled_files`. Default
+    // is one un-enrolled row with a SUCCEEDED refresh behind it, because the
+    // interesting cases are the empty ones and each test states its own.
+    listDriveInventory: vi.fn().mockResolvedValue({
+      items: [
+        {
+          msId: 'ms-item-11',
+          driveMsId: 'drive-9',
+          name: 'Unenrolled_Model.xlsx',
+          webUrl: 'https://contoso.sharepoint.com/c.xlsx',
+          parentPath: '/Finance/Models',
+          lastModifiedAt: '2026-08-18T10:00:00Z',
+          size: 80_000,
+          enrollmentState: 'not_enrolled',
+          entitlementObservedAt: '2026-08-19T20:00:00.000Z',
+        },
+      ],
+      freshness: {
+        asOf: '2026-08-19T21:00:00.000Z',
+        stale: false,
+        refreshing: false,
+        lastFailureAt: null,
+        lastFailureReason: null,
+        consecutiveFailures: 0,
+      },
+    }),
     searchDriveFiles: vi.fn().mockResolvedValue({
       scope: 'search',
       items: [
