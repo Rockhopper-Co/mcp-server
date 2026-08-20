@@ -5,6 +5,17 @@ import type { ApiClient } from '../api-client.js';
 /**
  * `connect_microsoft` — the local half of SP07 §3.
  *
+ * A REPAIR PATH, NOT A SETUP PATH, since ENG-2790. A user who signs in
+ * through `mcp.rockhopper.co` gets the delegated Graph grant in the same
+ * consent that signs them in, so this tool is no longer the way anyone
+ * normally arrives at a working link. It stays because the grant can end
+ * up missing for reasons sign-in cannot fix on its own — the user revoked
+ * it in Microsoft, the handover at sign-in failed, or the session is a
+ * local stdio one with a personal access token, which carries no Microsoft
+ * sign-in of its own and therefore still needs this.
+ *
+ * Deleting it would have left `disconnect_microsoft` as a one-way door.
+ *
  * WHAT THIS TOOL DELIBERATELY CANNOT DO, and why the shape matters more than
  * the feature. It takes NO authorize URL, no redirect URI, no client id and no
  * scope list. It asks the backend to build the consent URL and relays what
