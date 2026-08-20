@@ -50,8 +50,8 @@ export const DRIVE_SEARCH_INPUT_SCHEMA = z.object({
    * It is an INDEX into a set this session offered, not a file identifier, and
    * that is the whole point. A model that has read a malicious file name
    * cannot invent a `driveMsId` here and have the tool bless it: the index is
-   * resolved against server memory, and an index into a set that was never
-   * offered resolves to nothing.
+   * resolved against the signed candidate set carried by `confirm_token`, and
+   * an index into a set that was never offered resolves to nothing.
    */
   confirm_index: z
     .number()
