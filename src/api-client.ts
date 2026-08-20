@@ -20,6 +20,8 @@ import type {
   EnrollmentInfo,
   QueuedEnrollment,
   ResolvedFileUrl,
+  DriveInventoryEnrollment,
+  DriveInventoryResponse,
   DriveSearchResponse,
   DriveSearchScope,
 } from './types.js';
@@ -454,6 +456,43 @@ export class ApiClient {
     if (params.limit !== undefined) query.set('limit', String(params.limit));
     return this.request<DriveSearchResponse>(
       `/drive-files/search?${query.toString()}`,
+    );
+  }
+
+  /**
+   * `GET /drive-files/inventory` — the caller's STORED drive inventory
+   * (ENG-2788), which is how ENG-2785 answers "what could I add".
+   *
+   * NOT a search and not a crawl. The backend serves rows out of its own
+   * tables and never waits on Microsoft, so the answer is possibly stale by
+   * construction and says so in {@link DriveInventoryResponse.freshness}. A
+   * refresh is kicked off beside the response and lands on a LATER call — so a
+   * caller that gets an empty list from a user who has never refreshed should
+   * say so rather than reporting "you have no files".
+   *
+   * `X-MS-Graph-Token` is deliberately NOT sent, and here it is not even a
+   * limitation: this route reads no Microsoft credential of any kind. Each row
+   * already RECORDS a delegated observation — Microsoft, answering that user's
+   * own token, disclosed that file to them — so the entitlement was proven when
+   * the row was written rather than at read time. That is why this package,
+   * which holds no delegated assertion, can ask the question at all.
+   *
+   * Unlike {@link searchDriveFiles} there is no `NO_DELEGATED_TOKEN` refusal to
+   * classify: a caller who has never linked Microsoft gets a 200 with an empty
+   * list and `freshness.lastFailureReason === 'no_delegated_token'`. The refusal
+   * moved from the status code into the body, so a reader that only checks for
+   * a thrown error will report an unlinked account as an empty drive.
+   */
+  async listDriveInventory(params?: {
+    enrollment?: DriveInventoryEnrollment;
+    limit?: number;
+  }): Promise<DriveInventoryResponse> {
+    const query = new URLSearchParams();
+    if (params?.enrollment) query.set('enrollment', params.enrollment);
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    return this.request<DriveInventoryResponse>(
+      `/drive-files/inventory${qs ? `?${qs}` : ''}`,
     );
   }
 
