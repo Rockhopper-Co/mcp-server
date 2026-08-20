@@ -75,12 +75,17 @@ Only files that came back from the search can be confirmed. A pick that names an
 | `already_enrolled` | It is already here and visible | Nothing — go straight to reading it |
 | `share_with_required` | No `share_with`, or a `"team"` that resolves to nobody | Ask the user, then call again |
 | `restore_confirmation_required` | The target is hidden | Ask the user, then call again with `confirm_restore: true` |
-| `access_unproven` | Rockhopper cannot confirm the user can open the file | Run `connect_microsoft`, then retry |
+| `access_unproven` | Rockhopper cannot confirm the user can open the file | Run `connect_microsoft`, then retry — but read the note below first |
 | `unresolvable` | The link names no file Rockhopper can find | Ask for the address from the browser bar |
 | `unsupported_provider` | Not a Microsoft link | Stop; do not ask for another link |
 | `backend_unsupported` | This Rockhopper deployment predates the enrollment API | Tell the user to add the file from the web app |
 
-**Why `access_unproven` is common from a chat client.** Rockhopper will not add a file on the user's say-so; it checks with Microsoft that they can actually open it. An assistant session carries no Microsoft sign-in of its own, so the user has to link their account once with `connect_microsoft`. Until they do, every enroll is refused — deliberately, not as a bug.
+**Why `access_unproven` happens, and when it should not.** Rockhopper will not add a file on the user's say-so; it checks with Microsoft that they can actually open it. That check needs a Microsoft grant belonging to the user, and where it comes from depends on how this session was started.
+
+- **Signed in through `mcp.rockhopper.co`** (a web assistant, over OAuth): the grant was established at sign-in, in the same consent that signed them in (ENG-2790). `access_unproven` should be **unreachable** here. If it happens anyway, something is wrong — the grant was revoked in Microsoft, or the handover at sign-in failed. `connect_microsoft` is the **repair**, and it is worth saying so plainly rather than presenting it as a setup step the user skipped.
+- **Running locally over stdio** (a desktop assistant with a personal access token): this session carries no Microsoft sign-in of its own, so the user does have to link their account once with `connect_microsoft`. Until they do, every enroll is refused — deliberately, not as a bug.
+
+Do not tell a user they "need to connect Microsoft first" without knowing which of the two they are in. For most web-assistant users that instruction names a step that already happened, which reads as the product being broken.
 
 ## 3. Reading workflow
 
