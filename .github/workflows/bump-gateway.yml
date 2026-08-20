@@ -326,6 +326,37 @@ jobs:
           git checkout -b chore/mcp-server-sync
           git add package.json package-lock.json
           git commit -m "chore(deps): pin mcp-server to $V"
+
+          # ENG-2844 — THE BACKSTOP HAS TO BE ABLE TO REPORT WHAT IT DID.
+          #
+          # This workflow has two ways in: the publish-driven `workflow_run`,
+          # and the daily cron that exists for the day that trigger stops
+          # firing. When the trigger already did the work, the cron arrives at
+          # exactly this point with a byte-identical tree and force-pushes it
+          # over the branch whose pull request is already open. Green log,
+          # green log — a run that CAUGHT a stall and a run that caught nothing
+          # are indistinguishable, so the day the trigger breaks looks like
+          # every other day.
+          #
+          # It also destroys evidence. Plan 20's SP06 read the force-pushed
+          # commit date off `git log origin/dev` and recorded the
+          # publish-to-`dev` latency as 9h46m; the pull request had actually
+          # been open since 04:17 and merged at 18:31, so the real figure was
+          # 14h15m. The commit date is the only record of when a bump was
+          # proposed, and the redundant push resets it.
+          #
+          # THE TEST IS THE TREE, not the version string: an identical tree is
+          # exactly the case where pushing changes nothing but the sha and the
+          # date. A moved `dev`, a different pin, or no remote branch at all all
+          # produce a different tree and still push.
+          git fetch --quiet origin \
+            "+refs/heads/chore/mcp-server-sync:refs/remotes/origin/chore/mcp-server-sync" 2>/dev/null || true
+          if git rev-parse --verify -q refs/remotes/origin/chore/mcp-server-sync >/dev/null &&
+             [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse 'refs/remotes/origin/chore/mcp-server-sync^{tree}')" ]; then
+            echo "CAUGHT NOTHING: chore/mcp-server-sync already carries this exact tree ($V). A publish-driven run got here first, so there was no stall to catch. Not pushing."
+            exit 0
+          fi
+          echo "CAUGHT A PENDING BUMP: chore/mcp-server-sync does not carry this tree. Pushing $V."
           # FORCE, and it is the debounce. The branch is re-cut from the
           # gateway's `dev` every run, so the newest bump replaces the previous
           # one instead of stacking a second pull request. Anything pushed onto

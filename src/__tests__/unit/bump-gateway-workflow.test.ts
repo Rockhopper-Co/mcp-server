@@ -416,3 +416,124 @@ describe('nothing is pushed when nothing changed', () => {
     expect(at('Push the single bump branch')).toBeLessThan(at('Open the pull request'));
   });
 });
+
+/**
+ * ENG-2844 — the daily cron is the backstop for the day `workflow_run` stops
+ * firing, and until now its success said nothing.
+ *
+ * When the publish-driven run already opened the pull request, the cron
+ * re-derives the same pin, commits a byte-identical tree and force-pushes it
+ * over the open branch. A run that CAUGHT a stall and a run that caught
+ * nothing produced the same green log and the same push, so the day the
+ * trigger broke looked exactly like every other day — and the reset commit
+ * date is what made SP06 read a 14h15m latency as 9h46m.
+ *
+ * These tests execute the REAL push step against a temporary repository with a
+ * bare remote, the same way every other test here executes the real script.
+ */
+describe('the backstop reports whether it caught anything (ENG-2844)', () => {
+  const PUSH = 'Push the single bump branch';
+
+  function bareRemote(): string {
+    const remote = mkdtempSync(join(tmpdir(), 'eng2844-remote-'));
+    spawnSync('git', ['init', '-q', '--bare', '-b', 'dev', remote]);
+    return remote;
+  }
+
+  /**
+   * A fresh runner checkout of the gateway's `dev`, wired to `remote`.
+   *
+   * Each workflow run gets a brand-new clone, so the two runs below are two
+   * INDEPENDENT trees pointing at one remote — which is the only shape in
+   * which the redundant-push bug is reproducible.
+   */
+  function checkout(remote: string, pinned: string): string {
+    const tree = makeGatewayTree(pinned);
+    for (const args of [
+      ['init', '-q', '-b', 'dev'],
+      ['config', 'user.email', 't@example.com'],
+      ['config', 'user.name', 'test'],
+      ['remote', 'add', 'origin', remote],
+      ['add', 'package.json', 'package-lock.json'],
+      ['commit', '-q', '-m', 'base'],
+    ]) {
+      spawnSync('git', args, { cwd: tree });
+    }
+    return tree;
+  }
+
+  /** The bump branch's sha on the remote, or '' when it does not exist. */
+  function remoteTip(remote: string): string {
+    const r = spawnSync('git', ['--git-dir', remote, 'rev-parse', 'chore/mcp-server-sync'], {
+      encoding: 'utf8',
+    });
+    return r.status === 0 ? r.stdout.trim() : '';
+  }
+
+  const pushEnv = (v: string) => ({ V: v, SLUG: 'package-sync' });
+
+  it('pushes when the remote has no bump branch yet — the skip is not unconditional', () => {
+    const remote = bareRemote();
+    const tree = checkout(remote, OLD);
+    runStep(MOVE_PIN, tree, { V: NEW });
+
+    const r = runStep(PUSH, tree, pushEnv(NEW));
+    expect(r.code).toBe(0);
+    expect(r.log).toContain('CAUGHT A PENDING BUMP');
+    expect(remoteTip(remote)).not.toBe('');
+  });
+
+  it('does NOT re-push when the open branch already carries this exact tree', () => {
+    const remote = bareRemote();
+
+    // Run 1 — the publish-driven trigger. Opens the branch.
+    const first = checkout(remote, OLD);
+    runStep(MOVE_PIN, first, { V: NEW });
+    expect(runStep(PUSH, first, pushEnv(NEW)).code).toBe(0);
+    const afterTrigger = remoteTip(remote);
+    expect(afterTrigger).not.toBe('');
+
+    // Run 2 — the cron, hours later, on a fresh checkout. Same published
+    // version, same `dev`, so the same tree.
+    const second = checkout(remote, OLD);
+    runStep(MOVE_PIN, second, { V: NEW });
+    const r = runStep(PUSH, second, pushEnv(NEW));
+
+    expect(r.code).toBe(0);
+    // THE ASSERTION IS ON STATE FIRST, not on the message: the branch the pull
+    // request points at is untouched, so its commit date still records when
+    // the bump was proposed. Ordered ahead of the log check so that reverting
+    // the workflow reds THIS line, not a string comparison.
+    expect(remoteTip(remote)).toBe(afterTrigger);
+    expect(r.log).toContain('CAUGHT NOTHING');
+  });
+
+  it('still pushes when the published version has moved on', () => {
+    const remote = bareRemote();
+    const first = checkout(remote, OLD);
+    runStep(MOVE_PIN, first, { V: NEW });
+    runStep(PUSH, first, pushEnv(NEW));
+    const afterTrigger = remoteTip(remote);
+
+    const NEWER = '2.1.31-staging.9f3ac21';
+    const second = checkout(remote, OLD);
+    runStep(MOVE_PIN, second, { V: NEWER });
+    const r = runStep(PUSH, second, pushEnv(NEWER));
+
+    expect(r.code).toBe(0);
+    expect(r.log).toContain('CAUGHT A PENDING BUMP');
+    expect(remoteTip(remote)).not.toBe(afterTrigger);
+  });
+
+  it('leaves the pull-request step to run either way', () => {
+    // The skip is an `exit 0` inside the push step, not a job-level gate, so
+    // an open pull request is still refreshed and a missing one is still
+    // created on a run that pushed nothing.
+    const names = bump.jobs.bump.steps.map((s) => s.name ?? '');
+    expect(names).toContain('Open the pull request, or update the one already open');
+    const prStep = bump.jobs.bump.steps.find((s) =>
+      (s.name ?? '').startsWith('Open the pull request'),
+    );
+    expect(prStep?.if).toBe("steps.pending.outputs.changed == 'true'");
+  });
+});
