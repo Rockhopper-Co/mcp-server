@@ -67,18 +67,24 @@ describe('MCP in-memory protocol e2e', () => {
         'add_comment',
         'approve_review',
         'cancel_review',
+        'connect_microsoft',
         'create_review_request',
         'create_version',
+        'disconnect_microsoft',
         'discard_changes',
+        'enroll_file',
         'get_cell_history',
         'get_file_comments',
         'get_file_versions',
         'get_reviews',
         'get_unattributed_changes',
         'list_files',
+        'list_unenrolled_files',
+        'microsoft_link_status',
         'rename_file',
         'reply_to_comment',
         'resolve_comment',
+        'search_drive_files',
         'search_files',
       ].sort(),
     );
@@ -156,12 +162,21 @@ describe('MCP in-memory protocol e2e', () => {
     expect(JSON.stringify(result.content)).toContain('Failed to get versions');
   });
 
-  it('get_file_versions returns the empty-result message', async () => {
+  // ENG-2824 — an enrolled file with no versions is one Rockhopper has not
+  // finished reading, never one that has none, so the empty answer this used
+  // to assert is the defect. Proven over the real JSON-RPC transport: this is
+  // the shape a connector actually receives seconds after `enroll_file`.
+  it('get_file_versions refuses instead of reporting an empty version list', async () => {
     const result = await client.callTool({
       name: 'get_file_versions',
       arguments: { fileMsId: 'empty-file' },
     });
-    expect(JSON.stringify(result.content)).toContain('No versions found');
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBe(true);
+    expect(text).toContain('CHANGE_HISTORY_NOT_READY');
+    expect(text).toContain('enrollment_incomplete');
+    expect(text).toContain('retryAfterSeconds');
+    expect(text).not.toContain('No versions found');
   });
 
   it('get_file_comments returns threaded comments', async () => {
@@ -841,13 +856,18 @@ describe('MCP in-memory protocol e2e', () => {
  */
 describe('tools/list is gated by the token scope (ENG-2208)', () => {
   const READ_TOOLS = [
+    'connect_microsoft',
+    'disconnect_microsoft',
+    'microsoft_link_status',
     'get_cell_history',
     'get_file_comments',
     'get_file_versions',
     'get_reviews',
     'get_unattributed_changes',
     'list_files',
+    'list_unenrolled_files',
     'search_files',
+    'search_drive_files',
   ].sort();
 
   async function toolNamesForScope(scope?: string): Promise<string[]> {
@@ -879,21 +899,234 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     }
   }
 
-  it('shows 16 tools to a read-write token', async () => {
+  it('shows 22 tools to a read-write token', async () => {
     const names = await toolNamesForScope('read-write');
-    expect(names).toHaveLength(16);
+    expect(names).toHaveLength(22);
     expect(names).toContain('add_comment');
   });
 
-  it('shows 7 tools to a read-only token', async () => {
+  it('shows 12 tools to a read-only token', async () => {
     expect(await toolNamesForScope('read-only')).toEqual(READ_TOOLS);
   });
 
-  it('shows 7 tools for an unrecognised scope', async () => {
+  it('shows 12 tools for an unrecognised scope', async () => {
     expect(await toolNamesForScope('some-future-scope')).toEqual(READ_TOOLS);
   });
 
-  it('shows 7 tools when the scope is unknown', async () => {
+  it('shows 12 tools when the scope is unknown', async () => {
     expect(await toolNamesForScope()).toEqual(READ_TOOLS);
+  });
+});
+
+/**
+ * ENG-2200 — `enroll_file` over the real protocol, against the mock HTTP API.
+ *
+ * The unit specs mock the API client; these do not. They prove the request
+ * bodies this package actually puts on the wire are the ones the backend's
+ * DTOs accept — the seam where a field-name guess (`url` for `webUrl`, an
+ * `msId` where a `platformId` belongs) survives every mocked test and fails
+ * once, in front of a customer.
+ */
+describe('enroll_file end to end (ENG-2200)', () => {
+  let handle: Awaited<ReturnType<typeof startMockRockhopperApiServer>>;
+  let enrollClient: Client;
+
+  beforeAll(async () => {
+    handle = await startMockRockhopperApiServer();
+    const server = createServer(
+      new ApiClient({ baseUrl: handle.baseUrl, token: 'rh_pat_test_token' }),
+      { capabilities: ['files:write'] },
+    );
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    enrollClient = new Client(
+      { name: 'enroll-e2e-client', version: '1.0.0' },
+      { capabilities: {} },
+    );
+    await Promise.all([
+      server.connect(serverTransport),
+      enrollClient.connect(clientTransport),
+    ]);
+  });
+
+  afterAll(async () => {
+    await enrollClient?.close();
+    await stopMockRockhopperApiServer(handle.server);
+  });
+
+  async function enroll(args: Record<string, unknown>): Promise<string> {
+    const result = (await enrollClient.callTool({
+      name: 'enroll_file',
+      arguments: args,
+    })) as { content: Array<{ text?: string }> };
+    return result.content[0].text ?? '';
+  }
+
+  const base = 'https://contoso.sharepoint.com/:x:/r/sites/finance/';
+
+  it('enrolls a new workbook for share_with="me"', async () => {
+    const text = await enroll({ url: `${base}Doc.aspx`, share_with: 'me' });
+    expect(text).toContain('"outcome":"enrolled"');
+    expect(text).toContain('Becklar_RMR_Model.xlsx');
+    expect(text).toContain('visible to you only');
+  });
+
+  it('expands share_with="team" to the roster minus the caller', async () => {
+    const text = await enroll({ url: `${base}Doc.aspx`, share_with: 'team' });
+    expect(text).toContain('"outcome":"enrolled"');
+    // Alice is the caller; Bob is the only real target.
+    expect(text).toContain('"sharedWithCount":1');
+  });
+
+  it('returns the question when share_with is missing', async () => {
+    const text = await enroll({ url: `${base}Doc.aspx` });
+    expect(text).toContain('"outcome":"share_with_required"');
+  });
+
+  it('asks before restoring a workbook the user removed', async () => {
+    const text = await enroll({ url: `${base}removed.aspx`, share_with: 'me' });
+    expect(text).toContain('"outcome":"restore_confirmation_required"');
+    expect(text).toContain('confirm_restore');
+  });
+
+  it('restores it on the confirmed second call', async () => {
+    const text = await enroll({
+      url: `${base}removed.aspx`,
+      share_with: 'me',
+      confirm_restore: true,
+    });
+    expect(text).toContain('"outcome":"restored"');
+  });
+
+  it('says already_enrolled for a workbook that is already there', async () => {
+    const text = await enroll({ url: `${base}already.aspx`, share_with: 'me' });
+    expect(text).toContain('"outcome":"already_enrolled"');
+  });
+
+  it('refuses a Google link as unsupported_provider', async () => {
+    const text = await enroll({
+      url: 'https://docs.google.com/spreadsheets/d/abc/edit',
+      share_with: 'me',
+    });
+    expect(text).toContain('"outcome":"unsupported_provider"');
+  });
+
+  it('asks for the browser address when the link resolves to nothing', async () => {
+    const text = await enroll({ url: 'https://nonsense.test/x', share_with: 'me' });
+    expect(text).toContain('"outcome":"unresolvable"');
+  });
+
+  it('takes a driveMsId + msId pair and still guards a hidden target', async () => {
+    expect(
+      await enroll({ msId: 'removed-item', driveMsId: 'drive-9', share_with: 'me' }),
+    ).toContain('"outcome":"restore_confirmation_required"');
+    expect(
+      await enroll({ msId: 'fresh-item', driveMsId: 'drive-9', share_with: 'me' }),
+    ).toContain('"outcome":"enrolled"');
+  });
+});
+
+/**
+ * ENG-2204 — the ENG-1647 transcript, end to end, over the real protocol.
+ *
+ * The customer asked for a SharePoint workbook by name. The assistant matched
+ * a DIFFERENT already-enrolled file, said "already enrolled", and then found
+ * no tool that could add the real one. This is that conversation replayed
+ * against the mock backend: an ambiguous name must yield a CANDIDATE LIST, the
+ * user must pick, and only then may anything be enrolled.
+ */
+describe('ENG-1647 replayed: find, confirm, enroll (ENG-2204)', () => {
+  let handle: Awaited<ReturnType<typeof startMockRockhopperApiServer>>;
+  let flowClient: Client;
+
+  beforeAll(async () => {
+    handle = await startMockRockhopperApiServer();
+    const server = createServer(
+      new ApiClient({ baseUrl: handle.baseUrl, token: 'rh_pat_test_token' }),
+      { capabilities: ['files:write'] },
+    );
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    flowClient = new Client(
+      { name: 'search-then-enroll-e2e-client', version: '1.0.0' },
+      { capabilities: {} },
+    );
+    await Promise.all([
+      server.connect(serverTransport),
+      flowClient.connect(clientTransport),
+    ]);
+  });
+
+  afterAll(async () => {
+    await flowClient?.close();
+    await stopMockRockhopperApiServer(handle.server);
+  });
+
+  async function call(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<string> {
+    const result = (await flowClient.callTool({
+      name,
+      arguments: args,
+    })) as { content: Array<{ text?: string }> };
+    return result.content[0].text ?? '';
+  }
+
+  it('walks the whole flow: candidates, a human pick, then the enrolment', async () => {
+    // 1. The user names a file that is NOT in Rockhopper.
+    const found = await call('search_drive_files', { query: 'Becklar' });
+    expect(found).toContain('"outcome":"candidates"');
+    // Two files match the name. Answering with either as a fact is the bug.
+    expect(found).toContain('Becklar_RMR_Model.xlsx');
+    expect(found).toContain('Becklar_RMR_Model_OLD.xlsx');
+    const token = (JSON.parse(found.split('\n').at(-1) ?? '{}') as {
+      confirmToken: string;
+    }).confirmToken;
+
+    // 2. The user says "the first one".
+    const confirmed = await call('search_drive_files', {
+      confirm_index: 1,
+      confirm_token: token,
+    });
+    expect(confirmed).toContain('"outcome":"confirmed"');
+    const pick = JSON.parse(confirmed.split('\n').at(-1) ?? '{}') as {
+      driveMsId: string;
+      msId: string;
+    };
+    expect(pick).toMatchObject({ driveMsId: 'drive-9', msId: 'ms-item-9' });
+
+    // 3. `enroll_file` still asks who may see it — the search never answers
+    //    that question on the user's behalf.
+    expect(await call('enroll_file', pick)).toContain(
+      '"outcome":"share_with_required"',
+    );
+
+    // 4. And enrols on the ids the confirmation produced.
+    expect(
+      await call('enroll_file', { ...pick, share_with: 'me' }),
+    ).toContain('"outcome":"enrolled"');
+  });
+
+  it('enrols nothing when the pick names a file the search never returned', async () => {
+    await call('search_drive_files', { query: 'Becklar' });
+    const forged = await call('search_drive_files', {
+      confirm_index: 1,
+      confirm_token: 'a-token-this-session-never-issued',
+    });
+    expect(forged).toContain('"outcome":"unknown_candidate"');
+  });
+
+  it('hands back a connect link, not an error, with no Microsoft account', async () => {
+    const text = await call('search_drive_files', { query: 'unlinked' });
+    expect(text).toContain('"outcome":"microsoft_not_connected"');
+    expect(text).toContain('login.microsoftonline.com');
+    expect(text).toContain('Do not compose a sign-in link yourself');
+  });
+
+  it('says an empty drive search is empty, not broken', async () => {
+    expect(await call('search_drive_files', { query: 'nothing here' })).toContain(
+      '"outcome":"no_matches"',
+    );
   });
 });

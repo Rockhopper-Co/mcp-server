@@ -18,8 +18,15 @@ import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
  * until the registrars read them the column changes nothing.
  */
 
-/** The seven tools every token gets, whatever it was granted. */
+/**
+ * The eleven tools every token gets, whatever it was granted: the eight reads,
+ * plus the three Microsoft account-link tools, which ride the read floor
+ * because connecting an account is not a write to Rockhopper data (ENG-2198).
+ */
 const READ_TOOL_NAMES = [
+  'connect_microsoft',
+  'microsoft_link_status',
+  'disconnect_microsoft',
   'list_files',
   'get_file_versions',
   'get_file_comments',
@@ -27,6 +34,8 @@ const READ_TOOL_NAMES = [
   'get_cell_history',
   'get_unattributed_changes',
   'search_files',
+  'search_drive_files',
+  'list_unenrolled_files',
 ];
 
 function registeredToolNames(options?: {
@@ -81,10 +90,11 @@ describe('per-capability tool registration (ENG-2212)', () => {
 
   it('falls back to the coarse scope when no capability list is supplied', () => {
     // A backend older than ENG-2211 serves `patScope` and no `patScopes`.
-    // 7 read + 9 registered write (enroll_file is enumerated, not registered).
-    expect(registeredToolNames({ scope: 'read-write' })).toHaveLength(16);
-    expect(registeredToolNames({ scope: 'read-only' })).toHaveLength(7);
-    expect(registeredToolNames()).toHaveLength(7);
+    // 10 floor (7 read + 3 Microsoft link) + 10 write, enroll_file included
+    // since ENG-2200 registered it and emptied PENDING_WRITE_TOOLS.
+    expect(registeredToolNames({ scope: 'read-write' })).toHaveLength(22);
+    expect(registeredToolNames({ scope: 'read-only' })).toHaveLength(12);
+    expect(registeredToolNames()).toHaveLength(12);
   });
 
   it('collapses duplicates rather than registering a tool twice', () => {
@@ -114,16 +124,19 @@ describe('resolveCapabilities', () => {
 });
 
 describe('the enumerated vocabulary', () => {
-  it('names enroll_file under files:write before its registrar exists', () => {
-    // Plan 13 / ENG-2200 adds the tool and is blockedBy this ticket; carrying
-    // the edge now means that ticket does not need a re-cut of this map.
+  it('registers enroll_file under files:write, and nothing is pending', () => {
+    // ENG-2212 enumerated `enroll_file` a release before a registrar existed
+    // so ENG-2200 would not have to re-cut this map. ENG-2200 then added the
+    // registrar and emptied the pending set, which is what these two assert.
     expect(WRITE_TOOLS_BY_CAPABILITY['files:write']).toContain('enroll_file');
-    expect(PENDING_WRITE_TOOLS.has('enroll_file')).toBe(true);
+    expect(PENDING_WRITE_TOOLS.has('enroll_file')).toBe(false);
+    expect(PENDING_WRITE_TOOLS.size).toBe(0);
   });
 
   it('registers every enumerated tool that is not marked pending', () => {
-    // The derived-set guard. When ENG-2200 lands `enroll_file`, this fails
-    // until it is dropped from PENDING_WRITE_TOOLS — so the two cannot drift.
+    // The derived-set guard: an enumerated name with no registrar fails here,
+    // so the instructions string can never advertise a tool that does not
+    // exist. It is what would have caught ENG-2200 landing half-wired.
     const registered = new Set(registeredToolNames({ scope: 'read-write' }));
     for (const capability of PAT_CAPABILITIES) {
       for (const name of WRITE_TOOLS_BY_CAPABILITY[capability]) {

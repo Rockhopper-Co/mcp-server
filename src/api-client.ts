@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 import { getCorrelationId } from './correlation.js';
 import { log } from './logger.js';
@@ -15,6 +15,15 @@ import type {
   Team,
   UnattributedChange,
   UserSummary,
+  MicrosoftConnectHandoff,
+  MicrosoftLinkStatus,
+  EnrollmentInfo,
+  QueuedEnrollment,
+  ResolvedFileUrl,
+  DriveInventoryEnrollment,
+  DriveInventoryResponse,
+  DriveSearchResponse,
+  DriveSearchScope,
 } from './types.js';
 import {
   CellHistoryEntryArraySchema,
@@ -88,10 +97,56 @@ export interface ApiClientConfig {
  */
 export class RockhopperApiError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  /**
+   * ENG-2200 — the backend's own machine-readable refusal code, when it sent
+   * one. Enrollment refusals each name a DIFFERENT remedy
+   * (`ACCESS_UNPROVEN` = link a Microsoft account, `URL_UNSUPPORTED_PROVIDER`
+   * = this is not a Microsoft link, `FILE_ACCESS_DENIED` = nothing to retry),
+   * and telling them apart by matching prose would break the first time
+   * someone rewords a message. `null` when the body carried no `code` — every
+   * pre-existing caller reads {@link Error.message} and is unaffected.
+   */
+  readonly code: string | null;
+  /**
+   * ENG-2614 — the FINE half of a refusal, where the backend sends one.
+   *
+   * `code` is deliberately coarse on the drive-search route so a client has
+   * exactly one thing to branch on: can I search or not. `reason` is what
+   * says WHICH of four situations produced it — never connected, link
+   * revoked, ciphertext unreadable, or the tenant has not approved
+   * Rockhopper — and only three of those are the user's to fix. Without it
+   * a tenant awaiting administrator approval is handed a connect link that
+   * cannot possibly work, and clicking it returns them here: a loop.
+   */
+  readonly reason: string | null;
+  constructor(
+    status: number,
+    message: string,
+    code?: string | null,
+    reason?: string | null,
+  ) {
     super(message);
     this.name = 'RockhopperApiError';
     this.status = status;
+    this.code = code ?? null;
+    this.reason = reason ?? null;
+  }
+}
+
+/**
+ * Pull a string field out of an error body without ever letting a malformed
+ * body become a second failure. A non-JSON body, a JSON array, or a value
+ * that is not a string all answer `null` — the caller then falls back to the
+ * status, which is the answer it had before this existed.
+ */
+function parseErrorField(body: string, field: 'code' | 'reason'): string | null {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed === null || typeof parsed !== 'object') return null;
+    const value = (parsed as Record<string, unknown>)[field];
+    return typeof value === 'string' ? value : null;
+  } catch {
+    return null;
   }
 }
 
@@ -146,6 +201,36 @@ export class ApiClient {
    */
   setAuthExpiredHandler(handler: () => void): void {
     this.authExpiredHandler = handler;
+  }
+
+  /**
+   * ENG-2816 — a signing key for state that must survive a round trip through
+   * the client, derived from this session's credential and never the
+   * credential itself.
+   *
+   * **Why the token is the key material.** The 2026-07-28 confirmation lane
+   * hands the client a `requestState` string and reads it back on a SECOND
+   * request, and the gateway builds a fresh server per request across two
+   * production replicas (measured 2026-08-19: `rockhopper-production-mcp`
+   * runs `desiredCount: 2`). So nothing in process memory is there on the way
+   * back, and a shared secret is the only thing every replica already agrees
+   * on. The PAT is exactly that: the same session presents the same token to
+   * whichever replica answers, and a DIFFERENT principal derives a different
+   * key — which is the spec's user-binding requirement satisfied by
+   * construction rather than by a separate `bind` callback.
+   *
+   * **The token does not leave.** It is the HMAC key, so what the caller
+   * receives is a 32-byte digest and what the client eventually holds is a
+   * signature over a payload. Neither is invertible, and `token` stays
+   * private. `domain` separates one use from another so a key minted for the
+   * enrolment picker can never verify anything else.
+   *
+   * A rotated PAT invalidates a confirmation that is already in flight. That
+   * fails CLOSED — the pick is refused and the user searches again — which is
+   * the same answer this tool gives any state it cannot verify.
+   */
+  deriveStateKey(domain: string): Buffer {
+    return createHmac('sha256', this.token).update(domain).digest();
   }
 
   /**
@@ -260,6 +345,8 @@ export class ApiClient {
       throw new RockhopperApiError(
         response.status,
         `Rockhopper API ${response.status}: ${response.statusText} — ${body}`,
+        parseErrorField(body, 'code'),
+        parseErrorField(body, 'reason'),
       );
     }
 
@@ -305,6 +392,37 @@ export class ApiClient {
     return this.request<UserSummary>('/users/me');
   }
 
+  // --- Microsoft Graph link (ENG-2198) ---
+
+  /**
+   * Ask the BACKEND to build the Microsoft consent URL.
+   *
+   * Note what this method cannot do: pass a URL, a redirect, a client id or a
+   * scope list. The authorize URL is constructed server-side and the callback
+   * re-pins the client id and redirect when it redeems the code. That is
+   * deliberate — a URL this client could influence is a consent-phishing
+   * lever, because the model driving an MCP session could be talked into
+   * emitting a link that points the user's consent at an attacker's
+   * application, behind a genuine Microsoft consent screen.
+   */
+  async beginMicrosoftConnect(): Promise<MicrosoftConnectHandoff> {
+    return this.request<MicrosoftConnectHandoff>('/auth/microsoft/connect', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async getMicrosoftLink(): Promise<MicrosoftLinkStatus> {
+    return this.request<MicrosoftLinkStatus>('/auth/microsoft/link');
+  }
+
+  async unlinkMicrosoft(): Promise<{ linked: boolean; removed: boolean }> {
+    return this.request<{ linked: boolean; removed: boolean }>(
+      '/auth/microsoft/link',
+      { method: 'DELETE' },
+    );
+  }
+
   // --- Teams ---
 
   /**
@@ -334,6 +452,198 @@ export class ApiClient {
 
   async getEnrolledFile(fileMsId: string): Promise<EnrolledFile> {
     return this.request<EnrolledFile>(`/enrolled-files/${fileMsId}`);
+  }
+
+  // --- Drive discovery (ENG-2203 / plan 13) ---
+
+  /**
+   * `GET /drive-files/search` — the caller's OWN Microsoft drive, spreadsheets
+   * only, each hit marked `enrolled | hidden | not_enrolled`.
+   *
+   * Delegated: the backend speaks to Microsoft AS this user, so the returned
+   * set IS the permission trim and nothing outside it may be shown. There is
+   * deliberately no client-side filtering here — not on extension, not on
+   * host, not on name. ENG-2200 wrote a client-side host allow-list for the
+   * enroll path and removed it again: the server's real rule was narrower than
+   * the plausible guess, and a stale second copy inside a package customers
+   * upgrade on their own schedule refuses files the server would have taken,
+   * invisibly.
+   *
+   * Refusals a caller must tell apart, by `code` on {@link RockhopperApiError}:
+   * `NO_DELEGATED_TOKEN` (403 — the user has to connect Microsoft) and
+   * `DRIVE_SEARCH_UNAVAILABLE` (503 — Microsoft could not answer). The 503 and
+   * the 429 throttle both arrive as `ChangeHistoryNotReadyError` from
+   * {@link request}'s shared not-ready classification.
+   */
+  async searchDriveFiles(params: {
+    q?: string;
+    scope?: DriveSearchScope;
+    limit?: number;
+  }): Promise<DriveSearchResponse> {
+    const query = new URLSearchParams();
+    if (params.q) query.set('q', params.q);
+    if (params.scope) query.set('scope', params.scope);
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+    return this.request<DriveSearchResponse>(
+      `/drive-files/search?${query.toString()}`,
+    );
+  }
+
+  /**
+   * `GET /drive-files/inventory` — the caller's STORED drive inventory
+   * (ENG-2788), which is how ENG-2785 answers "what could I add".
+   *
+   * NOT a search and not a crawl. The backend serves rows out of its own
+   * tables and never waits on Microsoft, so the answer is possibly stale by
+   * construction and says so in {@link DriveInventoryResponse.freshness}. A
+   * refresh is kicked off beside the response and lands on a LATER call — so a
+   * caller that gets an empty list from a user who has never refreshed should
+   * say so rather than reporting "you have no files".
+   *
+   * `X-MS-Graph-Token` is deliberately NOT sent, and here it is not even a
+   * limitation: this route reads no Microsoft credential of any kind. Each row
+   * already RECORDS a delegated observation — Microsoft, answering that user's
+   * own token, disclosed that file to them — so the entitlement was proven when
+   * the row was written rather than at read time. That is why this package,
+   * which holds no delegated assertion, can ask the question at all.
+   *
+   * Unlike {@link searchDriveFiles} there is no `NO_DELEGATED_TOKEN` refusal to
+   * classify: a caller who has never linked Microsoft gets a 200 with an empty
+   * list and `freshness.lastFailureReason === 'no_delegated_token'`. The refusal
+   * moved from the status code into the body, so a reader that only checks for
+   * a thrown error will report an unlinked account as an empty drive.
+   */
+  async listDriveInventory(params?: {
+    enrollment?: DriveInventoryEnrollment;
+    limit?: number;
+    /**
+     * ENG-2814 — opaque cursor from a previous response's `nextCursor`. Never
+     * constructed or parsed here. Its snapshot expires after 30 minutes, and
+     * the backend then answers HTTP 410 with `SNAPSHOT_EXPIRED` — the caller
+     * restarts from the first page rather than retrying the same token.
+     */
+    cursor?: string;
+  }): Promise<DriveInventoryResponse> {
+    const query = new URLSearchParams();
+    if (params?.enrollment) query.set('enrollment', params.enrollment);
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    if (params?.cursor) query.set('cursor', params.cursor);
+    const qs = query.toString();
+    return this.request<DriveInventoryResponse>(
+      `/drive-files/inventory${qs ? `?${qs}` : ''}`,
+    );
+  }
+
+  // --- Enrollment (ENG-2200 / plan 13) ---
+
+  /**
+   * ENG-2195 — turn a pasted SharePoint / OneDrive link into a file identity
+   * AND say whether this tenant already holds it.
+   *
+   * Read-only: nothing is created. It is called BEFORE any enroll so the tool
+   * can tell `already_enrolled` from `hidden` from `not_enrolled` — the
+   * discrimination ENG-1647 lacked, where a name-substring search matched a
+   * different file and the assistant reported "already enrolled" about it.
+   *
+   * ENG-2578 — IT NOW NEEDS A LINKED MICROSOFT ACCOUNT, and no code change here
+   * was needed to get one. The route used to resolve on a tenant-wide
+   * application credential, which told any caller in the tenant a file's name
+   * and whether Rockhopper held it, for files in sites they cannot open. It now
+   * resolves on the caller's own delegated Graph token.
+   *
+   * `X-MS-Graph-Token` is deliberately NOT sent and cannot be, exactly as for
+   * {@link createEnrolledFile}: this package holds no delegated Microsoft
+   * assertion. The backend's second rung covers us — it mints a delegated token
+   * from the grant `connect_microsoft` stored (ENG-2198). So a session WITH a
+   * linked account resolves normally, and one without is refused
+   * `ACCESS_UNPROVEN`, which `classifyEnrollmentFailure` already turns into
+   * "run `connect_microsoft`". That is the intended outcome, not a gap.
+   *
+   * One thing it does NOT cover: the route is a POST, so the personal-access-
+   * token verb floor demands a read-write token. A read-only token is refused
+   * at the guard with a bare 403 and no `code`, before any of the above.
+   */
+  async resolveEnrollmentUrl(webUrl: string): Promise<ResolvedFileUrl> {
+    return this.request<ResolvedFileUrl>('/enrolled-files/resolve-url', {
+      method: 'POST',
+      body: JSON.stringify({ webUrl }),
+    });
+  }
+
+  /**
+   * ENG-2541 — the same three states {@link resolveEnrollmentUrl} reports, for
+   * a caller that already holds `(driveMsId, msId)` and has no URL to resolve.
+   *
+   * `POST /enrolled-files/info/bulk` is the only route that answers `hidden`
+   * for an id: `GET /enrolled-files/:fileMsId` returns the row and leaves the
+   * caller to infer visibility, and inferring it is exactly what produced
+   * "already enrolled" about a file the user had deliberately removed.
+   */
+  async getEnrollmentInfo(msIds: readonly string[]): Promise<EnrollmentInfo[]> {
+    return this.request<EnrollmentInfo[]>('/enrolled-files/info/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ ids: [...msIds], accountType: 'microsoft' }),
+    });
+  }
+
+  /**
+   * `POST /enrolled-files` — enroll ONE file, shared with nobody.
+   *
+   * ASYNC by design: the answer is `{enrollmentId, status:'queued'}`, never the
+   * file. The backend writes the `enrolled_file` stub row SYNCHRONOUSLY before
+   * it enqueues the job, so by the time this resolves the row exists and a
+   * repeat `resolveEnrollmentUrl` already answers `enrolled` — which is what
+   * makes a retry after a dropped stream safe rather than duplicating work.
+   *
+   * `X-MS-Graph-Token` is deliberately NOT sent and cannot be: this package
+   * holds no delegated Microsoft assertion. The backend's SECOND rung is what
+   * covers us — it mints a delegated token from the grant `connect_microsoft`
+   * stored (ENG-2198) — so a session WITH a linked account enrols normally, and
+   * one without is refused `ACCESS_UNPROVEN` (ENG-2196 / decision D4), which
+   * `classifyEnrollmentFailure` turns into "run `connect_microsoft`". That
+   * refusal is the intended outcome, not a gap.
+   *
+   * THIS BLOCK USED TO STATE ONLY THE SECOND HALF, and the omission hid a real
+   * defect for a release (ENG-2818). Saying "a caller with no linked account is
+   * refused" is true and says nothing about the caller who HAS one — and that
+   * caller was refused too, with the same code, because the enrol route's
+   * access check had only the header rung while {@link resolveEnrollmentUrl}'s
+   * resolution had both. Two docblocks on the same page disagreed about the
+   * same backend and the sibling one was right. A note about a credential path
+   * has to say what happens on BOTH sides of it; naming only the refusal reads
+   * as complete and is half a sentence.
+   */
+  async createEnrolledFile(body: {
+    msId: string;
+    driveMsId: string;
+    name: string;
+  }): Promise<QueuedEnrollment> {
+    return this.request<QueuedEnrollment>('/enrolled-files', {
+      method: 'POST',
+      body: JSON.stringify({ ...body, accountType: 'microsoft' }),
+    });
+  }
+
+  /**
+   * `POST /enrolled-files/batch` — enroll ONE file and fan it into the named
+   * teammates' workspaces in the same call.
+   *
+   * The batch route rather than a second share call because sharing has to be
+   * part of the same decision: an enroll that succeeded and a share that then
+   * failed leaves the file visible to one person after the user asked for the
+   * team, and there is no transaction to undo the first half.
+   */
+  async enrollFileSharedWith(
+    file: { msId: string; driveMsId: string; name: string },
+    shareWithUserMsIds: readonly string[],
+  ): Promise<QueuedEnrollment> {
+    return this.request<QueuedEnrollment>('/enrolled-files/batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        files: [{ ...file, accountType: 'microsoft' }],
+        shareWithUserMsIds: [...shareWithUserMsIds],
+      }),
+    });
   }
 
   // --- File Versions ---

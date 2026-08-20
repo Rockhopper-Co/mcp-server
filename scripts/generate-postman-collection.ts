@@ -22,6 +22,7 @@ import { registerPrompts } from '../src/prompts/index.js';
 import { registerResources } from '../src/resources/index.js';
 import { registerTools } from '../src/tools/index.js';
 import { PAT_CAPABILITIES } from '../src/capabilities.js';
+import { ApiClient } from '../src/api-client.js';
 
 // MCP SDK v2: `inputSchema` / `argsSchema` are Zod objects, not the raw
 // `{ field: schema }` record v1 accepted. Only the names are read here.
@@ -67,7 +68,26 @@ class CapturingServer {
 }
 
 const server = new CapturingServer();
-const api = {} as never;
+
+// ENG-2833: a REAL client, not a stub.
+//
+// This was `{} as never` — enough while every use of `api` sat inside a tool
+// handler this script never runs. ENG-2816 made the enrolment picker derive
+// its HMAC signing key at REGISTRATION time (`src/tools/drive-search.ts` →
+// `createConfirmationCodec` → `api.deriveStateKey`), and the stub answered
+// `is not a function`, turning `generated-artifacts` red on the production
+// elevation.
+//
+// Bolting a no-op `deriveStateKey` onto the stub would have let this script's
+// idea of the client drift from the real one, silently, on the next
+// registration-time dependency. Constructing the real class cannot drift.
+// Nothing here reaches the network: only `registerTool` / `registerResource`
+// / `registerPrompt` run, and no handler is ever invoked, so the placeholder
+// credential is never presented to anything.
+const api = new ApiClient({
+  baseUrl: 'https://api.invalid',
+  token: 'postman-collection-generator',
+});
 
 // ENG-2598: ask for EVERY family explicitly.
 //

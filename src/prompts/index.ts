@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { assertChangeHistoryComplete } from '../not-ready.js';
+import { formatVersion } from '../version-format.js';
 
 export function registerPrompts(server: McpServer, api: ApiClient): void {
   server.registerPrompt(
@@ -33,7 +34,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
       const versionSummary = recentVersions
         .map(
           (v) =>
-            `- v${v.majorVersion}.${v.minorVersion}.${v.patchVersion}: ${v.description || 'No description'} (${v.createdAt})`,
+            `- ${formatVersion(v)}: ${v.description || 'No description'} (${v.createdAt})`,
         )
         .join('\n');
 
@@ -215,7 +216,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
                 `- Uncommitted changes: ${file.hasUncommittedChanges ? 'Yes' : 'No'}\n\n` +
                 `## Versions: ${versions.length} total\n` +
                 (latestVersion
-                  ? `Latest: v${latestVersion.majorVersion}.${latestVersion.minorVersion}.${latestVersion.patchVersion} (${latestVersion.createdAt})\n`
+                  ? `Latest: ${formatVersion(latestVersion)} (${latestVersion.createdAt})\n`
                   : 'No versions yet.\n') +
                 `\n## Comments: ${comments.length} total, ${unresolvedComments.length} unresolved\n` +
                 `## Reviews: ${reviews.length} total, ${pendingReviews.length} pending\n` +

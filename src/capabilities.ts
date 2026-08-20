@@ -28,12 +28,11 @@ export const CAPABILITY_SET: ReadonlySet<string> = new Set(PAT_CAPABILITIES);
 /**
  * The write tools each family covers.
  *
- * This is the VOCABULARY, not the registration list: `enroll_file` is named
- * here before any registrar registers it, because plan 13's ENG-2200 adds that
- * tool this release and is blockedBy this ticket. Carrying the edge now means
- * that ticket adds a registrar and drops one entry from
- * {@link PENDING_WRITE_TOOLS}, rather than re-cutting the family map in every
- * repo that copied it.
+ * This is the VOCABULARY, not the registration list. ENG-2212 named
+ * `enroll_file` here before any registrar existed, so that ENG-2200 only had
+ * to add a registrar and drop one entry from {@link PENDING_WRITE_TOOLS}
+ * rather than re-cut the family map in every repo that copied it. That is
+ * exactly what ENG-2200 did, and the pending set is now empty.
  */
 export const WRITE_TOOLS_BY_CAPABILITY: Readonly<
   Record<PatCapability, readonly string[]>
@@ -52,9 +51,7 @@ export const WRITE_TOOLS_BY_CAPABILITY: Readonly<
  * OTHER enumerated name really is registered — a set derived from the
  * registrars rather than a second hand-maintained list that silently drifts.
  */
-export const PENDING_WRITE_TOOLS: ReadonlySet<string> = new Set([
-  'enroll_file',
-]);
+export const PENDING_WRITE_TOOLS: ReadonlySet<string> = new Set<string>([]);
 
 /** The tools a granted family actually adds to the surface today. */
 export function registeredToolsForCapabilities(
