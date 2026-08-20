@@ -1,11 +1,41 @@
 name: Postman drift
 
 on:
-  # PROD ELEVATIONS ONLY (David, 2026-07-31): CI budget. Gated at the
-  # trigger, not per-job — a job-level `if:` still creates the run and posts
-  # skipped checks. Run validation locally; workflow_dispatch runs on demand.
+  # `dev` ADDED 2026-08-20 (ENG-2839, plan 20 SP01). David: "we can expand the
+  # actions budget. this just needs to work smoothly." That lifts the CI-budget
+  # constraint behind the 2026-07-31 elevations-only rule, whose header stood
+  # here until now.
+  #
+  # WHY THIS CHECK SPECIFICALLY. `dcdf939e` (PR #189, ENG-2816) moved HMAC key
+  # derivation to registration time — which this generator executes — and merged
+  # into `dev` at 01:07:13Z. The first `TypeError: api.deriveStateKey is not a
+  # function` landed 52 seconds later, on run 32319908901, attached to
+  # production elevation PR #158 rather than to #189, and blocked the release.
+  # Detection latency was already near-zero; what was wrong was which pull
+  # request got the red. Running on `dev` buys ATTRIBUTION, not speed.
+  #
+  # WHY `main` STAYS. The two runs answer different questions: the `dev` run
+  # asks "did this change break it?", the `main` run asks "is what we ship
+  # intact?". They also see different trees — no gate runs on a `staging`-base
+  # pull request, and this repo took 26 merges into `staging` in 14 days, so a
+  # `dev` pass says nothing about the merged result two hops later.
+  #
+  # NO `push` TRIGGER, DELIBERATELY. A merge into `dev` is a push to `dev`;
+  # adding `push` here would run the whole job a second time on the target
+  # branch for no new signal — the exact waste `mcp-gateway/ci.yml` and
+  # `epic-branch.yml` both record in their own headers. One `pull_request`
+  # event, with the `concurrency` block below collapsing rapid pushes, is why
+  # the measured runs-per-pull-request in this workspace is 0.99-1.40, not 2+.
+  #
+  # Gated at the TRIGGER, not a job-level `if:` — a job-level condition still
+  # creates the run and posts a skipped check.
+  #
+  # COST: 0.3 runner-minutes per run (job 20s; the check step itself is 2s).
+  # No network — the generator builds an ApiClient against https://api.invalid
+  # and invokes no handler. No build, no secret, no container. This repository
+  # is PUBLIC, so these minutes are free.
   pull_request:
-    branches: [main]
+    branches: [dev, main]
   workflow_dispatch:
 
 concurrency:
