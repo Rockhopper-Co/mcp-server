@@ -56,7 +56,16 @@ export function registerListUnenrolledFilesTool(
         '`search_drive_files` when they can. Read-only: it enrolls nothing ' +
         'and asks nothing. The answer comes from stored records rather than a ' +
         'live Microsoft read, so it is dated — pass a listed file\'s `msId` ' +
-        'and `driveMsId` to `enroll_file` to add it.',
+        'and `driveMsId` to `enroll_file` to add it. ' +
+        // ENG-2814. The model has to know a short page is not an answer, or it
+        // will report "nothing to add" from the middle of a walk.
+        'PAGINATED: a response ending with a cursor has MORE files past it, ' +
+        'even when this page came back empty or shorter than `limit` — the ' +
+        'filter and the server\'s scan budget both cut pages short. Keep ' +
+        'calling with the cursor until no cursor is returned before saying ' +
+        'anything about what the user does or does not have. A cursor stops ' +
+        'working 30 minutes after the first page; if one is refused as ' +
+        'SNAPSHOT_EXPIRED, RESTART from the first page instead of retrying it.',
       inputSchema: z.object({
         limit: z
           .number()
@@ -65,8 +74,18 @@ export function registerListUnenrolledFilesTool(
           .max(200)
           .optional()
           .describe(
-            'How many files to return, most recently modified first. ' +
-              'Defaults to the server\'s page size.',
+            'How many files to return per page, most recently modified ' +
+              'first. Defaults to the server\'s page size. NOT a total — the ' +
+              'cursor is what reaches the rest.',
+          ),
+        cursor: z
+          .string()
+          .optional()
+          .describe(
+            'Opaque cursor from a previous response. Never construct or ' +
+              'edit one. The snapshot expires 30 minutes after the first ' +
+              'page; an older cursor returns a SNAPSHOT_EXPIRED error and the ' +
+              'caller must RESTART from the first page rather than retry.',
           ),
       }),
       annotations: {
@@ -74,11 +93,12 @@ export function registerListUnenrolledFilesTool(
         openWorldHint: false,
       },
     },
-    async ({ limit }) => {
+    async ({ limit, cursor }) => {
       try {
-        const { items, freshness } = await api.listDriveInventory({
+        const { items, freshness, nextCursor } = await api.listDriveInventory({
           enrollment: 'not_enrolled',
           limit,
+          cursor,
         });
 
         return {
@@ -86,8 +106,8 @@ export function registerListUnenrolledFilesTool(
             {
               type: 'text',
               text: items.length
-                ? renderFound(items, freshness)
-                : renderEmpty(freshness),
+                ? renderFound(items, freshness, nextCursor)
+                : renderEmpty(freshness, nextCursor),
             },
           ],
         };
@@ -111,9 +131,30 @@ export function registerListUnenrolledFilesTool(
   );
 }
 
+/**
+ * ENG-2814 — the "there is more" line, and it is never optional when a cursor
+ * came back.
+ *
+ * Written to the MODEL, not the user: it names the exact next call, because a
+ * hint that only says "more available" gets summarised away and the walk stops
+ * one page in.
+ */
+function moreToCome(nextCursor: string | null): string {
+  if (!nextCursor) return '';
+  return (
+    `\n\nMORE FILES REMAIN — this is not the whole list. Call ` +
+    `\`list_unenrolled_files\` again with \`cursor="${nextCursor}"\`, and ` +
+    'keep going until a response comes back with no cursor. Do not tell the ' +
+    'user what they do or do not have until then. The cursor stops working 30 ' +
+    'minutes after the first page; if it is refused as expired, start again ' +
+    'from the first page rather than retrying it.'
+  );
+}
+
 function renderFound(
   items: readonly DriveInventoryItem[],
   freshness: DriveInventoryFreshness,
+  nextCursor: string | null = null,
 ): string {
   const lines = items.map((item) => {
     const where = item.parentPath ? ` in ${item.parentPath}` : '';
@@ -132,13 +173,27 @@ function renderFound(
     );
   });
 
+  // "on this page", never a bare count: with a cursor outstanding the number is
+  // a page size, and calling it a total is the same lie as the old 200-row
+  // ceiling that reported nothing about itself.
+  const counted = nextCursor
+    ? `${items.length} workbook(s) not yet in Rockhopper on this page:`
+    : `${items.length} workbook(s) not yet in Rockhopper:`;
+
   return (
-    `${items.length} workbook(s) not yet in Rockhopper:\n\n` +
-    `${lines.join('\n')}\n\n${dateline(freshness)}`
+    `${counted}\n\n` +
+    `${lines.join('\n')}\n\n${dateline(freshness)}${moreToCome(nextCursor)}`
   );
 }
 
-function renderEmpty(freshness: DriveInventoryFreshness): string {
+function renderEmpty(
+  freshness: DriveInventoryFreshness,
+  nextCursor: string | null = null,
+): string {
+  // ORDER IS LOAD-BEARING. An unlinked account and a first refresh that has not
+  // finished both mean there is nothing to page THROUGH, so sending the model
+  // after another page instead of `connect_microsoft` starts a loop that cannot
+  // end. Those two branches come first and keep their own instruction.
   if (freshness.lastFailureReason === 'no_delegated_token') {
     return (
       'Rockhopper cannot see this user\'s workbooks: their Microsoft account ' +
@@ -153,6 +208,23 @@ function renderEmpty(freshness: DriveInventoryFreshness): string {
       `${freshness.refreshing ? 'One is running now.' : 'One has been started.'} ` +
       'Try again shortly. This is NOT evidence that every workbook is already ' +
       `in Rockhopper.${failureNote(freshness)}`
+    );
+  }
+
+  /**
+   * ENG-2814 — AN EMPTY PAGE WITH A CURSOR IS THE MIDDLE OF A WALK.
+   *
+   * The backend filters enrolled rows out AFTER cutting a chunk and stops at a
+   * per-request scan budget, so "this page had none" is routine and says
+   * nothing about the drive. Reporting it as "everything is already covered" is
+   * the exact failure this whole tool was written against — an empty list that
+   * reads as reassurance — and pagination gives it a brand new way to happen.
+   */
+  if (nextCursor) {
+    return (
+      'No un-enrolled workbooks on this page — but the search is NOT ' +
+      'finished, and this says nothing yet about what the user has.' +
+      `${moreToCome(nextCursor)}`
     );
   }
 
