@@ -566,9 +566,22 @@ export class ApiClient {
    * makes a retry after a dropped stream safe rather than duplicating work.
    *
    * `X-MS-Graph-Token` is deliberately NOT sent and cannot be: this package
-   * holds no delegated Microsoft assertion. A caller with no linked Microsoft
-   * account is refused with `ACCESS_UNPROVEN` (ENG-2196 / decision D4), which
-   * is the intended outcome, not a gap.
+   * holds no delegated Microsoft assertion. The backend's SECOND rung is what
+   * covers us — it mints a delegated token from the grant `connect_microsoft`
+   * stored (ENG-2198) — so a session WITH a linked account enrols normally, and
+   * one without is refused `ACCESS_UNPROVEN` (ENG-2196 / decision D4), which
+   * `classifyEnrollmentFailure` turns into "run `connect_microsoft`". That
+   * refusal is the intended outcome, not a gap.
+   *
+   * THIS BLOCK USED TO STATE ONLY THE SECOND HALF, and the omission hid a real
+   * defect for a release (ENG-2818). Saying "a caller with no linked account is
+   * refused" is true and says nothing about the caller who HAS one — and that
+   * caller was refused too, with the same code, because the enrol route's
+   * access check had only the header rung while {@link resolveEnrollmentUrl}'s
+   * resolution had both. Two docblocks on the same page disagreed about the
+   * same backend and the sibling one was right. A note about a credential path
+   * has to say what happens on BOTH sides of it; naming only the refusal reads
+   * as complete and is half a sentence.
    */
   async createEnrolledFile(body: {
     msId: string;
