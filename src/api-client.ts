@@ -486,10 +486,18 @@ export class ApiClient {
   async listDriveInventory(params?: {
     enrollment?: DriveInventoryEnrollment;
     limit?: number;
+    /**
+     * ENG-2814 — opaque cursor from a previous response's `nextCursor`. Never
+     * constructed or parsed here. Its snapshot expires after 30 minutes, and
+     * the backend then answers HTTP 410 with `SNAPSHOT_EXPIRED` — the caller
+     * restarts from the first page rather than retrying the same token.
+     */
+    cursor?: string;
   }): Promise<DriveInventoryResponse> {
     const query = new URLSearchParams();
     if (params?.enrollment) query.set('enrollment', params.enrollment);
     if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    if (params?.cursor) query.set('cursor', params.cursor);
     const qs = query.toString();
     return this.request<DriveInventoryResponse>(
       `/drive-files/inventory${qs ? `?${qs}` : ''}`,

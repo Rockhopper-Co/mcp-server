@@ -189,6 +189,20 @@ export type DriveInventoryEnrollment = 'all' | 'enrolled' | 'not_enrolled';
 /** `GET /drive-files/inventory`'s answer. */
 export interface DriveInventoryResponse {
   items: DriveInventoryItem[];
+  /**
+   * ENG-2814 — opaque cursor for the next page, `null` when the list is
+   * finished.
+   *
+   * A SHORT PAGE WITH A NON-NULL CURSOR IS NOT THE END OF THE LIST, and on this
+   * route that distinction is the whole feature. The backend's enrollment
+   * filter runs after the database cuts a chunk, and one request only reads so
+   * many rows, so `items` can be empty while more remain. Only `null` says the
+   * walk is over. Same contract as {@link PaginatedUnattributedResponse}:
+   * 30-minute snapshot, `SNAPSHOT_EXPIRED` on an older cursor.
+   */
+  nextCursor: string | null;
+  snapshotId: string;
+  snapshotCreatedAt: string;
   freshness: DriveInventoryFreshness;
 }
 

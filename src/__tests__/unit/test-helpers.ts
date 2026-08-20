@@ -79,6 +79,13 @@ export function createMockApiClient() {
         lastFailureReason: null,
         consecutiveFailures: 0,
       },
+      // ENG-2814 — the default is a FINISHED list. Present rather than omitted
+      // so the mock matches the wire shape: an absent `nextCursor` is falsy and
+      // reads as "no more pages", which is the right answer for the wrong
+      // reason, and it would keep reading right after the field was renamed.
+      nextCursor: null,
+      snapshotId: '1755641000000',
+      snapshotCreatedAt: '2026-08-19T21:23:20.000Z',
     }),
     searchDriveFiles: vi.fn().mockResolvedValue({
       scope: 'search',
