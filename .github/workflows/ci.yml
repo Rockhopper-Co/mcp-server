@@ -1,17 +1,32 @@
 name: CI
 
 on:
-  # PROD ELEVATIONS ONLY (David, 2026-07-31): CI budget. Gated at the
-  # trigger, not per-job — a job-level `if:` still creates the run and posts
-  # skipped checks. Run validation locally; workflow_dispatch runs on demand.
+  # Runs on dev-base AND main-base pull requests (ENG-2857). David, 2026-08-20:
+  # "we can expand the actions budget. this just needs to work smoothly."
   #
-  # ENG-2807 removed the `push: branches: [main]` trigger. It existed to run
-  # `auto-tag`, which cut `v<version>` and dispatched publish.yml; publishing is
-  # now driven by the merge itself, and publish.yml re-runs typecheck/test/build
-  # on that same push before it publishes anything. Keeping both would have paid
-  # for the identical gate twice on every elevation.
+  # SUPERSEDES the 2026-07-31 "PROD ELEVATIONS ONLY" trigger, which read
+  # `branches: [main]` and meant a feature pull request into `dev` created no
+  # run at all. That trade — a defect surfaces at the prod elevation instead of
+  # at the feature PR — was paid three times on the night of 2026-08-19/20, each
+  # time with a human waiting to ship. Cost is no longer the binding constraint.
+  #
+  # Still gated at the TRIGGER and not per-job: a job-level `if:` still creates
+  # the run and posts skipped checks, which is what the 2026-07-31 decision was
+  # avoiding, and that reasoning is unchanged.
+  #
+  # `staging` is deliberately absent. dev -> staging elevations are opened and
+  # merged in 12-30s (measured: backend #1315 19s, #1317 12s, #1312 18s), so a
+  # run keyed there is cancelled by the next merge before it can report — the
+  # same reason backend's e2e gate was moved off dev in the first place.
+  #
+  # ENG-2807 removed the `push: branches: [main]` trigger, and that stays
+  # removed. It existed to run `auto-tag`, which cut `v<version>` and dispatched
+  # publish.yml; publishing is now driven by the merge itself, and publish.yml
+  # re-runs typecheck/test/build on that same push before it publishes anything.
+  # Keeping both would have paid for the identical gate twice on every
+  # elevation. Widening the pull_request trigger above does not reinstate it.
   pull_request:
-    branches: [main]
+    branches: [dev, main]
   workflow_dispatch:
 
 concurrency:
