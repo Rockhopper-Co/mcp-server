@@ -77,7 +77,7 @@ async function wrapTool(
 ): Promise<(...args: unknown[]) => Promise<unknown>> {
   const { createServer } = await import('../../server.js');
   const server = createServer(
-    {} as never,
+    { setClientToolProvider: () => {} } as never,
     telemetry ? { telemetry } : undefined,
   ) as unknown as RecordingServer;
   server.registerTool(toolName, {}, handler);

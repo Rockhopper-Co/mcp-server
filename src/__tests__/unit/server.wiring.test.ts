@@ -55,7 +55,7 @@ describe('createServer wiring', () => {
 
   it('should instantiate McpServer and register resources/tools/prompts', async () => {
     const { createServer } = await import('../../server.js');
-    const apiClient = { any: 'client' } as any;
+    const apiClient = { any: 'client', setClientToolProvider: () => {} } as any;
 
     const server = createServer(apiClient);
 
@@ -73,7 +73,7 @@ describe('createServer wiring', () => {
   // since the initial commit, so 0.2.0 through 0.8.0 all announced 0.1.0.
   it('should declare the package version rather than a literal', async () => {
     const { createServer } = await import('../../server.js');
-    const apiClient = { any: 'client' } as unknown as Parameters<
+    const apiClient = { any: 'client', setClientToolProvider: () => {} } as unknown as Parameters<
       typeof createServer
     >[0];
 
@@ -90,7 +90,7 @@ describe('createServer wiring', () => {
 
   it('should pass scope options to registerTools', async () => {
     const { createServer } = await import('../../server.js');
-    const apiClient = { any: 'client' } as any;
+    const apiClient = { any: 'client', setClientToolProvider: () => {} } as any;
 
     createServer(apiClient, { scope: 'read-only' });
 
@@ -113,7 +113,7 @@ describe('createServer wiring', () => {
     'declares read-only instructions for scope %s: %s',
     async (scope, expectReadOnly) => {
       const { createServer } = await import('../../server.js');
-      const apiClient = { any: 'client' } as any;
+      const apiClient = { any: 'client', setClientToolProvider: () => {} } as any;
 
       createServer(apiClient, scope === undefined ? undefined : { scope });
 

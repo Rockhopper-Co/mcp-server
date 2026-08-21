@@ -153,6 +153,24 @@ function parseErrorField(body: string, field: 'code' | 'reason'): string | null 
 /** HTTP methods the decision-15 admission treats as agent writes. */
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/**
+ * ENG-2883 — the header carrying the connected client's own name.
+ *
+ * In the `X-Rockhopper-*` provenance family because that is what it is: one
+ * more client-asserted fact about where a write came from, read by the same
+ * backend path and classed the same way.
+ */
+export const CLIENT_TOOL_HEADER = 'X-Rockhopper-Client-Tool';
+
+/** Bounded to the backend column that stores the name. */
+export const MAX_CLIENT_TOOL_NAME_LENGTH = 255;
+
+/** The MCP handshake's `clientInfo` — the APP, never the model. */
+export interface ClientToolInfo {
+  name?: string;
+  version?: string;
+}
+
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -160,6 +178,8 @@ export class ApiClient {
   private readonly surface: string;
   private readonly sessionId: string;
   private drivingHumanPlatformId: string | null;
+  private clientToolProvider: (() => ClientToolInfo | null | undefined) | null =
+    null;
   private authExpiredHandler?: () => void;
   private authExpiredNotified = false;
 
@@ -182,6 +202,41 @@ export class ApiClient {
    */
   setDrivingHuman(platformId: string | null): void {
     this.drivingHumanPlatformId = platformId;
+  }
+
+  /**
+   * ENG-2883 — declare how to find the APP that connected to this server.
+   *
+   * A PROVIDER rather than a value, because `clientInfo` does not exist until
+   * the client finishes `initialize`, which happens after the server (and this
+   * client) are built. Capturing a value at construction would record nothing,
+   * permanently — the same shape of bug as reading a header before the request
+   * that carries it exists.
+   *
+   * The name is CLIENT-ASSERTED and the backend classes it as such. It is
+   * recorded because it is the only name this lane ever has: a user-minted
+   * token carries no tool identity, so without it every Cursor write and every
+   * Claude Desktop write land under the same anonymous surface row.
+   */
+  setClientToolProvider(
+    provider: (() => ClientToolInfo | null | undefined) | null,
+  ): void {
+    this.clientToolProvider = provider;
+  }
+
+  /**
+   * The connected client's name, bounded, or `undefined` when it named none.
+   *
+   * `undefined` — no header — for an absent provider, an absent `clientInfo`,
+   * and a blank name. An empty header would be a tool called "", which is a
+   * name invented out of an absence rather than a record of one.
+   */
+  private clientToolHeader(): string | undefined {
+    const name = this.clientToolProvider?.()?.name?.trim();
+    if (!name) return undefined;
+    // The backend column is 255 wide; bounding here means a long name is
+    // recorded short rather than refused far from the client that sent it.
+    return name.slice(0, MAX_CLIENT_TOOL_NAME_LENGTH);
   }
 
   /**
@@ -278,6 +333,12 @@ export class ApiClient {
                 'X-Rockhopper-Session-Id': this.sessionId,
                 ...(this.drivingHumanPlatformId
                   ? { 'X-Driving-Human': this.drivingHumanPlatformId }
+                  : {}),
+                // ENG-2883: which APP is driving this server. Writes only —
+                // a read carries no provenance headers and gets no role row,
+                // so this must not become the first exception to that.
+                ...(this.clientToolHeader()
+                  ? { [CLIENT_TOOL_HEADER]: this.clientToolHeader() }
                   : {}),
               }
             : {}),

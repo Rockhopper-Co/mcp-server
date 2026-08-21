@@ -81,7 +81,9 @@ describe('installCorrelationScope wrapped registerTool', () => {
 
   it('logs tool_call (ok) and returns the handler result', async () => {
     const { createServer } = await import('../../server.js');
-    const server = createServer({} as never) as unknown as RecordingServer;
+    const server = createServer(
+      { setClientToolProvider: () => {} } as never,
+    ) as unknown as RecordingServer;
 
     const handler = vi
       .fn()
@@ -108,7 +110,9 @@ describe('installCorrelationScope wrapped registerTool', () => {
 
   it('logs tool_call_failed and re-throws when the handler rejects', async () => {
     const { createServer } = await import('../../server.js');
-    const server = createServer({} as never) as unknown as RecordingServer;
+    const server = createServer(
+      { setClientToolProvider: () => {} } as never,
+    ) as unknown as RecordingServer;
 
     const boom = new Error('handler exploded');
     const handler = vi.fn().mockRejectedValue(boom);
