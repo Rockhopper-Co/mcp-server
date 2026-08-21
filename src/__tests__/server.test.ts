@@ -52,6 +52,9 @@ function createMockApiClient(): ApiClient {
     getMe: vi.fn().mockResolvedValue({ internalId: 1, email: 'test@test.com' }),
     // ENG-2816 — `search_drive_files` derives its confirmation-signing key at
     // registration, so every stub that reaches `createServer` needs one.
+    // ENG-2883 — `createServer` hands the client a provider for the connected
+    // app's name; every stub that reaches it must answer that call.
+    setClientToolProvider: vi.fn(),
     deriveStateKey: (domain: string) =>
       createHmac('sha256', 'test-pat-for-state-signing').update(domain).digest(),
   } as unknown as ApiClient;
