@@ -81,3 +81,60 @@ describe('get_file_versions author rendering (ENG-2603)', () => {
     expect(text).not.toContain('null');
   });
 });
+
+/**
+ * The same "no author at all" state, on the OTHER history surface.
+ *
+ * `get_cell_history` renders the legacy (non-ledger) entry itself, and its
+ * author segment is a separate conditional from the one above —
+ * `get-cell-history.ts:63`. `changedBy` is `z.string().nullable()`
+ * (`zod-schemas.ts:61`), so null is a shape the backend is allowed to send,
+ * and both existing cases in `tools.read.test.ts` pass a name. The false arm
+ * was the last uncovered branch on that renderer.
+ */
+describe('get_cell_history author rendering', () => {
+  const render = async (history: unknown[]) => {
+    const server = createMockMcpServer();
+    const api = createMockApiClient();
+    api.getCellHistory.mockResolvedValue(history);
+    registerTools(server as any, api as any);
+    const call = server.registerTool.mock.calls.find(
+      (c) => c[0] === 'get_cell_history',
+    );
+    const result = await call?.[2]({
+      fileMsId: 'file-1',
+      sheetName: 'Financing',
+      cellAddress: 'B5',
+    });
+    return result.content[0].text as string;
+  };
+
+  it('renders no attribution segment when the entry has no author', async () => {
+    const text = await render([
+      {
+        versionId: 'v3.0.0',
+        value: '$18,500,000',
+        changedBy: null,
+        changedAt: '2026-05-12T15:42:56.676Z',
+      },
+    ]);
+
+    expect(text).toContain('Version v3.0.0');
+    expect(text).toContain('"$18,500,000"');
+    expect(text).not.toContain('by ');
+    expect(text).not.toContain('null');
+  });
+
+  it('still names the author when the entry has one', async () => {
+    const text = await render([
+      {
+        versionId: 'v3.0.0',
+        value: 1,
+        changedBy: 'Sebastian Perez Lawrence',
+        changedAt: '2026-05-12T15:42:56.676Z',
+      },
+    ]);
+
+    expect(text).toContain('— by Sebastian Perez Lawrence');
+  });
+});
