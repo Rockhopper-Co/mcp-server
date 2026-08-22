@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { RockhopperApiError } from '../../api-client.js';
 import { registerTools } from '../../tools/index.js';
 import { registerResources } from '../../resources/index.js';
 import { registerPrompts } from '../../prompts/index.js';
@@ -116,6 +117,77 @@ describe('strict no-partial — change-history surfaces', () => {
       expect(api.getCellHistory).not.toHaveBeenCalled();
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('completeness_unknown');
+    });
+
+    /**
+     * The pairing for "fails CLOSED" above, and the half that keeps failing
+     * closed from becoming failing STUPID.
+     *
+     * A probe that 404s or 403s has answered the caller's question — the file
+     * is not there, or is not theirs — and dressing that up as a capacity
+     * signal tells an assistant to retry in 15 seconds against a wall it will
+     * never get past. `DEFINITIVE_HTTP_STATUSES` in `not-ready.ts` is the only
+     * thing separating the two, and nothing exercised it.
+     */
+    it.each([
+      [404, 'Not Found'],
+      [403, 'Forbidden'],
+      [401, 'Unauthorized'],
+      [410, 'Gone'],
+    ])(
+      'lets a definitive %i from the completeness probe answer for itself',
+      async (status, statusText) => {
+        const api = createMockApiClient();
+        api.getFoldStatus.mockRejectedValue(
+          new RockhopperApiError(status, `Rockhopper API ${status}: ${statusText}`),
+        );
+
+        const result = await toolHandler(api, 'get_cell_history')({
+          fileMsId: 'gone',
+          sheetName: 'Sheet1',
+          cellAddress: 'A1',
+        });
+
+        expect(api.getCellHistory).not.toHaveBeenCalled();
+        expect(result.isError).toBe(true);
+        // The real answer, not a retry hint: `completeness_unknown` here would
+        // send the assistant round a loop that cannot terminate.
+        expect(result.content[0].text).toContain(String(status));
+        expect(result.content[0].text).not.toContain(NOT_READY_MARKER);
+        expect(result.content[0].text).not.toContain('completeness_unknown');
+      },
+    );
+
+    it('keeps the backend ETA when the probe ITSELF answers not-ready', async () => {
+      // A 429 on the fold-status route is the backend saying "still producing"
+      // and naming its own interval. Flattening it to `completeness_unknown`
+      // would be correct-ish and would throw away the only measured retry hint
+      // in the exchange, replacing 90s with the local 15s default.
+      const api = createMockApiClient();
+      api.getFoldStatus.mockRejectedValue(
+        new ChangeHistoryNotReadyError({
+          reason: 'still_producing',
+          retryAfterSeconds: 90,
+          fileMsId: 'file-1',
+        }),
+      );
+
+      const result = await toolHandler(api, 'get_cell_history')({
+        fileMsId: 'file-1',
+        sheetName: 'Sheet1',
+        cellAddress: 'A1',
+      });
+
+      expect(result.isError).toBe(true);
+      const json = result.content[0].text.slice(
+        result.content[0].text.indexOf('{'),
+      );
+      expect(JSON.parse(json)).toEqual({
+        status: 'not_ready',
+        reason: 'still_producing',
+        retryAfterSeconds: 90,
+        fileMsId: 'file-1',
+      });
     });
 
     it('serves rows when the fold is complete', async () => {

@@ -246,6 +246,66 @@ describe('ApiClient', () => {
     vi.unstubAllGlobals();
   });
 
+  /**
+   * ENG-2785 / ENG-2814 — the query `list_unenrolled_files` rides on.
+   *
+   * The tool's own spec mocks this client, so nothing checked the three
+   * params ever reach the URL. Dropping `cursor` is the expensive one and it
+   * is SILENT: the backend answers page one, the tool renders a `nextCursor`,
+   * the model pages forward, and it gets page one again — forever, with no
+   * error anywhere. `enrollment` is what makes the tool's answer mean
+   * "un-enrolled" rather than "everything".
+   */
+  describe('listDriveInventory query construction', () => {
+    it('puts enrollment, limit and cursor on the wire', async () => {
+      const fetchSpy = mockFetch({ items: [], freshness: {}, nextCursor: null });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await client.listDriveInventory({
+        enrollment: 'not_enrolled',
+        limit: 25,
+        cursor: 'page+2/token=',
+      });
+
+      const url = new URL(fetchSpy.mock.calls[0][0] as string);
+      expect(url.pathname).toBe('/drive-files/inventory');
+      expect(url.searchParams.get('enrollment')).toBe('not_enrolled');
+      expect(url.searchParams.get('limit')).toBe('25');
+      // Opaque and never parsed here, so it has to survive encoding intact.
+      expect(url.searchParams.get('cursor')).toBe('page+2/token=');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('sends a bare path when nothing was asked for', async () => {
+      const fetchSpy = mockFetch({ items: [], freshness: {}, nextCursor: null });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await client.listDriveInventory();
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://api.rockhopper.co/drive-files/inventory',
+        expect.anything(),
+      );
+
+      vi.unstubAllGlobals();
+    });
+
+    it('keeps an explicit limit of 0 rather than treating it as absent', async () => {
+      // `limit` is guarded on `!== undefined`, not on truthiness, and the two
+      // differ exactly at 0 — which a paging caller can reach. A truthiness
+      // check would drop it and return the backend default instead.
+      const fetchSpy = mockFetch({ items: [], freshness: {}, nextCursor: null });
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await client.listDriveInventory({ limit: 0 });
+
+      expect(fetchSpy.mock.calls[0][0]).toContain('limit=0');
+
+      vi.unstubAllGlobals();
+    });
+  });
+
   // KI-096: zod-parse opt-in pins backend↔mcp-server contract for the
   // three previously-broken response shapes.
   describe('KI-096 zod-parse opt-in', () => {

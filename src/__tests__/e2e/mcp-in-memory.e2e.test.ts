@@ -121,6 +121,68 @@ describe('MCP in-memory protocol e2e', () => {
     );
   });
 
+  /**
+   * The safety annotations a client GATES ON, read back off the real
+   * `tools/list` rather than off the registration object.
+   *
+   * `readOnlyHint` and `destructiveHint` are not documentation: a host reads
+   * them to decide whether a tool may auto-run and whether to put a
+   * confirmation in front of it. `discard_changes` throws away a person's
+   * uncommitted work, so it advertising `destructiveHint: false` — or a read
+   * tool advertising `readOnlyHint: false` — would silently move a decision a
+   * human is supposed to make. Nothing else in this package checks that these
+   * survive registration and reach the wire.
+   */
+  it('advertises the safety annotations a host gates on', async () => {
+    const tools = await client.listTools();
+    const annotationsFor = (
+      name: string,
+    ): { readOnlyHint?: boolean; destructiveHint?: boolean } => {
+      const tool = tools.tools.find((t) => t.name === name);
+      if (!tool?.annotations) {
+        throw new Error(`tools/list carried no annotations for ${name}`);
+      }
+      return tool.annotations;
+    };
+
+    // Every tool a read-only token is given claims to change nothing — with
+    // ONE exception, and it is deliberate: `disconnect_microsoft` rides the
+    // read floor because it is an account action, and it is destructive.
+    for (const name of [
+      'connect_microsoft',
+      'microsoft_link_status',
+      'get_cell_history',
+      'get_file_comments',
+      'get_file_versions',
+      'get_reviews',
+      'get_unattributed_changes',
+      'list_files',
+      'list_unenrolled_files',
+      'search_files',
+      'search_drive_files',
+    ]) {
+      expect(annotationsFor(name).readOnlyHint, name).toBe(true);
+    }
+
+    // The three that destroy something a user cannot get back by re-running
+    // the tool. A host that auto-runs these has been told it may.
+    for (const name of [
+      'discard_changes',
+      'cancel_review',
+      'disconnect_microsoft',
+    ]) {
+      expect(annotationsFor(name).destructiveHint, name).toBe(true);
+      expect(annotationsFor(name).readOnlyHint, name).toBe(false);
+    }
+
+    // …and the pairing, so the loop above is not satisfied by marking
+    // everything destructive: an ordinary write is not.
+    for (const name of ['add_comment', 'create_version', 'rename_file']) {
+      expect(annotationsFor(name).destructiveHint, name).toBe(false);
+      expect(annotationsFor(name).readOnlyHint, name).toBe(false);
+    }
+  });
+
   // ---------------- tools ----------------
 
   it('list_files returns the fixture file', async () => {
@@ -604,6 +666,26 @@ describe('MCP in-memory protocol e2e', () => {
       },
     });
     expect(JSON.stringify(result.content)).toContain('Version v1.0.0 created');
+  });
+
+  // The other side of the conditional `discard_changes` already covers below.
+  // Committing a file with nothing uncommitted would write an empty version
+  // and report success, so the refusal is the behaviour — and it is a
+  // RETURNED refusal, not a thrown one, which is the shape a connector reads.
+  it('create_version refuses a file with no uncommitted changes', async () => {
+    const result = await client.callTool({
+      name: 'create_version',
+      arguments: {
+        fileMsId: 'no-changes-file',
+        versionType: 'minor',
+        description: 'nothing to commit',
+      },
+    });
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBe(true);
+    expect(text).toContain('no uncommitted changes to commit');
+    // It never reached the create route, so no version number was invented.
+    expect(text).not.toContain('created');
   });
 
   it('create_version surfaces API errors for unknown files', async () => {

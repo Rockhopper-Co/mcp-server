@@ -105,5 +105,7 @@ describe('createServer', () => {
       ._serverInfo;
     expect(info.name).toBe('rockhopper');
     expect(info.version).toBe(packageVersion);
+    // The literal it was before ENG-1955: 0.2.0 through 0.8.0 all announced it.
+    expect(info.version).not.toBe('0.1.0');
   });
 });

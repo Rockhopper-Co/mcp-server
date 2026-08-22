@@ -50,6 +50,9 @@ describe('ApiClient method coverage', () => {
     vi.unstubAllGlobals();
   });
 
+  // A call COUNT is not a path check: five methods could all hit the wrong
+  // route and this stayed green, which is the one thing this suite exists to
+  // catch (every other spec in the package mocks the client away).
   it('should call version and review endpoints', async () => {
     const fetchSpy = mockFetch({});
     vi.stubGlobal('fetch', fetchSpy);
@@ -58,7 +61,20 @@ describe('ApiClient method coverage', () => {
     await client.getReviewsForLatestVersion('file-1');
     await client.getReview(8);
     await client.getReviewActivities(8);
+
     expect(fetchSpy).toHaveBeenCalledTimes(5);
+    const urls = fetchSpy.mock.calls.map((c) => String(c[0]));
+    expect(urls).toEqual([
+      'https://api.rockhopper.co/file-versions/file/version/7',
+      'https://api.rockhopper.co/reviews/versions/7/requests',
+      'https://api.rockhopper.co/reviews/files/file-1/latest-version/requests',
+      'https://api.rockhopper.co/reviews/requests/8',
+      'https://api.rockhopper.co/reviews/requests/8/activities',
+    ]);
+    // All five are reads, so none of them may carry a write verb.
+    for (const [, init] of fetchSpy.mock.calls) {
+      expect((init as { method?: string }).method ?? 'GET').toBe('GET');
+    }
     vi.unstubAllGlobals();
   });
 
