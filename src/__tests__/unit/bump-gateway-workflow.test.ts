@@ -461,9 +461,12 @@ describe('bump-gateway.yml — a publish reaches the gateway immediately', () =>
     expect(bump.on).toHaveProperty('workflow_dispatch');
   });
 
-  it('adds no CI to a dev branch', () => {
-    // CI runs on prod elevations only, deliberately (David, 2026-07-31 — the
-    // Actions allowance was exhausted, not merely strained).
+  it('fires on those three events and nothing else', () => {
+    // This is a DEPLOY workflow, not a gate: it pushes into another repository
+    // and merges. A `pull_request` or `push` trigger here would run that
+    // against every branch. (The 2026-07-31 "CI on prod elevations only"
+    // budget rule this used to cite was reversed on 2026-08-20 — dev gates are
+    // welcome now, and this trigger set is still not one of them.)
     expect(Object.keys(bump.on ?? {}).sort()).toEqual([
       'schedule',
       'workflow_dispatch',
@@ -977,6 +980,52 @@ describe('the bump merges itself, and ONLY when the proofs passed (ENG-2843)', (
     expect(r.code).toBe(1);
     expect(r.log).toContain('Refusing to merge something I cannot see');
     expect(mergeCall(tree)).toBeUndefined();
+  });
+
+  it('updates the pull request already open instead of opening a second one', () => {
+    // The branch is force-pushed on every publish, so a second `pr create`
+    // against the same head is not a duplicate that GitHub refuses — it is a
+    // second run finding no open pull request and opening one, which is what
+    // a broken `pr list` read looks like. The `// empty` jq fallback in the
+    // step exists for exactly this, and nothing asserted the branch it guards.
+    const remote = bareRemote();
+    const first = checkout(remote, OLD);
+    expect(runJob(first, env(first, remote, NEW, { FAKE_MERGE_FAIL: '1' })).failedAt).toBe(MERGE);
+    expect(ghLog(first).filter((l) => l.startsWith('pr create'))).toHaveLength(1);
+
+    // The backstop cron, hours later, on a fresh checkout. The pull request
+    // from run 1 is still open because its merge failed.
+    const second = checkout(remote, OLD);
+    runJob(second, env(second, remote, NEW), 'schedule');
+
+    expect(ghLog(second).some((l) => l.startsWith('pr create'))).toBe(false);
+    const edit = ghLog(second).find((l) => l.startsWith('pr edit'));
+    expect(edit).toContain('206');
+    expect(edit).toContain(`chore(deps): pin mcp-server to ${NEW}`);
+  });
+
+  it('says in the pull request WHICH trigger opened it', () => {
+    // Three ways in, and a reader of the bump pull request cannot otherwise
+    // tell a publish-driven run from the cron catching a stall — which is the
+    // distinction ENG-2844 exists to make visible.
+    const remote = bareRemote();
+    const OPEN_PR = 'Open the pull request, or update the one already open';
+    const bodyFor = (trigger: string): string => {
+      const tree = checkout(remote, OLD);
+      const r = runStep(OPEN_PR, tree, {
+        TRIGGER: trigger,
+        V: NEW,
+        RUN_URL: 'https://github.com/Rockhopper-Co/mcp-server/actions/runs/99',
+        GH_LOG: join(tree, 'gh_log'),
+        PR_STATE: join(tree, 'pr_state'),
+      });
+      expect(r.code).toBe(0);
+      return readFileSync(join(tree, 'gh_log'), 'utf8');
+    };
+
+    expect(bodyFor('workflow_run')).toContain('a publish that just finished');
+    expect(bodyFor('schedule')).toContain('the daily backstop cron');
+    expect(bodyFor('workflow_dispatch')).toContain('a manual dispatch');
   });
 
   it('spells `success()` out, rather than leaning on GitHub inserting it', () => {
