@@ -267,14 +267,23 @@ export class ApiClient {
           // Non-sensitive UUID — never co-logged with the bearer token above.
           'X-Correlation-Id':
             this.correlationId ?? getCorrelationId() ?? randomUUID(),
-          // ENG-1756 (decision 15): agent writes carry the provenance
-          // context so the backend's anonymous-agent-write admission never
-          // fires for this well-behaved client and the capture sidecar gets
-          // its surface/session. Reads carry none (no admission on reads).
+          // ENG-3054 (plan 24, SP13): the surface travels on EVERY method.
+          //
+          // This NARROWS a recorded decision rather than filling a gap.
+          // ENG-1756 decision 15 put these headers behind `WRITE_METHODS`
+          // deliberately: it was about accountability on writes, where an
+          // agent-initiated write with no resolvable driving human is refused.
+          // Nothing in it argues a READ must be anonymous — and reads are most
+          // of what an AI client does, so a write-only surface makes MCP time
+          // look rare. That is a wrong number served confidently, not a
+          // missing one.
+          //
           // Placed before the spread so a per-call header still wins.
+          'X-Rockhopper-Surface': this.surface,
+          // ENG-1756 (decision 15), unchanged: the two admission-bearing
+          // headers stay on writes, because the admission only fires there.
           ...(WRITE_METHODS.has(method)
             ? {
-                'X-Rockhopper-Surface': this.surface,
                 'X-Rockhopper-Session-Id': this.sessionId,
                 ...(this.drivingHumanPlatformId
                   ? { 'X-Driving-Human': this.drivingHumanPlatformId }
