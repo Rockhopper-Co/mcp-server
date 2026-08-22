@@ -176,3 +176,59 @@ describe('resolveTeamShareTargets', () => {
     ]);
   });
 });
+
+/**
+ * DRIFT SENTINEL — the mirrored denial-code list against the backend's.
+ *
+ * `enrollment.ts:60-78` copies the backend's refusal codes by hand, with the
+ * reason stated: this package ships to customers over npm and cannot import
+ * the backend tree. So nothing in either repo compares the two, and the copy
+ * can fall behind in silence — every test in this file, including the ones
+ * above, exercises the copy against itself.
+ *
+ * Measured 2026-08-22 against `Rockhopper-Co/backend` `origin/dev`
+ * `src/resources/enrolled-files/enrollment-access.types.ts:40-46`, whose
+ * `EnrollmentAccessDenialCode` union carries SIX values. The copy carries five
+ * of them, and does not carry:
+ *
+ * - `GOOGLE_SIGN_IN_REQUIRED` — unreachable here on purpose. `enroll_file`
+ *   refuses a non-Microsoft link with `URL_UNSUPPORTED_PROVIDER` before any
+ *   Google access check runs, so the omission is a scope decision, not drift.
+ * - `ACCESS_CHECK_UNAVAILABLE` — reachable, and the backend's own docblock
+ *   calls it "Retryable" (line 38). It is unmapped here, so it falls past the
+ *   switch to the generic `error` arm and the model is handed a bare
+ *   `Rockhopper API 403` with no statement that trying again may work.
+ *
+ * The cases below PIN what the code does today rather than assert what it
+ * should do — mapping a new code is a product decision about what the user is
+ * told, not a test fix. Whoever makes that decision should find this failing.
+ */
+describe('mirrored denial-code vocabulary vs the backend', () => {
+  it('classifies the retryable ACCESS_CHECK_UNAVAILABLE as a generic error today', () => {
+    const result = classifyEnrollmentFailure(err(403, 'ACCESS_CHECK_UNAVAILABLE'));
+
+    expect(result.outcome).toBe('error');
+    // The two things the code path does NOT say, and the backend says it is.
+    expect(result.message).not.toMatch(/try again|retry/i);
+    expect(result.message).not.toContain('connect_microsoft');
+  });
+
+  it('does not misroute it to an account problem the user would go and fix', () => {
+    // The failure that would be worse than the generic message: telling a user
+    // whose provider merely failed to answer that their access is unproven.
+    const result = classifyEnrollmentFailure(err(403, 'ACCESS_CHECK_UNAVAILABLE'));
+
+    expect(result.outcome).not.toBe('access_unproven');
+    expect(result.outcome).not.toBe('admin_approval_required');
+  });
+
+  it('leaves GOOGLE_SIGN_IN_REQUIRED unmapped — enroll_file is Microsoft-only', () => {
+    // Pinned so that adding Google enrollment has to come back through here.
+    expect(
+      classifyEnrollmentFailure(err(403, 'GOOGLE_SIGN_IN_REQUIRED')).outcome,
+    ).toBe('error');
+    expect(
+      classifyEnrollmentFailure(err(400, 'URL_UNSUPPORTED_PROVIDER')).message,
+    ).toContain('Microsoft Excel workbooks only');
+  });
+});
