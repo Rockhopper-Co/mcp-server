@@ -6,8 +6,10 @@ import { registerPrompts } from '../../prompts/index.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
 import {
   ChangeHistoryNotReadyError,
+  DEFAULT_RETRY_AFTER_SECONDS,
   NOT_READY_MARKER,
   isNotReady,
+  notReadyToolResult,
 } from '../../not-ready.js';
 
 /**
@@ -514,5 +516,144 @@ describe('strict no-partial — change-history surfaces', () => {
         }),
       ).rejects.toThrow(NOT_READY_MARKER);
     });
+  });
+});
+
+/**
+ * The other half of "fail closed": the probe answers that are NOT a capacity
+ * signal.
+ *
+ * `assertChangeHistoryComplete` refuses on a probe it cannot read, which is
+ * what the suite above pins. `not-ready.ts` also names seven statuses that
+ * answer DEFINITIVELY — 400/401/403/404/405/410/422 — and lets those through
+ * untouched, "so the tool reports 'not found' / 'no access' instead of
+ * 'retry in 15s'". Nothing drove that branch: measured before these cases,
+ * `src/not-ready.ts` reported 73.33% branches.
+ *
+ * It matters in the direction the refusal does not: a model told to retry in
+ * fifteen seconds against a file that does not exist retries forever, and the
+ * human is told the history is still computing when it is unreachable.
+ */
+describe('a probe that answers DEFINITIVELY is not a not-ready signal', () => {
+  const probeRejecting = (status: number, message: string) => {
+    const api = createMockApiClient();
+    const err = Object.assign(new Error(message), { status });
+    api.getFoldStatus.mockRejectedValue(err);
+    return api;
+  };
+
+  it.each([
+    [404, 'Rockhopper API 404: Not Found'],
+    [403, 'Rockhopper API 403: Forbidden'],
+    [410, 'Rockhopper API 410: Gone'],
+  ])(
+    'reports the %i verbatim rather than telling the model to retry',
+    async (status, message) => {
+      const api = probeRejecting(status, message);
+
+      const result = await toolHandler(api, 'get_cell_history')({
+        fileMsId: 'file-1',
+        sheetName: 'Sheet1',
+        cellAddress: 'A1',
+      });
+
+      expect(api.getCellHistory).not.toHaveBeenCalled();
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain(message);
+      // The two failure modes must stay distinguishable to the model.
+      expect(result.content[0].text).not.toContain(NOT_READY_MARKER);
+      expect(result.content[0].text).not.toContain('completeness_unknown');
+      expect(result.content[0].text).not.toContain('Retry in');
+    },
+  );
+
+  it('still fails CLOSED on a status that is NOT definitive', async () => {
+    // The polarity check the row above cannot make on its own: 503 means the
+    // probe could not answer, and an unknown completeness state is never
+    // permission to serve rows.
+    const api = probeRejecting(503, 'Rockhopper API 503: Service Unavailable');
+
+    const result = await toolHandler(api, 'get_cell_history')({
+      fileMsId: 'file-1',
+      sheetName: 'Sheet1',
+      cellAddress: 'A1',
+    });
+
+    expect(api.getCellHistory).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain(NOT_READY_MARKER);
+    expect(result.content[0].text).toContain('completeness_unknown');
+  });
+
+  it('treats a definitive-looking status that is not a number as unreadable', async () => {
+    const api = createMockApiClient();
+    api.getFoldStatus.mockRejectedValue(
+      Object.assign(new Error('weird'), { status: '404' }),
+    );
+
+    const result = await toolHandler(api, 'get_cell_history')({
+      fileMsId: 'file-1',
+      sheetName: 'Sheet1',
+      cellAddress: 'A1',
+    });
+
+    expect(result.content[0].text).toContain('completeness_unknown');
+  });
+});
+
+/**
+ * `notReadyToolResult` unwraps before it renders. The three inputs it accepts
+ * produce three different payloads, and two of them had no test: the WRAPPER
+ * shape (`isNotReady` matches an error carrying the typed error as `cause`,
+ * so the renderer must reach through it) and the fallback for anything else.
+ */
+describe('notReadyToolResult unwrapping', () => {
+  const payloadOf = (result: { content: Array<{ text: string }> }) =>
+    JSON.parse(result.content[0].text.split('\n').at(-1) ?? '{}') as {
+      status: string;
+      reason: string;
+      retryAfterSeconds: number;
+      fileMsId: string | null;
+    };
+
+  it('renders the wrapped error\'s reason, not a generic one', () => {
+    const inner = new ChangeHistoryNotReadyError({
+      reason: 'still_producing',
+      retryAfterSeconds: 42,
+      fileMsId: 'file-1',
+    });
+    const wrapper = Object.assign(new Error('while listing versions'), {
+      cause: inner,
+    });
+    expect(isNotReady(wrapper)).toBe(true);
+
+    expect(payloadOf(notReadyToolResult(wrapper))).toEqual({
+      status: 'not_ready',
+      reason: 'still_producing',
+      retryAfterSeconds: 42,
+      fileMsId: 'file-1',
+    });
+  });
+
+  it('falls back to completeness_unknown for anything it cannot unwrap', () => {
+    const payload = payloadOf(notReadyToolResult(new Error('who knows')));
+    expect(payload.reason).toBe('completeness_unknown');
+    expect(payload.retryAfterSeconds).toBe(DEFAULT_RETRY_AFTER_SECONDS);
+    expect(payload.fileMsId).toBeNull();
+  });
+
+  it('names the enrolment state rather than the change history for a fresh file', () => {
+    // ENG-2824 — the two bodies are deliberately different prose, because
+    // "computing this file's change history" over a workbook whose bytes have
+    // never been read invites "so it has no versions".
+    const text = notReadyToolResult(
+      new ChangeHistoryNotReadyError({
+        reason: 'enrollment_incomplete',
+        fileMsId: 'file-9',
+      }),
+    ).content[0].text;
+
+    expect(text).toContain('reading this workbook for the first time');
+    expect(text).not.toContain("change history");
+    expect(text).toContain('Do NOT say the file has no versions');
   });
 });

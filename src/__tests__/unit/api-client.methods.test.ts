@@ -411,3 +411,89 @@ describe('Microsoft account-link methods (ENG-2198)', () => {
     vi.unstubAllGlobals();
   });
 });
+
+/**
+ * ENG-2785 / ENG-2814 — the drive-inventory read, on the wire.
+ *
+ * `list_unenrolled_files` has 19 specs; every one of them mocks this method,
+ * so the URL it actually builds was never exercised (measured: `api-client.ts`
+ * lines 527-532 uncovered before these cases). The cursor is the part that
+ * bites — it is opaque, expires after 30 minutes, and a caller that
+ * double-encodes or drops it silently restarts the customer's paging.
+ */
+describe('listDriveInventory query construction (ENG-2814)', () => {
+  const EMPTY = {
+    items: [],
+    freshness: {
+      asOf: '2026-08-19T21:00:00.000Z',
+      stale: false,
+      refreshing: false,
+      lastFailureAt: null,
+      lastFailureReason: null,
+      consecutiveFailures: 0,
+    },
+    nextCursor: null,
+    snapshotId: '1',
+    snapshotCreatedAt: '2026-08-19T21:00:00.000Z',
+  };
+
+  function client(): { api: ApiClient; fetchSpy: ReturnType<typeof vi.fn> } {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: () => Promise.resolve(EMPTY),
+      text: () => Promise.resolve(JSON.stringify(EMPTY)),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    return {
+      api: new ApiClient({
+        baseUrl: 'https://api.rockhopper.co',
+        token: 'rh_pat_test',
+      }),
+      fetchSpy,
+    };
+  }
+
+  it('asks for the bare route when no parameters are given', async () => {
+    const { api, fetchSpy } = client();
+    await api.listDriveInventory();
+    expect(fetchSpy.mock.calls[0][0]).toBe(
+      'https://api.rockhopper.co/drive-files/inventory',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('carries enrollment, limit and cursor together', async () => {
+    const { api, fetchSpy } = client();
+    await api.listDriveInventory({
+      enrollment: 'not_enrolled',
+      limit: 50,
+      cursor: 'opaque-cursor',
+    });
+    expect(fetchSpy.mock.calls[0][0]).toBe(
+      'https://api.rockhopper.co/drive-files/inventory' +
+        '?enrollment=not_enrolled&limit=50&cursor=opaque-cursor',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('percent-encodes a cursor exactly once, so the backend gets what it issued', async () => {
+    const { api, fetchSpy } = client();
+    await api.listDriveInventory({ cursor: 'a+b/c=d' });
+    const url = new URL(String(fetchSpy.mock.calls[0][0]));
+    expect(url.searchParams.get('cursor')).toBe('a+b/c=d');
+    vi.unstubAllGlobals();
+  });
+
+  it('sends limit=0 rather than dropping it, and omits an empty cursor', async () => {
+    // `limit` is guarded on `!== undefined` and `cursor` on truthiness — two
+    // different rules on adjacent lines, so they are asserted apart.
+    const { api, fetchSpy } = client();
+    await api.listDriveInventory({ limit: 0, cursor: '' });
+    const url = new URL(String(fetchSpy.mock.calls[0][0]));
+    expect(url.searchParams.get('limit')).toBe('0');
+    expect(url.searchParams.has('cursor')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+});
