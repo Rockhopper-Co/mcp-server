@@ -1,7 +1,14 @@
 import { createHmac } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createServer } from '../server.js';
 import { ApiClient } from '../api-client.js';
+
+const packageVersion = (
+  JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  ) as { version: string }
+).version;
 
 function createMockApiClient(): ApiClient {
   const mock = {
@@ -71,9 +78,26 @@ describe('createServer', () => {
     expect(server).toBeDefined();
   });
 
+  /**
+   * This asserted `expect(server).toBeDefined()` — the same assertion as the
+   * test above it, under a title claiming to check name and version. The
+   * declared identity is what comes back in the MCP `initialize` response and
+   * is the only handle a client has on which build it is talking to
+   * (ENG-1955); `server.wiring.test.ts` pins what `createServer` PASSES to a
+   * mocked constructor, and this pins what the REAL server ends up holding.
+   */
   it('server has expected name and version metadata', () => {
     const server = createServer(apiClient);
-    // The McpServer exposes server info via the underlying server
-    expect(server).toBeDefined();
+
+    const info = (
+      server as unknown as {
+        server: { _serverInfo: { name: string; version: string } };
+      }
+    ).server._serverInfo;
+
+    expect(info.name).toBe('rockhopper');
+    expect(info.version).toBe(packageVersion);
+    // The literal it was before ENG-1955: 0.2.0 through 0.8.0 all announced it.
+    expect(info.version).not.toBe('0.1.0');
   });
 });
