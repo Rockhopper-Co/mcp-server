@@ -386,3 +386,245 @@ describe('read tool handlers', () => {
     });
   });
 });
+
+/**
+ * The rendering arms of the read tools that nothing drove.
+ *
+ * Every existing case above feeds the happy fixture, so the fallbacks each
+ * renderer carries — an author with no name, a review with no requester, a
+ * reverted version — ran only in their present branch. Measured before these
+ * cases: `get-comments.ts` 71.42% branches, `get-reviews.ts` 78.57%,
+ * `get-versions.ts` 83.33%.
+ *
+ * These are not cosmetic. The consumer is a model quoting the line back to a
+ * customer, and the failure is a sentence like `**null** [undefined]`.
+ */
+function readHandler(
+  api: ReturnType<typeof createMockApiClient>,
+  name: string,
+) {
+  const server = createMockMcpServer();
+  registerTools(server as any, api as any);
+  return server.registerTool.mock.calls.find((c) => c[0] === name)?.[2] as (
+    args: Record<string, unknown>,
+  ) => Promise<{ content: Array<{ text: string }>; isError?: boolean }>;
+}
+
+describe('get_file_comments rendering arms', () => {
+  const comment = (over: Record<string, unknown>) => ({
+    internalId: 1,
+    message: 'Check A1',
+    source: 'rockhopper',
+    cellReference: 'Sheet1!A1',
+    resolved: false,
+    authorName: 'Alice',
+    authorEmail: 'alice@test.com',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    editedOn: null,
+    replies: [],
+    ...over,
+  });
+
+  it('falls back to the email, then to Unknown, when there is no author name', async () => {
+    const api = createMockApiClient();
+    api.getFileComments.mockResolvedValue([
+      comment({ internalId: 1, message: 'by-email', authorName: null }),
+      comment({
+        internalId: 2,
+        message: 'by-nobody',
+        authorName: null,
+        authorEmail: null,
+      }),
+    ]);
+
+    const text = (await readHandler(api, 'get_file_comments')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    expect(text).toContain('**alice@test.com**');
+    expect(text).toContain('**Unknown**');
+    expect(text).not.toContain('**null**');
+  });
+
+  it('marks a resolved thread and leaves an open one unmarked', async () => {
+    const api = createMockApiClient();
+    api.getFileComments.mockResolvedValue([
+      comment({ internalId: 1, message: 'closed', resolved: true }),
+      comment({ internalId: 2, message: 'open' }),
+    ]);
+
+    const text = (await readHandler(api, 'get_file_comments')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    const [closed, open] = text.split('\n').filter((l) => l.includes('**Alice**'));
+    expect(closed).toContain('(resolved)');
+    expect(open).not.toContain('(resolved)');
+  });
+
+  it('indents replies under their parent instead of flattening the thread', async () => {
+    const api = createMockApiClient();
+    api.getFileComments.mockResolvedValue([
+      comment({
+        internalId: 1,
+        message: 'parent',
+        replies: [
+          comment({
+            internalId: 2,
+            message: 'child',
+            authorName: 'Bob',
+            cellReference: null,
+          }),
+        ],
+      }),
+    ]);
+
+    const text = (await readHandler(api, 'get_file_comments')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    // One thread, two rendered lines — the reply is nested, not counted again.
+    expect(text).toContain('1 comment thread(s)');
+    expect(text).toContain('\n  - **Bob**');
+    expect(text).not.toContain('\n- **Bob**');
+  });
+
+  it('omits the cell segment for a file-level comment', async () => {
+    const api = createMockApiClient();
+    api.getFileComments.mockResolvedValue([
+      comment({ message: 'file-level', cellReference: null }),
+    ]);
+
+    const text = (await readHandler(api, 'get_file_comments')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    expect(text).toContain('**Alice**: file-level');
+    expect(text).not.toContain('[null]');
+  });
+
+  it('reports a non-Error rejection as text rather than "[object Object]" swallowing it', async () => {
+    const api = createMockApiClient();
+    api.getFileComments.mockRejectedValue('backend said no');
+
+    const result = await readHandler(api, 'get_file_comments')({
+      fileMsId: 'file-1',
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('backend said no');
+  });
+});
+
+describe('get_reviews rendering arms', () => {
+  const review = (over: Record<string, unknown>) => ({
+    id: 500,
+    subject: 'Please review v1',
+    status: 'PENDING',
+    createdAt: '2026-01-01T00:00:00Z',
+    requester: { firstName: 'Grace', lastName: 'Hopper' },
+    ...over,
+  });
+
+  it('names the requester and prints the description when both are present', async () => {
+    const api = createMockApiClient();
+    api.getReviewsForVersion.mockResolvedValue([
+      review({ description: 'Growth rate looks high' }),
+    ]);
+
+    const text = (await readHandler(api, 'get_reviews')({ versionId: 101 }))
+      .content[0].text;
+
+    expect(text).toContain('**Please review v1** (id: 500, status: PENDING)');
+    expect(text).toContain('requested by Grace Hopper');
+    expect(text).toContain('— Growth rate looks high');
+  });
+
+  it('says Unknown for a review with no requester and prints no dangling description', async () => {
+    const api = createMockApiClient();
+    api.getReviewsForVersion.mockResolvedValue([review({ requester: null })]);
+
+    const text = (await readHandler(api, 'get_reviews')({ versionId: 101 }))
+      .content[0].text;
+
+    expect(text).toContain('requested by Unknown');
+    expect(text).not.toContain('undefined');
+    expect(text.trimEnd().endsWith('2026-01-01T00:00:00Z')).toBe(true);
+  });
+
+  it('says no reviews were found rather than printing an empty list', async () => {
+    const api = createMockApiClient();
+    api.getReviewsForLatestVersion.mockResolvedValue([]);
+
+    const text = (await readHandler(api, 'get_reviews')({ fileMsId: 'file-1' }))
+      .content[0].text;
+
+    expect(text).toBe('No reviews found.');
+  });
+});
+
+describe('get_file_versions flag rendering', () => {
+  const version = (over: Record<string, unknown>) => ({
+    internalId: 101,
+    majorVersion: 1,
+    minorVersion: 0,
+    patchVersion: 0,
+    description: 'Initial',
+    createdAt: '2026-01-01T00:00:00Z',
+    wasDiscarded: false,
+    wasReverted: false,
+    byUserName: 'David Kuchar',
+    byUserPlatformId: 'ms-user-1',
+    byUserPlatformType: 'microsoft',
+    ...over,
+  });
+
+  it('tags a reverted version, which is a different fact from a discarded one', async () => {
+    const api = createMockApiClient();
+    api.getFileVersions.mockResolvedValue([version({ wasReverted: true })]);
+
+    const text = (await readHandler(api, 'get_file_versions')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    expect(text).toContain('[reverted]');
+    expect(text).not.toContain('discarded');
+  });
+
+  it('lists both flags on a version that is discarded AND reverted', async () => {
+    const api = createMockApiClient();
+    api.getFileVersions.mockResolvedValue([
+      version({ wasDiscarded: true, wasReverted: true, majorVersion: 1 }),
+    ]);
+
+    const text = (await readHandler(api, 'get_file_versions')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    expect(text).toContain('[discarded, reverted]');
+  });
+
+  it('prints no flag bracket at all on an ordinary version', async () => {
+    const api = createMockApiClient();
+    api.getFileVersions.mockResolvedValue([version({})]);
+
+    const text = (await readHandler(api, 'get_file_versions')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    expect(text).not.toContain('[');
+  });
+
+  it('omits the description segment when the backend sent none', async () => {
+    const api = createMockApiClient();
+    api.getFileVersions.mockResolvedValue([version({ description: null })]);
+
+    const text = (await readHandler(api, 'get_file_versions')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    expect(text).toContain('— by David Kuchar');
+    expect(text).not.toContain('null');
+  });
+});
