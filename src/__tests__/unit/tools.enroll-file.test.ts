@@ -191,6 +191,32 @@ describe('a hidden file is never silently restored (D8)', () => {
     expect(api.createEnrolledFile).toHaveBeenCalledTimes(1);
   });
 
+  it('never shows the user the empty-string name placeholder', async () => {
+    // The bulk read withholds `name` for a hidden or stub row, so the id-pair
+    // route carries `''` into the answer. The source calls that "a placeholder
+    // that never reaches a user" — this is the assertion behind the claim.
+    // Without the `|| 'That workbook'` / `|| null` guards the model is handed
+    // `"" was previously removed` and a `name` of `""`, and it will read the
+    // empty string back to the person as the file's name.
+    const api = createMockApiClient();
+    api.getEnrollmentInfo.mockResolvedValue([
+      { isEnrolled: false, enrollmentState: 'hidden', isInUserWorkspace: false },
+    ]);
+
+    const result = await handlerFor(api)({
+      msId: 'ms-item-9',
+      driveMsId: 'drive-9',
+      share_with: 'me',
+    });
+
+    const text = result.content[0].text;
+    expect(text).toContain('"That workbook" was previously removed');
+    expect(text).not.toContain('""');
+    expect(
+      JSON.parse(text.split('\n').at(-1) as string) as { name: unknown },
+    ).toMatchObject({ name: null });
+  });
+
   it('holds the same line when the target arrived as an id pair', async () => {
     const api = createMockApiClient();
     api.getEnrollmentInfo.mockResolvedValue([
@@ -298,6 +324,43 @@ describe('the server outcome overrides the pre-write lookup', () => {
 
     expect(outcomeOf(result)).toBe('enrolled');
     expect(result.content[0].text).toContain('is being added to Rockhopper');
+  });
+
+  it('matches the verdict on platformId when the response omits msId', async () => {
+    // The two id fields are not interchangeable in the backend's response —
+    // `platformId` is the enrolled row's key and `msId` the Microsoft item's,
+    // and which one comes back has moved. Matching on `msId` alone would drop
+    // to the fallback and report `enrolled` for a file already there, which is
+    // the exact wrong answer ENG-2536 exists to stop.
+    const api = createMockApiClient();
+    api.createEnrolledFile.mockResolvedValue({
+      enrollmentId: 'enr-1',
+      status: 'queued',
+      files: [{ platformId: 'ms-item-9', outcome: 'already_enrolled' }],
+    });
+
+    const result = await handlerFor(api)({ url: URL, share_with: 'me' });
+
+    expect(outcomeOf(result)).toBe('already_enrolled');
+  });
+
+  it('ignores a verdict about a file that is not the one being enrolled', async () => {
+    // Two entries and neither is ours: there is no single-entry fallback to
+    // lean on, so the pre-write lookup is the only honest answer left. Reading
+    // somebody else's verdict here would report a state this call never saw.
+    const api = createMockApiClient();
+    api.createEnrolledFile.mockResolvedValue({
+      enrollmentId: 'enr-1',
+      status: 'queued',
+      files: [
+        { msId: 'ms-other-1', platformId: 'ms-other-1', outcome: 'already_enrolled' },
+        { msId: 'ms-other-2', platformId: 'ms-other-2', outcome: 'restored' },
+      ],
+    });
+
+    const result = await handlerFor(api)({ url: URL, share_with: 'me' });
+
+    expect(outcomeOf(result)).toBe('enrolled');
   });
 
   it('falls back to the lookup when the backend is older than the field', async () => {

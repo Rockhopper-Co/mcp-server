@@ -437,6 +437,80 @@ describe('search_drive_files — confirmation lanes', () => {
     expect(api.searchDriveFiles).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * ENG-2784 — the form has TWO ways to name a file, and the order between
+   * them is a decision, not an accident.
+   *
+   * `tools.drive-search.picker.test.ts` proves a pasted link is handed back,
+   * but only alongside `choice: "none"` — where nothing competes with it. The
+   * ordering the handler actually implements is that a link beats a PICKED
+   * ROW, on the reasoning that someone who typed the address means that file.
+   * Reverse it and a user who pastes a link after mis-clicking row 1 gets row
+   * 1 enrolled, and every spec still passes.
+   */
+  it('takes the pasted link over the row the user also clicked', async () => {
+    const api = createMockApiClient();
+    const handler = handlerFor(api);
+    const asked = await handler({ query: 'Becklar' }, MODERN_CTX);
+
+    const answered = await handler(
+      { query: 'Becklar' },
+      retryCtx(asked.requestState as string, {
+        choice: '1',
+        link: 'https://contoso.sharepoint.com/:x:/r/Docs/Q3.xlsx',
+      }),
+    );
+
+    expect(outcomeOf(answered)).toBe('link_supplied');
+    expect(detailOf(answered).url).toBe(
+      'https://contoso.sharepoint.com/:x:/r/Docs/Q3.xlsx',
+    );
+    // The row is not smuggled through alongside it: `enroll_file` takes the
+    // url OR the id pair, never both, and refuses outright when given both.
+    expect(detailOf(answered).msId).toBeUndefined();
+    expect(detailOf(answered).driveMsId).toBeUndefined();
+  });
+
+  it('ignores a link field that is not an address, and honours the row', async () => {
+    // `usableLink` exists so a stray keystroke in the box is not announced to
+    // the model as "the user gave us the file". Falling through to the row is
+    // the whole point — refusing both would strand a user who typed in the
+    // wrong box.
+    const api = createMockApiClient();
+    const handler = handlerFor(api);
+    const asked = await handler({ query: 'Becklar' }, MODERN_CTX);
+
+    const answered = await handler(
+      { query: 'Becklar' },
+      retryCtx(asked.requestState as string, {
+        choice: '2',
+        link: 'the one in finance',
+      }),
+    );
+
+    expect(outcomeOf(answered)).toBe('confirmed');
+    expect(detailOf(answered).msId).toBe('ms-item-10');
+  });
+
+  it('treats Accept with an empty form as unanswered, not as a rejection', async () => {
+    // ENG-2789 made every field optional so Accept could never be refused for
+    // an unset field — which makes "accepted, filled in nothing" a REACHABLE
+    // state, and it means the user told us nothing. Reporting `declined` here
+    // would send the model off to search again for a list nobody read.
+    const handler = handlerFor(createMockApiClient());
+    const asked = await handler({ query: 'Becklar' }, MODERN_CTX);
+
+    const answered = await handler(
+      { query: 'Becklar' },
+      retryCtx(asked.requestState as string, {}),
+    );
+
+    expect(outcomeOf(answered)).toBe('dismissed');
+    expect(answered.isError).toBeUndefined();
+    // The candidates are re-listed, because the user still has to pick one.
+    expect(answered.content[0].text).toContain('Becklar_RMR_Model.xlsx');
+  });
+
   // ENG-2789 — this spec used to expect `declined` for both actions. That is
   // the defect: a prompt whose candidates were never on screen closed, and the
   // tool reported a decision the user had not made.
@@ -625,6 +699,23 @@ describe('search_drive_files — the remaining refusals', () => {
     expect(outcomeOf(result)).toBe('search_unavailable');
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('not an empty drive');
+  });
+
+  it('names the DEPLOYMENT when the backend serves no drive-search route', async () => {
+    // This package ships on npm's own clock and `npx` picks up `latest`, so
+    // calling a Rockhopper older than the route is a real case. A 404 must not
+    // read as "this user has no files" — it is the one refusal whose remedy is
+    // "paste a link instead", and nothing checked it reached the tool surface.
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockRejectedValue(
+      new RockhopperApiError(404, 'Cannot GET /drive-files/search'),
+    );
+    const result = await handlerFor(api)({ query: 'Becklar' });
+
+    expect(outcomeOf(result)).toBe('backend_unsupported');
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('enroll_file');
+    expect(result.content[0].text).not.toMatch(/no files|empty/i);
   });
 
   it('sends the user to the browser bar when Graph withheld the drive id', async () => {
