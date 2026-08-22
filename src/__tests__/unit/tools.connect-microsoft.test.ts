@@ -112,6 +112,52 @@ describe('connect_microsoft', () => {
       expect(result.content[0].text).toContain('Files.Read.All');
     });
 
+    /**
+     * A link row that exists but carries none of the optional detail — the
+     * label, the scope list and the timestamp are each their own conditional
+     * (`connect-microsoft.ts:109-114`) and every one of their FALSE arms was
+     * unreached: the only `linked: true` case in this file fills all three.
+     *
+     * The sentence is read by a model and quoted to a person, so the arm that
+     * matters is the one that must not print `Connected as null.`
+     */
+    it('says only Connected when the backend sent no label, scopes or date', async () => {
+      const api = createMockApiClient();
+      api.getMicrosoftLink.mockResolvedValue({
+        linked: true,
+        msAccountLabel: null,
+        msTenantId: null,
+        grantedScopes: [],
+        linkedAt: null,
+        lastUsedAt: null,
+      });
+      const handler = handlerFor(register(api), 'microsoft_link_status');
+
+      const result = await handler({});
+      const text = result.content[0].text as string;
+
+      expect(text).toBe('Connected.');
+      expect(result.isError).toBeUndefined();
+    });
+
+    /** Each optional segment appears on its own, not only all-or-nothing. */
+    it('names the account without inventing a grant list or a date', async () => {
+      const api = createMockApiClient();
+      api.getMicrosoftLink.mockResolvedValue({
+        linked: true,
+        msAccountLabel: 'user@contoso.com',
+        msTenantId: 'tenant-1',
+        grantedScopes: [],
+        linkedAt: null,
+        lastUsedAt: null,
+      });
+      const handler = handlerFor(register(api), 'microsoft_link_status');
+
+      const result = await handler({});
+
+      expect(result.content[0].text).toBe('Connected as user@contoso.com.');
+    });
+
     it('surfaces a read failure as an error', async () => {
       const api = createMockApiClient();
       api.getMicrosoftLink.mockRejectedValue(new Error('unauthorized'));

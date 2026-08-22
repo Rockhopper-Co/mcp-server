@@ -155,6 +155,84 @@ describe('tool telemetry (ENG-2823)', () => {
       expect(JSON.stringify(events[0])).not.toContain('/sites/Finance');
     });
 
+    /**
+     * A handler that rejects with something that is not an `Error`.
+     *
+     * `describeError` (`tool-telemetry.ts:101-111`) has three arms and only the
+     * `instanceof Error` one was driven. This is the arm an operator meets when
+     * an upstream SDK rejects with a bare string or a plain object: the line has
+     * to say SOMETHING about what came back, and it must still say nothing
+     * about the value, which is uncontrolled text.
+     */
+    it.each([
+      ['a bare string', 'ECONNRESET on /sites/Finance/Budget.xlsx', 'string'],
+      ['a plain object', { detail: '/sites/Finance/Budget.xlsx' }, 'object'],
+      ['a number', 502, 'number'],
+    ])('a non-Error rejection is FAILED and names its %s type only', async (
+      _label,
+      thrown,
+      expectedName,
+    ) => {
+      const events: ToolTelemetryEvent[] = [];
+      const wrapped = await wrapTool(
+        () => Promise.reject(thrown),
+        (e) => events.push(e),
+      );
+
+      await expect(wrapped({})).rejects.toBeDefined();
+
+      expect(events[0].outcome).toBe('failed');
+      expect(events[0].errorName).toBe(expectedName);
+      expect(JSON.stringify(events[0])).not.toContain('Budget.xlsx');
+    });
+
+    /**
+     * `null` and `undefined` are the one non-Error case that must record NO
+     * name rather than the string "object": `typeof null` is `'object'`, which
+     * would put a word in the log that describes nothing.
+     */
+    it.each([
+      ['null', null],
+      ['undefined', undefined],
+    ])('records no errorName at all when the handler rejects with %s', async (
+      _label,
+      thrown,
+    ) => {
+      const events: ToolTelemetryEvent[] = [];
+      const wrapped = await wrapTool(
+        () => Promise.reject(thrown),
+        (e) => events.push(e),
+      );
+
+      await expect(wrapped({})).rejects.toBeFalsy();
+
+      expect(events[0].outcome).toBe('failed');
+      expect(events[0].errorName).toBeUndefined();
+      expect(events[0].status).toBeUndefined();
+    });
+
+    /**
+     * The status field is typed `number`. A backend that starts serving it as
+     * text must not put that text into the collected line — the whole reason
+     * the event carries a fixed, typed key set.
+     */
+    it('drops a non-numeric status rather than emitting it', async () => {
+      const events: ToolTelemetryEvent[] = [];
+      class TextStatusError extends Error {
+        status = '502 /sites/Finance';
+      }
+      const wrapped = await wrapTool(
+        () => Promise.reject(new TextStatusError('upstream')),
+        (e) => events.push(e),
+      );
+
+      await expect(wrapped({})).rejects.toThrow('upstream');
+
+      expect(events[0].errorName).toBe('TextStatusError');
+      expect(events[0].status).toBeUndefined();
+      expect(JSON.stringify(events[0])).not.toContain('/sites/Finance');
+    });
+
     it('records how long the call took', async () => {
       const events: ToolTelemetryEvent[] = [];
       const wrapped = await wrapTool(
