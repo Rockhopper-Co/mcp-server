@@ -1,7 +1,32 @@
 import { createHmac } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createServer } from '../server.js';
 import { ApiClient } from '../api-client.js';
+
+/**
+ * The version this file asserts is read from package.json HERE, and the value
+ * it is compared against is produced by the real `logger.ts` at import time —
+ * two independent readers, so the assertion is not the implementation restated.
+ */
+const packageVersion = (
+  JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  ) as { version: string }
+).version;
+
+/**
+ * `McpServer` keeps its declared identity on the underlying `Server` it wraps
+ * and exposes no getter for it, so the assertion below reaches through. The
+ * alternative — a full `initialize` handshake — is what the e2e suites do; the
+ * point of doing it here is that this is the ONLY place the REAL logger's
+ * `serviceVersion` is checked against package.json. `server.wiring.test.ts`
+ * mocks both the SDK constructor and nothing else, so it proves `createServer`
+ * forwards a version, never that the version is the package's.
+ */
+interface ServerWithInfo {
+  server: { _serverInfo: { name: string; version: string } };
+}
 
 function createMockApiClient(): ApiClient {
   const mock = {
@@ -66,14 +91,21 @@ describe('createServer', () => {
     apiClient = createMockApiClient();
   });
 
-  it('creates an McpServer instance', () => {
+  it('creates a connectable McpServer, not just a truthy object', () => {
     const server = createServer(apiClient);
-    expect(server).toBeDefined();
+    expect(typeof server.connect).toBe('function');
+    expect(typeof server.registerTool).toBe('function');
   });
 
-  it('server has expected name and version metadata', () => {
-    const server = createServer(apiClient);
-    // The McpServer exposes server info via the underlying server
-    expect(server).toBeDefined();
+  // ENG-1955 — the declared version is the only handle a client has on which
+  // build it is talking to; it comes back in `initialize`. It was a literal
+  // once, so 0.2.0 through 0.8.0 all announced 0.1.0.
+  it('declares the package name and the package.json version', () => {
+    const info = (createServer(apiClient) as unknown as ServerWithInfo).server
+      ._serverInfo;
+    expect(info.name).toBe('rockhopper');
+    expect(info.version).toBe(packageVersion);
+    // The literal it was before ENG-1955: 0.2.0 through 0.8.0 all announced it.
+    expect(info.version).not.toBe('0.1.0');
   });
 });
