@@ -7,7 +7,13 @@ import { ApiClient } from '../../api-client.js';
  * headers the backend's decision-15 admission + provenance sidecar consume:
  * `X-Rockhopper-Surface` ('mcp' by default), a per-client
  * `X-Rockhopper-Session-Id`, and — once the driving human is known —
- * `X-Driving-Human`. Reads stay header-free (no admission on reads).
+ * `X-Driving-Human`.
+ *
+ * ENG-3054 (plan 24, SP13) NARROWS that: `X-Rockhopper-Surface` now travels on
+ * EVERY method, reads included. Reads are most of what an AI client does, so a
+ * write-only surface header makes MCP time look rare — a wrong number, not an
+ * absent one. The two admission-bearing headers stay write-only, because
+ * decision 15's admission only ever fires on a write.
  */
 describe('ApiClient provenance-context emit (ENG-1756)', () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
@@ -57,12 +63,36 @@ describe('ApiClient provenance-context emit (ENG-1756)', () => {
     );
   });
 
-  it('does NOT stamp provenance headers on reads', async () => {
+  // ENG-3054 — the widening, and its exact edge.
+  it('stamps the surface header on READS too', async () => {
     const c = client();
     await c.getMe();
 
+    expect(headersOfCall()['X-Rockhopper-Surface']).toBe('mcp');
+  });
+
+  it('honours a caller-supplied surface on a READ, not only on a write', async () => {
+    // This is the path mcp-gateway takes: it constructs this same ApiClient
+    // with `surface: 'gateway'`. Testing only the constructor default would
+    // leave the gateway's real wire value unexercised.
+    const c = new ApiClient({
+      baseUrl: 'https://api.rockhopper.co',
+      token: 'rh_pat_test',
+      provenanceContext: { surface: 'gateway', sessionId: 'gw-session-1' },
+    });
+    await c.getMe();
+
+    expect(headersOfCall()['X-Rockhopper-Surface']).toBe('gateway');
+  });
+
+  it('still withholds the admission headers on reads', async () => {
+    // The widening is the surface header ALONE. Decision 15's admission fires
+    // on writes only, so the session id and the driving human stay there.
+    const c = client();
+    c.setDrivingHuman('ms-oid-123');
+    await c.getMe();
+
     const headers = headersOfCall();
-    expect(headers['X-Rockhopper-Surface']).toBeUndefined();
     expect(headers['X-Rockhopper-Session-Id']).toBeUndefined();
     expect(headers['X-Driving-Human']).toBeUndefined();
   });
