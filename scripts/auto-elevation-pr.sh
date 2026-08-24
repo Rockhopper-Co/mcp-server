@@ -1,0 +1,220 @@
+#!/usr/bin/env bash
+#
+# Open the "elevate to <base>" pull request when <head> has run ahead of it.
+# ENG-3180.
+#
+# David, 2026-08-23: "can we add controls to github to always automatically open
+# an 'elevate to <branch>' pr whenever there is a disparity? for the prod one, it
+# should request a review from sperezl1".  These were opened by hand until now,
+# and on 2026-08-23 an afternoon of fixes sat on `dev` with nothing tracking
+# them.
+#
+# WHY A SHELL SCRIPT AND NOT INLINE YAML.  A workflow that inlines its decisions
+# in `run:` blocks cannot be executed anywhere except GitHub's runners, so its
+# only test is production.  Everything that DECIDES lives here, where
+# `auto-elevation-pr.test.sh` drives it against a real git repository with `gh`
+# stubbed on PATH.  The workflow next door only supplies inputs and a token.
+#
+# WHAT IT WILL NEVER DO.  It never closes an elevation, never merges one, never
+# marks one ready or draft.  An open elevation pull request is the release
+# sitting in its normal state, not a task anybody is late on — so the only
+# action here is "open one if none exists".
+#
+#     ELEVATION_HEAD=dev ELEVATION_BASE=staging bash scripts/auto-elevation-pr.sh
+#
+# Inputs, all through the environment.  A branch name is attacker-controlled
+# text and must never be interpolated into a shell script by the workflow
+# templater — the same reason `scripts/check-elevation.sh` in mcp-gateway reads
+# its head ref from `env:`.
+#
+#   ELEVATION_HEAD        branch that may have run ahead        (required)
+#   ELEVATION_BASE        branch it would be elevated into      (required)
+#   ELEVATION_REVIEWER    request a review from this login      (optional)
+#   ELEVATION_CHECKS_RUN  "true" only when a GitHub App token
+#                         opened the pull request; anything
+#                         else puts the no-checks warning in
+#                         the body                              (default false)
+#   ELEVATION_MAX_SUBJECTS  how many commit subjects to list    (default 60)
+#   ELEVATION_REMOTE      remote to read the branches from      (default origin)
+#
+set -euo pipefail
+
+head_ref="${ELEVATION_HEAD:-}"
+base_ref="${ELEVATION_BASE:-}"
+reviewer="${ELEVATION_REVIEWER:-}"
+checks_run="${ELEVATION_CHECKS_RUN:-false}"
+max_subjects="${ELEVATION_MAX_SUBJECTS:-60}"
+remote="${ELEVATION_REMOTE:-origin}"
+
+die() { printf '::error::%s\n' "$*" >&2; exit 1; }
+
+# An empty ELEVATION_BASE would build the range `refs/remotes/origin/..dev`,
+# which git reads without complaint.  Refuse rather than guess.
+[ -n "$head_ref" ] || die "ELEVATION_HEAD is empty — refusing to guess which \
+branch has run ahead."
+[ -n "$base_ref" ] || die "ELEVATION_BASE is empty — refusing to guess what to \
+elevate into."
+[ "$head_ref" != "$base_ref" ] || die "ELEVATION_HEAD and ELEVATION_BASE are \
+both \`$head_ref\`. A branch cannot be elevated into itself."
+
+# --- 1. is there anything to elevate? ----------------------------------------
+# Fetch the two branches by name rather than trusting the checkout to have them.
+# `actions/checkout` writes a single-branch refspec by default, so
+# `refs/remotes/origin/staging` may simply not exist in the workspace — and a
+# missing ref is not an error to `rev-list`'s eye, it is a different range.
+#
+# A FETCH FAILURE MUST GO RED.  If a branch is renamed or typo'd, the fetch
+# fails; treating that as "0 commits ahead" would make this workflow a silent,
+# permanent no-op indistinguishable from a repository with nothing to promote.
+git fetch --quiet --no-tags "$remote" \
+    "+refs/heads/$head_ref:refs/remotes/$remote/$head_ref" \
+    "+refs/heads/$base_ref:refs/remotes/$remote/$base_ref" \
+  || die "could not fetch \`$head_ref\` and \`$base_ref\` from \`$remote\`. \
+One of them probably does not exist under that name. Refusing to report \
+\"nothing to elevate\" on the strength of a failed fetch."
+
+range="refs/remotes/$remote/$base_ref..refs/remotes/$remote/$head_ref"
+ahead="$(git rev-list --count "$range")"
+
+if [ "$ahead" -eq 0 ]; then
+  echo "\`$head_ref\` is level with \`$base_ref\` — nothing to elevate."
+  exit 0
+fi
+echo "\`$head_ref\` is $ahead commits ahead of \`$base_ref\`."
+
+# --- 2. is one already open? -------------------------------------------------
+# THIS IS THE HALF THAT MATTERS.  A pull request tracks its head BRANCH, so the
+# open elevation already contains every commit pushed since it was opened and
+# will contain every one pushed after.  Opening a second is not a duplicate
+# notification, it is two pull requests for one promotion — each with its own
+# checks and its own reviewers, and no way to tell which one is the real ship.
+#
+# On the day this shipped all seven repositories already had an open
+# `staging` -> `main` elevation, so this is the branch that runs on day one, not
+# an edge case.
+#
+# FAIL CLOSED.  If the query itself fails — rate limit, permissions, an outage —
+# the answer is unknown, and "unknown" must never resolve to "no, open another
+# one".  `set -e` would already abort on the failed substitution; this says why.
+if ! existing="$(gh pr list --base "$base_ref" --head "$head_ref" --state open \
+                   --json number --jq '.[0].number // empty')"; then
+  die "could not ask GitHub whether an elevation is already open for \
+\`$head_ref\` -> \`$base_ref\`. Refusing to open one blind — a second elevation \
+for the same promotion is worse than a late one."
+fi
+
+if [ -n "$existing" ]; then
+  echo "#$existing is already open for \`$head_ref\` -> \`$base_ref\`, and it \
+tracks the branch — nothing to do."
+  exit 0
+fi
+
+# --- 3. compose the body ------------------------------------------------------
+body="$(mktemp)"
+{
+  printf '`%s` is **%s commits** ahead of `%s`. Opened automatically (ENG-3180) \
+because the two branches diverged; nothing here has been merged, closed or \
+marked ready by automation, and nothing will be.\n\n' \
+    "$head_ref" "$ahead" "$base_ref"
+
+  # THE WARNING GOES IN THE BODY, NOT THE LOG.  Nobody opens the Actions log
+  # before merging an elevation; they look at the check list on the pull
+  # request.  An EMPTY check list and a PASSING check list look identical at a
+  # glance, and that confusion is the exact failure this project keeps paying
+  # for — so when the checks genuinely did not start, it has to say so where the
+  # decision is made.
+  #
+  # And it has to come OFF once they do run.  A warning that is always present
+  # is wallpaper, and is not read on the day it is true.
+  if [ "$checks_run" != "true" ]; then
+    printf '> [!WARNING]\n'
+    printf '> **No checks will run on this pull request. An empty check list \
+below means the tests were never started — it does not mean they passed.**\n'
+    printf '>\n'
+    printf '> GitHub Actions opened this using the default `GITHUB_TOKEN`, and \
+GitHub deliberately refuses to start `pull_request` workflows for anything that \
+token creates, so that a workflow cannot trigger itself forever.\n'
+    printf '>\n'
+    printf '> **Before merging, start the suite by hand:** the repository'"'"'s \
+Actions tab -> its test workflow -> **Run workflow** -> pick `%s`.\n' "$head_ref"
+    printf '>\n'
+    printf '> This warning disappears on its own once `PACKAGE_SYNC_APP_ID` and \
+`PACKAGE_SYNC_PRIVATE_KEY` exist as Actions secrets in this repository and the \
+App is installed on it. No code change is needed on that day — see ENG-3180.\n\n'
+  fi
+
+  printf '## Commits\n\n'
+  # Merge commits are counted in the title (they are real commits on the branch)
+  # but their subjects are "Merge pull request #123 from ..." and carry nothing,
+  # so the readable list skips them and the truncation maths follows the list.
+  listed="$(git rev-list --count --no-merges "$range")"
+  git log --no-merges --format='- %s' --max-count="$max_subjects" "$range"
+  if [ "$listed" -gt "$max_subjects" ]; then
+    # NOT a list item: the test counts subject bullets, and a truncation
+    # notice that looks like one makes the cap unassertable.
+    printf '\n_…and %s more commits._\n' "$((listed - max_subjects))"
+  fi
+} > "$body"
+
+# --- 4. open it ---------------------------------------------------------------
+err="$(mktemp)"
+if ! url="$(gh pr create --base "$base_ref" --head "$head_ref" \
+              --title "elevate to $base_ref — $ahead commits" \
+              --body-file "$body" 2>"$err")"; then
+  # A LOST RACE IS THE CORRECT OUTCOME, NOT A FAILURE.  `concurrency` in the
+  # workflow makes two simultaneous runs rare rather than impossible — a cron
+  # and a push can be in flight together — and GitHub refusing the second
+  # create is precisely the protection working.
+  #
+  # Narrow on purpose.  A blanket `|| true` here would make a permissions
+  # failure look identical to a successful no-op, which is the shape of every
+  # silent-failure incident in this codebase.
+  if grep -qi 'already exists' "$err"; then
+    echo "another run opened it first — nothing to do."
+    exit 0
+  fi
+  # MEASURED 2026-08-23, and it is the day-one state of every repository here:
+  # `can_approve_pull_request_reviews` reads FALSE on all seven, which is the
+  # single "Allow GitHub Actions to create and approve pull requests" checkbox.
+  # With it off, the `GITHUB_TOKEN` fallback cannot open anything.  Say exactly
+  # where the switch is rather than making somebody decode a GraphQL string —
+  # agents are barred from changing repository settings, so a human reads this.
+  if grep -qi 'not permitted to create' "$err"; then
+    cat "$err" >&2
+    die "this repository does not allow GitHub Actions to open pull requests, \
+so the fallback path cannot work here. Fix EITHER way: Settings -> Actions -> \
+General -> Workflow permissions -> tick \"Allow GitHub Actions to create and \
+approve pull requests\"; or add \`PACKAGE_SYNC_APP_ID\` and \
+\`PACKAGE_SYNC_PRIVATE_KEY\` as Actions secrets here and install the \
+package-sync App on this repository with pull-request write, which is the \
+better fix because a pull request opened by the App also RUNS ITS CHECKS. \
+ENG-3180."
+  fi
+  cat "$err" >&2
+  die "\`gh pr create\` failed for \`$head_ref\` -> \`$base_ref\` (its reason is \
+printed above)."
+fi
+echo "opened $url"
+
+# --- 5. the production hop only ----------------------------------------------
+# `dev` -> `staging` requests nobody.  A review request on every staging
+# elevation trains the reviewer to dismiss the notification, and then the
+# production one goes past unread.
+if [ -n "$reviewer" ]; then
+  if ! gh pr edit "$url" --add-reviewer "$reviewer" 2>"$err"; then
+    cat "$err" >&2
+    # LOUD, and after the fact.  The pull request is already open and stays
+    # open — that part succeeded and is the greater share of the value.  What
+    # must not happen is this failing quietly, because a production elevation
+    # with no reviewer looks exactly like one nobody has got to yet.
+    #
+    # Usual cause: `$reviewer` has no push access on this repository, so GitHub
+    # refuses to make them a requested reviewer. Fix it by granting access, not
+    # by removing the request.
+    die "opened $url but could NOT request a review from \`$reviewer\` (reason \
+above). The pull request is open and correct; only the review request is \
+missing. Add it by hand on $url, and grant \`$reviewer\` push access on this \
+repository so the next one works."
+  fi
+  echo "requested a review from $reviewer"
+fi
