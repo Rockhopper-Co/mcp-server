@@ -63,7 +63,7 @@ jobs:
     name: Prove the decision table
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: bash scripts/auto-elevation-pr.test.sh
 
   elevate:
@@ -105,7 +105,7 @@ jobs:
       # commit graph without paying for file contents nobody reads here;
       # backend is 786 commits ahead of `main` today and none of them are
       # checked out for anything.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           filter: blob:none
