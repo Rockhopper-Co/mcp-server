@@ -136,6 +136,60 @@ describe('resolveTeamShareTargets', () => {
     expect(api.getTeam).toHaveBeenCalledWith('team-2');
   });
 
+  // ENG-3410 (plan 30, SP07, R3) — THE PRIMARY MEMBERSHIP, NOT THE FIRST ONE.
+  //
+  // The fixture's primary is at index 1 deliberately. One whose primary is at
+  // index 0 passes under both the correct implementation and the broken one it
+  // replaces, so it proves nothing.
+  it('chooses the primary membership when it is not first in the array', async () => {
+    const api = directory(
+      {
+        msId: 'me-1',
+        teamMembers: [
+          { isPrimary: false, team: { id: 'secondary-team' } },
+          { isPrimary: true, team: { id: 'primary-team' } },
+        ],
+      },
+      { teamMembers: [{ user: { msId: 'them-2' } }] },
+    );
+    await resolveTeamShareTargets(api as never);
+    expect(api.getTeam).toHaveBeenCalledWith('primary-team');
+  });
+
+  // The installed-client window: `is_primary` starts being written when the
+  // backend deploys, and a person whose rows predate the backfill has none.
+  // Falling through to the first membership with a team keeps them working
+  // rather than throwing `TeamUnresolvedError` at every user of an older server.
+  it('falls back to the first membership with a team when none is marked primary', async () => {
+    const api = directory(
+      {
+        msId: 'me-1',
+        teamMembers: [{ team: { id: 'first-team' } }, { team: { id: 'second-team' } }],
+      },
+      { teamMembers: [{ user: { msId: 'them-2' } }] },
+    );
+    await resolveTeamShareTargets(api as never);
+    expect(api.getTeam).toHaveBeenCalledWith('first-team');
+  });
+
+  // A primary row carrying no team is not a usable answer. Selecting it and
+  // then reading `team?.id` off it yields `undefined`, which reports "you are
+  // not on a team" to somebody who is.
+  it('skips a primary membership that carries no team', async () => {
+    const api = directory(
+      {
+        msId: 'me-1',
+        teamMembers: [
+          { isPrimary: true, team: null },
+          { isPrimary: false, team: { id: 'real-team' } },
+        ],
+      },
+      { teamMembers: [{ user: { msId: 'them-2' } }] },
+    );
+    await resolveTeamShareTargets(api as never);
+    expect(api.getTeam).toHaveBeenCalledWith('real-team');
+  });
+
   it('throws rather than returning [] when there is no team', async () => {
     // An empty list would enroll privately — a different answer from the one
     // the user gave, and one nobody would notice.
