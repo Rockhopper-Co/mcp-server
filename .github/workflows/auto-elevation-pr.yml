@@ -14,9 +14,16 @@ name: auto-elevation-pr
 # the `verify` job below runs it BEFORE the `elevate` job is allowed to touch
 # GitHub.  A broken decision table cannot open a pull request.
 #
-# WHAT THIS NEVER DOES: close an elevation, merge one, mark one ready or draft.
-# An open elevation is the release sitting in its normal state, not a task
-# anyone is late on.  The only action is "open one if none exists".
+# WHAT THIS NEVER DOES: close an elevation, merge one, or change the draft state
+# of one that is already open.  An open elevation is the release sitting in its
+# normal state, not a task anyone is late on.  The only action is "open one if
+# none exists".
+#
+# That line read "mark one ready or draft" until 2026-08-26.  ENG-3437 makes the
+# `staging` -> `main` leg open its pull request AS a draft — `scripts/`
+# `auto-elevation-pr.sh` section 4 — so the suites do not start until a human
+# marks it ready.  Marking it ready is still never automation's move: that click
+# IS the QA signal, and it is the only thing that fires gate 4.
 #
 # THIS DOES NOT DISTURB THE GATE TOPOLOGY (ENG-3139).  It adds no trigger to any
 # test workflow and changes no `pull_request` base list.  It creates the pull
@@ -24,6 +31,12 @@ name: auto-elevation-pr
 # `staging` -> `main` are exactly the two hops where a human waits on the suite,
 # which is why an auto-opened elevation carrying NO checks would be worse than a
 # late hand-opened one.  See the credential note below.
+#
+# ENG-3437 changes WHEN those two gates fire, not whether: `dev` -> `staging`
+# runs once at `opened` and never again on a push into `dev`, and
+# `staging` -> `main` runs when the draft is marked ready.  58% of this org's
+# Actions minutes over the 14 days to 2026-08-26 went to re-running these two
+# standing pull requests, and a red one re-ran forever.
 
 on:
   # The two promotion branches.  A push to either is the moment a disparity can
@@ -85,6 +98,11 @@ jobs:
           - head: staging
             base: main
             reviewer: sperezl1
+            # This leg is opened as a DRAFT (ENG-3437). The `--draft` decision
+            # lives in `scripts/auto-elevation-pr.sh`, gated on this exact
+            # head/base pair, and is asserted in both directions by
+            # `scripts/auto-elevation-pr.test.sh` — which the `verify` job above
+            # runs before this job may touch GitHub.
 
     # Two runs racing would both see "no open pull request" and both create one.
     # GitHub refuses the second (the script reads that refusal as already-done),

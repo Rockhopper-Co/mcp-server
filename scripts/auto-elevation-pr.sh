@@ -15,10 +15,16 @@
 # `auto-elevation-pr.test.sh` drives it against a real git repository with `gh`
 # stubbed on PATH.  The workflow next door only supplies inputs and a token.
 #
-# WHAT IT WILL NEVER DO.  It never closes an elevation, never merges one, never
-# marks one ready or draft.  An open elevation pull request is the release
-# sitting in its normal state, not a task anybody is late on — so the only
-# action here is "open one if none exists".
+# WHAT IT WILL NEVER DO.  It never closes an elevation, never merges one, and
+# never changes the draft state of one that is already open.  An open elevation
+# pull request is the release sitting in its normal state, not a task anybody is
+# late on — so the only action here is "open one if none exists".
+#
+# That paragraph used to end "never marks one ready or draft", and ENG-3437 made
+# the second half false on 2026-08-26: the `staging` -> `main` elevation is now
+# CREATED as a draft (see section 4).  Marking it READY is the human QA signal
+# that starts the test suites, and that move stays a human's — which is the
+# whole point of opening it drafted.
 #
 #     ELEVATION_HEAD=dev ELEVATION_BASE=staging bash scripts/auto-elevation-pr.sh
 #
@@ -157,10 +163,35 @@ App is installed on it. No code change is needed on that day — see ENG-3180.\n
 } > "$body"
 
 # --- 4. open it ---------------------------------------------------------------
+# ENG-3437, David 2026-08-26 — the PRODUCTION hop opens as a DRAFT, and no other
+# hop does.
+#
+# Every test workflow triggers on `pull_request: branches: [dev, staging, main]`,
+# so a standing elevation used to re-run the whole suite on every push into its
+# head branch.  Measured org-wide over the 14 days to 2026-08-26: 58% of all
+# Actions minutes (13,431 of 23,128) came from runs on these two pull requests.
+# Opened as a draft, the `staging` -> `main` elevation runs NOTHING until a human
+# marks it ready — and that click is the QA signal, which is the moment somebody
+# is actually waiting on the answer.
+#
+# `dev` -> `staging` deliberately stays NON-draft: David merges those in ~110s
+# median (30 pull requests since 2026-08-23) and does that hop ~100x a fortnight,
+# so a draft would add a click to the busiest hop for no gain.  ENG-3437 gates
+# the suite on that leg a different way — one run at `opened`, none on
+# `synchronize`.
+#
+# Gated on the PAIR, not on the base alone, because `staging` -> `main` is the
+# matrix leg that exists; a hand-run `dev` -> `main` is not a configured
+# promotion and is left alone rather than silently drafted.
+create_args=(--base "$base_ref" --head "$head_ref"
+             --title "elevate to $base_ref — $ahead commits"
+             --body-file "$body")
+if [ "$head_ref" = "staging" ] && [ "$base_ref" = "main" ]; then
+  create_args+=(--draft)
+fi
+
 err="$(mktemp)"
-if ! url="$(gh pr create --base "$base_ref" --head "$head_ref" \
-              --title "elevate to $base_ref — $ahead commits" \
-              --body-file "$body" 2>"$err")"; then
+if ! url="$(gh pr create "${create_args[@]}" 2>"$err")"; then
   # A LOST RACE IS THE CORRECT OUTCOME, NOT A FAILURE.  `concurrency` in the
   # workflow makes two simultaneous runs rare rather than impossible — a cron
   # and a push can be in flight together — and GitHub refusing the second
