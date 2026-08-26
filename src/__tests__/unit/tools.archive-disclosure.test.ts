@@ -140,6 +140,27 @@ describe('ENG-3402 — archive exclusion is disclosed to the model', () => {
     });
   });
 
+  describe('orchestration guide', () => {
+    it('stops telling the model that absence means never-added', async () => {
+      const server = createMockMcpServer();
+      const api = createMockApiClient();
+      registerResources(server as any, api as any);
+      const call = server.registerResource.mock.calls.find(
+        (c) => c[0] === 'orchestration-guide',
+      );
+      const handler = call?.[3] as (uri: URL) => Promise<{
+        contents: Array<{ text: string }>;
+      }>;
+      const guide = (
+        await handler(new URL('rockhopper://orchestration-guide'))
+      ).contents[0].text;
+      // The guide is read BEFORE any tool call, so an overclaim here outruns
+      // every description fixed above.
+      expect(guide).not.toContain('very probably one nobody has added yet');
+      expect(guide).toMatch(/archiv/i);
+    });
+  });
+
   describe("David's web-only ruling stays enforced", () => {
     it('registers no archive, restore or unarchive tool', () => {
       const server = createMockMcpServer();
