@@ -30,12 +30,59 @@ on:
   # before it publishes anything — so a push trigger here would duplicate a run
   # publish.yml already does. That reasoning survives the widening: ENG-3139
   # adds pull-request bases, never a push.
+  #
+  # ENG-3437 — the standing elevation pull requests stop re-testing on every
+  # push. David approved this 2026-08-26. `auto-elevation-pr.yml` keeps a
+  # `dev` -> `staging` and a `staging` -> `main` pull request open the whole
+  # time, so with the DEFAULT event types every push to `dev` or `staging`
+  # re-fired this workflow on one of them as a `synchronize`. That is the
+  # `push: branches: [dev]` trigger the topology above deliberately bans,
+  # wearing a `pull_request` event.
+  #
+  # Measured org-wide over 14 days, 2026-08-12..2026-08-26 (4,800 runs, 8
+  # repositories): 13,431 of 23,128 minutes — 58% — came from runs whose head
+  # branch was `dev` or `staging`, i.e. from those two standing pull requests.
+  # And a red gate never stops re-running: backend's suite failed 67 times on
+  # head=`staging` for 4,337 minutes, every repeat after the first buying zero
+  # information.
+  #
+  # `types:` IS NOT ADDITIVE — naming it REPLACES the default
+  # [opened, synchronize, reopened], so all three are re-listed below.
+  # `ready_for_review` is the addition: the `staging` -> `main` elevation now
+  # opens as a draft, and a human marking it ready is the QA signal that fires
+  # this suite. The waiter appears at QA time instead of at every merge to
+  # `dev`.
+  #
+  # The job-level `if:` below carries the other two halves, and each is a trap
+  # that kills the gate silently if it is dropped:
+  #   - a DRAFT pull request still emits `opened`, so without the
+  #     `draft == false` leg the draft production elevation would run this
+  #     whole suite the moment it opens — against the release's first commit,
+  #     which is worse than not running it at all;
+  #   - `workflow_dispatch` has NO `github.event.pull_request`, so a bare
+  #     `github.event.pull_request.draft == false` evaluates FALSE and would
+  #     silently kill the dispatch escape hatch this header calls load-bearing.
+  #     The `github.event_name != 'pull_request' ||` leg is what protects it.
+  #
+  # A feature or hotfix pull request into `staging` or `main` is UNCHANGED:
+  # `synchronize` still re-tests it on every push. Only a head of `dev` or
+  # `staging` — which is only ever an elevation — stops re-running.
   pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
     branches: [dev, staging, main]
   workflow_dispatch:
 
+# ENG-3439 — keyed on the pull request NUMBER, never on the head branch. The
+# key here was `github.head_ref || github.ref`, and EVERY `dev` -> `staging`
+# elevation has head_ref = `dev`: all ~100 of them in the 14 days to 2026-08-26
+# shared one concurrency group, so opening a new elevation cancelled the
+# previous one's in-flight run. Two different pull requests were
+# indistinguishable from one pull request re-triggering. Keyed on the number, a
+# run collides only with its own re-triggers, which is what cancellation is
+# for. A `push` or `workflow_dispatch` run has no pull request and falls
+# through to `github.ref` — today's behaviour, unchanged.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -46,7 +93,20 @@ jobs:
     # ENG-3139 — a dev-base pull request runs only when its head is an epic
     # branch; `feature -> dev` is merged on sight and nobody waits on it.
     # `staging` and `main` bases always run. See the trigger header.
-    if: github.base_ref != 'dev' || startsWith(github.head_ref, 'epic/')
+    #
+    # ENG-3437 adds the two legs around it, and the ORDER of the three is not
+    # meaningful but the presence of each is. Leg 1 never runs on a draft —
+    # the `staging` -> `main` elevation now opens as one, and its
+    # `github.event_name != 'pull_request'` guard is what keeps
+    # `workflow_dispatch` working, where `github.event.pull_request` does not
+    # exist. Leg 3 never runs on a `synchronize` whose head is `dev` or
+    # `staging`: that is a push into a standing elevation, which is where 58%
+    # of this org's Actions minutes went in the 14 days to 2026-08-26.
+    if: >-
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+      && (github.base_ref != 'dev' || startsWith(github.head_ref, 'epic/'))
+      && (github.event.action != 'synchronize'
+          || !contains(fromJSON('["dev","staging"]'), github.head_ref))
     name: Typecheck, test, build
     runs-on: ubuntu-latest
     steps:

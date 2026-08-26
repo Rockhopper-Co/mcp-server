@@ -330,4 +330,50 @@ ELEVATION_HEAD=dev ELEVATION_BASE=staging run
 not_logged "pr create" || fail "14 IT OPENED ONE BLIND — fail-closed broken" "$(dump)"
 ok "attack: an unanswerable duplicate check fails closed, opens nothing"
 
+# ---- 16. the STAGING hop is not drafted --------------------------------------
+# ENG-3437 drafts the production elevation only.  `dev` -> `staging` is merged
+# in ~110s median and happens ~100x a fortnight; a draft there would add a click
+# to the busiest hop and buy nothing, because that leg is already gated a
+# different way (one run at `opened`, none on `synchronize`).
+reset
+ELEVATION_HEAD=dev ELEVATION_BASE=staging run
+[ "$rc" -eq 0 ]        || fail "16 staging hop exits clean" "$(dump)"
+logged "pr create"     || fail "16 staging hop opens one" "$(dump)"
+not_logged "--draft" || fail "16 STAGING HOP WAS DRAFTED — it must not be" "$(dump)"
+ok "staging hop: opened ready, not drafted"
+
+# ---- 17. the gate is the PAIR, not the base ----------------------------------
+# `--draft` keys on head=staging AND base=main, which is the matrix leg that
+# exists.  A hand-run `dev` -> `main` is not a configured promotion, so it is
+# left alone rather than silently drafted — assert that, or a later
+# simplification to `base = main` passes unnoticed.
+reset
+ELEVATION_HEAD=dev ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 run
+[ "$rc" -eq 0 ]        || fail "17 dev->main exits clean" "$(dump)"
+logged "pr create"     || fail "17 dev->main opens one" "$(dump)"
+not_logged "--draft" || fail "17 dev->main was drafted — the gate widened to the base" "$(dump)"
+ok "dev->main: not drafted — the draft gate is the head/base pair"
+
+# ---- 18. THE PRODUCTION HOP OPENS AS A DRAFT ---------------------------------
+# The reason ENG-3437 exists.  With the suites triggering on
+# `pull_request: branches: [dev, staging, main]`, a ready `staging` -> `main`
+# elevation ran the full suite at `opened` — against the release's FIRST commit,
+# before any of it was built — and again on every push into `staging`.  Measured
+# 2026-08-12..2026-08-26: 58% of the org's Actions minutes were runs on these two
+# standing pull requests.  Drafted, it runs nothing until a human marks it ready,
+# and that click is the QA signal.
+#
+# `staging` is pushed up to `dev`'s tip first: the fixture leaves it level with
+# `main`, and a level pair opens nothing (case 1).  This mutates `origin`, so it
+# stays last.
+reset
+git push --quiet origin HEAD:refs/heads/staging
+git fetch --quiet origin
+ELEVATION_HEAD=staging ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 run
+[ "$rc" -eq 0 ]                  || fail "18 production hop exits clean" "$(dump)"
+logged "pr create"               || fail "18 production hop opens one" "$(dump)"
+logged "--draft"                 || fail "18 PRODUCTION HOP IS NOT A DRAFT — the whole suite fires at opened" "$(dump)"
+logged "--add-reviewer sperezl1" || fail "18 a drafted production hop still requests the reviewer" "$(dump)"
+ok "production hop: opened as a DRAFT, and still requests sperezl1"
+
 printf '\n%s checks passed\n' "$pass"
