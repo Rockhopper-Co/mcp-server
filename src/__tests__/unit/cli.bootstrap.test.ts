@@ -176,6 +176,82 @@ describe('cli bootstrap', () => {
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('401'));
   });
 
+  /**
+   * ENG-1756 — the driving human is read off the preflight with a THREE-arm
+   * fallback and only the first arm was exercised.
+   *
+   * A Rockhopper account can be Google-side, in which case `/users/me` carries
+   * `googleId` and no `msId`; dropping that arm sends `undefined` into
+   * `setDrivingHuman`, which is neither the id nor the explicit `null` the API
+   * client is typed for. The third arm matters for the same reason in reverse:
+   * `null` is the deliberate "let the backend resolve the PAT owner" signal.
+   */
+  it.each([
+    ['a Microsoft account', { msId: 'ms-oid-1', googleId: 'g-oid-1' }, 'ms-oid-1'],
+    ['a Google-only account', { googleId: 'g-oid-1' }, 'g-oid-1'],
+    ['an account with neither id', {}, null],
+  ])(
+    'declares the driving human from %s',
+    async (_label, ids, expected) => {
+      vi.stubEnv('ROCKHOPPER_TOKEN', 'rh_pat_test_token');
+      vi.stubEnv('ROCKHOPPER_API_URL', 'http://localhost:3100');
+
+      const setDrivingHumanMock = vi.fn();
+      const apiClientMock = vi.fn().mockImplementation(function () {
+        return {
+          getMe: vi.fn().mockResolvedValue({ internalId: 1, ...ids }),
+          setDrivingHuman: setDrivingHumanMock,
+          setAuthExpiredHandler: vi.fn(),
+        };
+      });
+
+      vi.doMock('../../server.js', () => ({
+        createServer: vi.fn().mockReturnValue({ connect: vi.fn() }),
+      }));
+      vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
+      vi.doMock('@modelcontextprotocol/server/stdio', () => ({
+        serveStdio: vi.fn().mockReturnValue({ close: vi.fn() }),
+      }));
+
+      await import('../../cli.js');
+
+      expect(setDrivingHumanMock).toHaveBeenCalledWith(expected);
+    },
+  );
+
+  it('talks to production when ROCKHOPPER_API_URL is not set', async () => {
+    // The default every `npx rockhopper-mcp` launch depends on, and the one
+    // thing in this file no other spec can catch: a wrong host here points
+    // every customer at the wrong backend and nothing else goes red. Stubbed
+    // to the empty string rather than deleted so the assertion does not depend
+    // on the developer's own environment — and `||` treats both the same,
+    // which is why it is `||` and not `??`.
+    vi.stubEnv('ROCKHOPPER_TOKEN', 'rh_pat_test_token');
+    vi.stubEnv('ROCKHOPPER_API_URL', '');
+
+    const apiClientMock = vi.fn().mockImplementation(function () {
+      return {
+        getMe: vi.fn().mockResolvedValue({ internalId: 1, msId: 'ms-oid-1' }),
+        setDrivingHuman: vi.fn(),
+        setAuthExpiredHandler: vi.fn(),
+      };
+    });
+
+    vi.doMock('../../server.js', () => ({
+      createServer: vi.fn().mockReturnValue({ connect: vi.fn() }),
+    }));
+    vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
+      serveStdio: vi.fn().mockReturnValue({ close: vi.fn() }),
+    }));
+
+    await import('../../cli.js');
+
+    expect(apiClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({ baseUrl: 'https://api.rockhopper.co' }),
+    );
+  });
+
   it('should exit when token is invalid or expired (401/403)', async () => {
     vi.stubEnv('ROCKHOPPER_TOKEN', 'rh_pat_expired');
     vi.stubEnv('ROCKHOPPER_API_URL', 'http://localhost:3100');

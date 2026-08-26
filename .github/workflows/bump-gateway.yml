@@ -28,10 +28,19 @@
 #
 # WHY THE `staging` DIST-TAG. THE BRANCH IS THE CHANNEL. The gateway's
 # `dev`/`staging` serve the staging prerelease; its `main` serves the stable
-# version behind `latest`. This workflow only ever opens a pull request into the
-# gateway's `dev`, so it can never move production. The elevation to `main` is
-# where a human re-pins to the stable version, and the gateway's `ci.yml` fails
-# that pull request closed if they forget.
+# version behind `latest`. This workflow only ever touches the gateway's `dev`,
+# so it can never move production. The elevation to `main` is where a human
+# re-pins to the stable version, and the gateway's `ci.yml` fails that pull
+# request closed if they forget.
+#
+# WHY IT MERGES ITSELF (ENG-2843, David 2026-08-20 — option B). The pull request
+# it opens is merged by the last step of this same job, and only there: the
+# install proof and the run proof below have already passed against that exact
+# tree, so the human who used to press Merge was supplying a keystroke and not a
+# judgement. Measured, that keystroke was the entire latency — median 3m 49s,
+# worst case 14h 14m overnight. `dev` builds no image and deploys nowhere. The
+# `dev` -> `staging` elevation, which DOES deploy to the environment David tests
+# on, stays a human's and is not automated here at any price.
 name: Bump the gateway to the published mcp-server
 
 on:
@@ -314,6 +323,7 @@ jobs:
           npm test
 
       - name: Push the single bump branch
+        id: push
         if: steps.pending.outputs.changed == 'true'
         working-directory: gateway
         env:
@@ -326,14 +336,54 @@ jobs:
           git checkout -b chore/mcp-server-sync
           git add package.json package-lock.json
           git commit -m "chore(deps): pin mcp-server to $V"
+
+          # ENG-2844 — THE BACKSTOP HAS TO BE ABLE TO REPORT WHAT IT DID.
+          #
+          # This workflow has two ways in: the publish-driven `workflow_run`,
+          # and the daily cron that exists for the day that trigger stops
+          # firing. When the trigger already did the work, the cron arrives at
+          # exactly this point with a byte-identical tree and force-pushes it
+          # over the branch whose pull request is already open. Green log,
+          # green log — a run that CAUGHT a stall and a run that caught nothing
+          # are indistinguishable, so the day the trigger breaks looks like
+          # every other day.
+          #
+          # It also destroys evidence. Plan 20's SP06 read the force-pushed
+          # commit date off `git log origin/dev` and recorded the
+          # publish-to-`dev` latency as 9h46m; the pull request had actually
+          # been open since 04:17 and merged at 18:31, so the real figure was
+          # 14h15m. The commit date is the only record of when a bump was
+          # proposed, and the redundant push resets it.
+          #
+          # THE TEST IS THE TREE, not the version string: an identical tree is
+          # exactly the case where pushing changes nothing but the sha and the
+          # date. A moved `dev`, a different pin, or no remote branch at all all
+          # produce a different tree and still push.
+          git fetch --quiet origin \
+            "+refs/heads/chore/mcp-server-sync:refs/remotes/origin/chore/mcp-server-sync" 2>/dev/null || true
+          if git rev-parse --verify -q refs/remotes/origin/chore/mcp-server-sync >/dev/null &&
+             [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse 'refs/remotes/origin/chore/mcp-server-sync^{tree}')" ]; then
+            # ENG-2843 — the sha the MERGE step is allowed to merge, and on this
+            # path it is the remote's, not ours. The two commits carry the same
+            # tree and different shas (a later committer date), and the tree is
+            # what this run proved. Emitting our local sha here would make the
+            # merge below refuse every backstop run — the exact runs that exist
+            # to catch a stall.
+            echo "sha=$(git rev-parse 'refs/remotes/origin/chore/mcp-server-sync')" >> "$GITHUB_OUTPUT"
+            echo "CAUGHT NOTHING: chore/mcp-server-sync already carries this exact tree ($V). A publish-driven run got here first, so there was no stall to catch. Not pushing."
+            exit 0
+          fi
+          echo "CAUGHT A PENDING BUMP: chore/mcp-server-sync does not carry this tree. Pushing $V."
           # FORCE, and it is the debounce. The branch is re-cut from the
           # gateway's `dev` every run, so the newest bump replaces the previous
           # one instead of stacking a second pull request. Anything pushed onto
           # this branch by hand is discarded — fix a bump on a branch of your own.
           git push --force origin chore/mcp-server-sync
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      # NOT auto-merged, and nothing here deploys. The pull request lands on the
-      # gateway's `dev`; a human merges it and a human elevates.
+      # The pull request lands on the gateway's `dev` and the step below merges
+      # it. Nothing here deploys: `dev` builds no image, and the elevation to
+      # `staging` — the environment David tests on — stays a human's (ENG-2843).
       - name: Open the pull request, or update the one already open
         if: steps.pending.outputs.changed == 'true'
         env:
@@ -356,7 +406,8 @@ jobs:
             "- **Install proof** — strict \`npm ci\` on this exact tree passed before the branch was pushed: $RUN_URL" \
             "- **Run proof** — typecheck, build and the gateway suite ran against the bumped tree in the same run." \
             "- **Staging only** — this is a prerelease and \`ci.yml\` fails the elevation to \`main\` closed until someone re-pins to \`latest\`." \
-            "- **Superseding** — this branch is force-pushed on every publish. Do not push fixes onto it.")
+            "- **Superseding** — this branch is force-pushed on every publish. Do not push fixes onto it." \
+            "- **Merged by the job** — ENG-2843, David 2026-08-20: this pull request merges itself into \`dev\` because the two proofs above already ran against this exact tree. It exists to record the change, not to re-derive a decision. \`dev\` deploys nowhere; the elevation to \`staging\` stays a human's.")
           open=$(gh pr list --repo Rockhopper-Co/mcp-gateway --head chore/mcp-server-sync --state open --json number --jq '.[0].number // empty')
           if [ -n "$open" ]; then
             gh pr edit "$open" --repo Rockhopper-Co/mcp-gateway \
@@ -365,4 +416,89 @@ jobs:
           else
             gh pr create --repo Rockhopper-Co/mcp-gateway --base dev --head chore/mcp-server-sync \
               --title "chore(deps): pin mcp-server to $V" --body "$body"
+          fi
+
+      # ENG-2843 — THE MACHINE PRESSES MERGE, AND ONLY BECAUSE THE PROOFS
+      # ALREADY PASSED. David ruled option B on 2026-08-20.
+      #
+      # WHAT THIS REPLACES. A person opening this pull request and pressing
+      # Merge on a two-line diff — the version and its lockfile entry — that a
+      # strict `npm ci`, a typecheck, a build and all 561 gateway tests have
+      # already been run against, in this job, on this exact tree. Measured over
+      # the seven bump pull requests #186–#206: median 3m 49s of waiting, worst
+      # case 14h 14m for one that landed at 21:17 Pacific and sat until morning.
+      # The keystroke was the whole latency.
+      #
+      # WHAT GUARDS IT, STATED PLAINLY: this job, and nothing else. GitHub has
+      # no rule of any kind on the gateway's `dev` — measured 2026-08-20,
+      # `gh api repos/Rockhopper-Co/mcp-gateway/rules/branches/dev` returns `[]`
+      # and the two rulesets that exist condition on `refs/heads/main`
+      # (`15539999`) and `refs/heads/staging` (`19785158`, deletion only). So
+      # the ORDER of the steps above is the entire gate, and it has to stay
+      # true that a failed proof cannot reach this line.
+      #
+      # WHY THAT ORDER IS ENOUGH. Two independent reasons, both load-bearing:
+      #   1. The branch is not pushed and the pull request is not opened until
+      #      the install proof and the run proof have passed. A failed proof
+      #      leaves no pull request for this step to find at all.
+      #   2. `if: success() && …`. A step whose `if` names no status function
+      #      gets an implicit `success()`, so the `&&` here is redundant to
+      #      GitHub and not redundant to a reader: the one invariant this whole
+      #      change rests on should be visible in the file, not inferred from a
+      #      default. `bump-gateway-workflow.test.ts` executes the real job
+      #      step by step with a planted failing suite and asserts nothing is
+      #      pushed and nothing is merged.
+      #
+      # WHY NOT GitHub's AUTO-MERGE. Measured 2026-08-20:
+      # `allow_auto_merge` is **false** on Rockhopper-Co/mcp-gateway, so
+      # `gh pr merge --auto` errors, and turning it on is a repository settings
+      # change no agent makes. It would also be the wrong shape even if it were
+      # on — auto-merge waits for REQUIRED checks, `dev` has none, so it would
+      # merge the moment it was asked rather than after anything, inverting the
+      # guarantee above.
+      #
+      # `--match-head-commit` ties the thing merged to the thing proved: the
+      # push step emits the sha the remote branch actually carries, and if
+      # anything else has since landed on `chore/mcp-server-sync` this refuses
+      # rather than merging a tree no proof ever saw.
+      #
+      # `--squash`, because the pull request is one commit and `dev` should read
+      # as one line per bump. The branch is deleted by the repository's own
+      # `delete_branch_on_merge`; the next publish re-cuts it from `dev`.
+      - name: Merge it — the proofs already ran on this exact tree
+        if: success() && steps.pending.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          V: ${{ steps.published.outputs.version }}
+          SHA: ${{ steps.push.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SHA:-}" ]; then
+            echo "::error::The push step emitted no sha, so there is no proven commit to merge. Refusing."
+            exit 1
+          fi
+          # `.[0] // empty` rather than `.[0].number`: on an empty array the
+          # latter prints the string "null", which is not an error and is not a
+          # pull request either.
+          pr=$(gh pr list --repo Rockhopper-Co/mcp-gateway \
+            --head chore/mcp-server-sync --base dev --state open \
+            --json number,createdAt --jq '.[0] // empty | "\(.number) \(.createdAt)"')
+          number=${pr%% *}
+          created=${pr#* }
+          if [ -z "$number" ]; then
+            echo "::error::No open pull request into dev on chore/mcp-server-sync. Refusing to merge something I cannot see."
+            exit 1
+          fi
+          gh pr merge "$number" --repo Rockhopper-Co/mcp-gateway --squash --match-head-commit "$SHA"
+
+          # HOP 4, MEASURED RATHER THAN PREDICTED (ENG-2843 item 4). The claim
+          # being made is "about 2 minutes to `dev`"; this is the line that
+          # settles it from a real run instead of an estimate. `date -d` is
+          # skipped deliberately — it is GNU-only, and this script is executed
+          # verbatim by the test suite on a Mac.
+          merged=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          elapsed=$(node -e 'const [a,b]=process.argv.slice(1);console.log(Math.round((new Date(b)-new Date(a))/1000))' "$created" "$merged")
+          echo "HOP4 pull request #$number ($V) opened $created, merged $merged, elapsed ${elapsed}s"
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            echo "Merged [#$number](https://github.com/Rockhopper-Co/mcp-gateway/pull/$number) pinning \`$V\` — hop 4 took **${elapsed}s** (opened $created, merged $merged)." >> "$GITHUB_STEP_SUMMARY"
           fi

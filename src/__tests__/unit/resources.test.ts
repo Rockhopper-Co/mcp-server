@@ -85,6 +85,39 @@ describe('resource registrations', () => {
     expect(result.contents[0].text).toContain('Budget.xlsx');
   });
 
+  /**
+   * The SDK types a template's path variables as
+   * `Record<string, string | string[]>`
+   * (`@modelcontextprotocol/server` `Variables`, consumed by
+   * `ReadResourceTemplateCallback`), and `teams.ts:27` takes the first element
+   * when an array arrives. That arm was the only uncovered branch left in
+   * `src/resources`.
+   *
+   * Reachability, honestly: measured against the SDK's own `UriTemplate`,
+   * `rockhopper://teams/{teamId}` matches to a STRING and only an exploded
+   * `{teamId*}` yields an array — so today this is defensive. It is pinned
+   * rather than deleted because the alternative to taking `[0]` is not "no
+   * array": it is interpolating `a,b` into the request path, which asks the
+   * backend for a team id that does not exist. Whoever widens that template
+   * next should find this already decided.
+   */
+  it('reads the first value when a team path variable arrives multi-valued', async () => {
+    const server = createMockMcpServer();
+    const api = createMockApiClient();
+    registerResources(server as any, api as any);
+
+    const registration = server.registerResource.mock.calls.find(
+      (c) => c[0] === 'team-detail',
+    );
+    const handler = registration?.[3];
+    await handler(new URL('rockhopper://teams/team-a'), {
+      teamId: ['team-a', 'team-b'],
+    });
+
+    expect(api.getTeam).toHaveBeenCalledWith('team-a');
+    expect(api.getTeam).not.toHaveBeenCalledWith(['team-a', 'team-b']);
+  });
+
   it('should resolve unattributed changes resource content via API', async () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();

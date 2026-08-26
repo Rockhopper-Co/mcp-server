@@ -1,0 +1,207 @@
+name: auto-elevation-pr
+
+# Open the "elevate to <branch>" pull request whenever a promotion branch has
+# fallen behind.  ENG-3180.
+#
+# David, 2026-08-23: "can we add controls to github to always automatically open
+# an 'elevate to <branch>' pr whenever there is a disparity? for the prod one, it
+# should request a review from sperezl1".
+#
+# EVERY DECISION LIVES IN `scripts/auto-elevation-pr.sh`, NOT HERE.  A workflow
+# that inlines its logic in `run:` blocks can only be tested in production.
+# `scripts/auto-elevation-pr.test.sh` drives that script against a real git
+# repository with `gh` stubbed on PATH — 15 cases, including four attacks — and
+# the `verify` job below runs it BEFORE the `elevate` job is allowed to touch
+# GitHub.  A broken decision table cannot open a pull request.
+#
+# WHAT THIS NEVER DOES: close an elevation, merge one, mark one ready or draft.
+# An open elevation is the release sitting in its normal state, not a task
+# anyone is late on.  The only action is "open one if none exists".
+#
+# THIS DOES NOT DISTURB THE GATE TOPOLOGY (ENG-3139).  It adds no trigger to any
+# test workflow and changes no `pull_request` base list.  It creates the pull
+# request that gates 3 and 4 already fire on — `dev` -> `staging` and
+# `staging` -> `main` are exactly the two hops where a human waits on the suite,
+# which is why an auto-opened elevation carrying NO checks would be worse than a
+# late hand-opened one.  See the credential note below.
+
+on:
+  # The two promotion branches.  A push to either is the moment a disparity can
+  # appear, so this is the fast path.
+  push:
+    branches: [dev, staging]
+
+  schedule:
+    # 14:40 UTC — early morning Pacific, so anything that accumulated overnight
+    # is already open before anyone starts work.
+    #
+    # THE CRON IS NOT REDUNDANT with the push trigger, and it is the half that
+    # survives.  A push run can be cancelled, hit a GitHub incident, or race a
+    # token that had not been provisioned yet; a stalled promotion then stays
+    # invisible until somebody happens to look.  The cron is the backstop that
+    # makes "nothing is tracking dev" a state that lasts a day at most.
+    #
+    # Scheduled workflows only ever fire from the DEFAULT branch, which is `dev`
+    # in every repository here (measured 2026-08-23).  So this is live the
+    # moment it merges to `dev`, and it stays live regardless of what `staging`
+    # or `main` carry.
+    - cron: "40 14 * * *"
+
+  workflow_dispatch:
+
+# Declaring this block drops every permission not named.
+# `pull-requests: write` is what `gh pr create` and `gh pr edit --add-reviewer`
+# need; `contents: read` is for the checkout.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # Runs once, gates both matrix legs.  Cheap — it builds a throwaway git
+  # repository in a temp dir and stubs `gh`; no network, no toolchain.
+  verify:
+    name: Prove the decision table
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash scripts/auto-elevation-pr.test.sh
+
+  elevate:
+    name: ${{ matrix.head }} -> ${{ matrix.base }}
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      # Both legs always run, and a failure on one must not hide the other.
+      # They are independent promotions.
+      fail-fast: false
+      matrix:
+        include:
+          - head: dev
+            base: staging
+            # Nobody is requested on the staging hop, deliberately. A review
+            # request on every one of these trains the reviewer to dismiss the
+            # notification, and then the production one goes past unread.
+            reviewer: ""
+          - head: staging
+            base: main
+            reviewer: sperezl1
+
+    # Two runs racing would both see "no open pull request" and both create one.
+    # GitHub refuses the second (the script reads that refusal as already-done),
+    # but serialising is the cheaper protection. Per PAIR, so the two legs never
+    # queue behind each other.
+    #
+    # `cancel-in-progress: false`: a queued run must WAIT, not evaporate. A
+    # cancelled run leaves the disparity untracked until the next trigger.
+    concurrency:
+      group: auto-elevation-pr-${{ github.repository }}-${{ matrix.head }}-${{ matrix.base }}
+      cancel-in-progress: false
+
+    steps:
+      # `fetch-depth: 0` is load-bearing. The default shallow checkout truncates
+      # history at one commit, and `git rev-list --count base..head` over a
+      # graft point does not report "shallow", it reports a WRONG NUMBER — which
+      # would land in the pull request title. `filter: blob:none` keeps the full
+      # commit graph without paying for file contents nobody reads here;
+      # backend is 786 commits ahead of `main` today and none of them are
+      # checked out for anything.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      # ---- the credential, and why it is the whole design ------------------
+      # A pull request opened with the default `GITHUB_TOKEN` runs NO
+      # `pull_request` workflows. GitHub suppresses that so a workflow cannot
+      # trigger itself forever. The consequence here is specific and bad: an
+      # auto-opened elevation would show an EMPTY check list, which looks
+      # identical at a glance to one whose suite passed — and `dev` -> `staging`
+      # and `staging` -> `main` are the two gates ENG-3139 exists to protect.
+      #
+      # A GitHub App installation token is a different identity and is not
+      # suppressed, so pull requests it opens run their checks normally.
+      #
+      # David's ruling, 2026-08-23: ship it now with a fallback, reusing the
+      # existing package-sync App. Where the secrets are present the pull
+      # request is opened by the App and its checks run; where they are absent
+      # it is still opened, and its BODY says in plain language that the tests
+      # did not start. Measured the same day, the secrets exist on `frontend`
+      # and `mcp-server` only — so the fallback is the live path in five of the
+      # seven repositories, and it is built to be read, not to be a footnote.
+      #
+      # NO CODE CHANGE IS NEEDED on the day the secrets appear. The three steps
+      # below detect them, and the warning takes itself out of the body.
+      - name: Are the App credentials here?
+        id: creds
+        env:
+          # `secrets` is not available in a step-level `if:`, so its presence
+          # has to become an output first.
+          APP_ID: ${{ secrets.PACKAGE_SYNC_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.PACKAGE_SYNC_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          # Only presence is ever printed. The values are never echoed.
+          if [ -n "${APP_ID:-}" ] && [ -n "${PRIVATE_KEY:-}" ]; then
+            echo "have_app=true" >> "$GITHUB_OUTPUT"
+            echo "Both package-sync secrets are present."
+          else
+            echo "have_app=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No package-sync App credentials in this repository, so any pull request opened here will carry no checks and will say so in its body. See ENG-3180."
+          fi
+
+      # If this step dies with `error:1E08010C:DECODER routines::unsupported`,
+      # the stored PEM's line breaks were lost. Re-save it FROM THE FILE rather
+      # than by pasting: `gh secret set PACKAGE_SYNC_PRIVATE_KEY --repo
+      # Rockhopper-Co/<repo> < <app>.private-key.pem`.
+      - name: Mint an installation token
+        id: app
+        if: steps.creds.outputs.have_app == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          # `app-id` warns that `client-id` is preferred. The secret holds the
+          # numeric App ID, not the `Iv23li…` client id, so this is the input
+          # that matches the value actually stored. Warning only.
+          app-id: ${{ secrets.PACKAGE_SYNC_APP_ID }}
+          private-key: ${{ secrets.PACKAGE_SYNC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      # MEASURE THE GRANT, DO NOT ASSERT IT. Holding the secrets is not the same
+      # as the App being INSTALLED on this repository — `mcp-server` holds both
+      # secrets today precisely so it can push into `mcp-gateway`, and the App's
+      # own installation list is what decides whether the minted token can open
+      # a pull request HERE.
+      #
+      # Without this step that mismatch surfaces as a 404 from `gh pr create`,
+      # which reads like a missing branch. With it, the run falls back to
+      # `GITHUB_TOKEN` and the body tells the reader the checks did not start —
+      # the honest outcome rather than a confusing red.
+      - name: Does that token actually reach this repository?
+        id: reach
+        if: steps.creds.outputs.have_app == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -uo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}" --jq .full_name > /dev/null 2>&1; then
+            echo "reaches=true" >> "$GITHUB_OUTPUT"
+            echo "The App token can see ${GITHUB_REPOSITORY} — checks will run."
+          else
+            echo "reaches=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The package-sync App holds credentials here but is not installed on ${GITHUB_REPOSITORY}, so its token cannot open a pull request in this repository. Falling back to GITHUB_TOKEN, whose pull requests run no checks. Install the App here to fix it (ENG-3180)."
+          fi
+
+      - name: Open the elevation pull request, if one is needed
+        env:
+          # An empty `steps.app.outputs.token` is falsy, so a skipped mint or an
+          # App that cannot reach this repository both land on `GITHUB_TOKEN`.
+          GH_TOKEN: ${{ steps.reach.outputs.reaches == 'true' && steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+          # The single source of the body's warning. It is derived from what was
+          # MEASURED above, never from what was configured.
+          ELEVATION_CHECKS_RUN: ${{ steps.reach.outputs.reaches == 'true' }}
+          # Through `env:`, never interpolated into the script body — a branch
+          # name is text the templater must not be allowed to paste into a
+          # shell. Same reasoning as mcp-gateway's `scripts/check-elevation.sh`.
+          ELEVATION_HEAD: ${{ matrix.head }}
+          ELEVATION_BASE: ${{ matrix.base }}
+          ELEVATION_REVIEWER: ${{ matrix.reviewer }}
+        run: bash scripts/auto-elevation-pr.sh

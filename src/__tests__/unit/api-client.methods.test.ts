@@ -50,6 +50,9 @@ describe('ApiClient method coverage', () => {
     vi.unstubAllGlobals();
   });
 
+  // A call COUNT is not a path check: five methods could all hit the wrong
+  // route and this stayed green, which is the one thing this suite exists to
+  // catch (every other spec in the package mocks the client away).
   it('should call version and review endpoints', async () => {
     const fetchSpy = mockFetch({});
     vi.stubGlobal('fetch', fetchSpy);
@@ -58,7 +61,20 @@ describe('ApiClient method coverage', () => {
     await client.getReviewsForLatestVersion('file-1');
     await client.getReview(8);
     await client.getReviewActivities(8);
+
     expect(fetchSpy).toHaveBeenCalledTimes(5);
+    const urls = fetchSpy.mock.calls.map((c) => String(c[0]));
+    expect(urls).toEqual([
+      'https://api.rockhopper.co/file-versions/file/version/7',
+      'https://api.rockhopper.co/reviews/versions/7/requests',
+      'https://api.rockhopper.co/reviews/files/file-1/latest-version/requests',
+      'https://api.rockhopper.co/reviews/requests/8',
+      'https://api.rockhopper.co/reviews/requests/8/activities',
+    ]);
+    // All five are reads, so none of them may carry a write verb.
+    for (const [, init] of fetchSpy.mock.calls) {
+      expect((init as { method?: string }).method ?? 'GET').toBe('GET');
+    }
     vi.unstubAllGlobals();
   });
 
@@ -392,6 +408,92 @@ describe('Microsoft account-link methods (ENG-2198)', () => {
     vi.stubGlobal('fetch', fetchSpy);
     await client.unlinkMicrosoft();
     expect(fetchSpy.mock.calls[0][1].method).toBe('DELETE');
+    vi.unstubAllGlobals();
+  });
+});
+
+/**
+ * ENG-2785 / ENG-2814 — the drive-inventory read, on the wire.
+ *
+ * `list_unenrolled_files` has 19 specs; every one of them mocks this method,
+ * so the URL it actually builds was never exercised (measured: `api-client.ts`
+ * lines 527-532 uncovered before these cases). The cursor is the part that
+ * bites — it is opaque, expires after 30 minutes, and a caller that
+ * double-encodes or drops it silently restarts the customer's paging.
+ */
+describe('listDriveInventory query construction (ENG-2814)', () => {
+  const EMPTY = {
+    items: [],
+    freshness: {
+      asOf: '2026-08-19T21:00:00.000Z',
+      stale: false,
+      refreshing: false,
+      lastFailureAt: null,
+      lastFailureReason: null,
+      consecutiveFailures: 0,
+    },
+    nextCursor: null,
+    snapshotId: '1',
+    snapshotCreatedAt: '2026-08-19T21:00:00.000Z',
+  };
+
+  function client(): { api: ApiClient; fetchSpy: ReturnType<typeof vi.fn> } {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: () => Promise.resolve(EMPTY),
+      text: () => Promise.resolve(JSON.stringify(EMPTY)),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    return {
+      api: new ApiClient({
+        baseUrl: 'https://api.rockhopper.co',
+        token: 'rh_pat_test',
+      }),
+      fetchSpy,
+    };
+  }
+
+  it('asks for the bare route when no parameters are given', async () => {
+    const { api, fetchSpy } = client();
+    await api.listDriveInventory();
+    expect(fetchSpy.mock.calls[0][0]).toBe(
+      'https://api.rockhopper.co/drive-files/inventory',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('carries enrollment, limit and cursor together', async () => {
+    const { api, fetchSpy } = client();
+    await api.listDriveInventory({
+      enrollment: 'not_enrolled',
+      limit: 50,
+      cursor: 'opaque-cursor',
+    });
+    expect(fetchSpy.mock.calls[0][0]).toBe(
+      'https://api.rockhopper.co/drive-files/inventory' +
+        '?enrollment=not_enrolled&limit=50&cursor=opaque-cursor',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('percent-encodes a cursor exactly once, so the backend gets what it issued', async () => {
+    const { api, fetchSpy } = client();
+    await api.listDriveInventory({ cursor: 'a+b/c=d' });
+    const url = new URL(String(fetchSpy.mock.calls[0][0]));
+    expect(url.searchParams.get('cursor')).toBe('a+b/c=d');
+    vi.unstubAllGlobals();
+  });
+
+  it('sends limit=0 rather than dropping it, and omits an empty cursor', async () => {
+    // `limit` is guarded on `!== undefined` and `cursor` on truthiness — two
+    // different rules on adjacent lines, so they are asserted apart.
+    const { api, fetchSpy } = client();
+    await api.listDriveInventory({ limit: 0, cursor: '' });
+    const url = new URL(String(fetchSpy.mock.calls[0][0]));
+    expect(url.searchParams.get('limit')).toBe('0');
+    expect(url.searchParams.has('cursor')).toBe(false);
     vi.unstubAllGlobals();
   });
 });
