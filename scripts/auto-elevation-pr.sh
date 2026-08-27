@@ -15,12 +15,18 @@
 # `auto-elevation-pr.test.sh` drives it against a real git repository with `gh`
 # stubbed on PATH.  The workflow next door only supplies inputs and a token.
 #
-# WHAT IT WILL NEVER DO.  It never closes an elevation, never merges one, and
-# never changes the draft state of one that is already open.  An open elevation
-# pull request is the release sitting in its normal state, not a task anybody is
-# late on — so the only action here is "open one if none exists".
+# WHAT IT WILL NEVER DO.  It never merges an elevation, never marks one ready,
+# and never changes the draft state of one that is already open.  An open
+# elevation pull request is the release sitting in its normal state, not a task
+# anybody is late on.
 #
-# That paragraph used to end "never marks one ready or draft", and ENG-3437 made
+# IT DOES NOW CLOSE AND REOPEN ONE PAIR, and only one — `dev` -> `staging`,
+# ENG-3502, David 2026-08-27.  Section 2a carries the ruling, what it rejected
+# and why.  What comes back is the same pull request number, the same branches
+# and the same draft state; the close is how an `opened`-class event is emitted,
+# never a disposition on the release.
+#
+# That paragraph used to say "never closes an elevation" too, and ENG-3437 made
 # the second half false on 2026-08-26: the `staging` -> `main` elevation is now
 # CREATED as a draft (see section 4).  Marking it READY is the human QA signal
 # that starts the test suites, and that move stays a human's — which is the
@@ -42,6 +48,12 @@
 #                         the body                              (default false)
 #   ELEVATION_MAX_SUBJECTS  how many commit subjects to list    (default 60)
 #   ELEVATION_REMOTE      remote to read the branches from      (default origin)
+#   ELEVATION_PUSHED_REF  the branch whose push triggered this
+#                         run, empty for cron and dispatch.
+#                         Section 2a refreshes the standing
+#                         elevation only when this equals
+#                         ELEVATION_HEAD — i.e. only when new
+#                         content actually landed on it        (default empty)
 #
 set -euo pipefail
 
@@ -51,6 +63,7 @@ reviewer="${ELEVATION_REVIEWER:-}"
 checks_run="${ELEVATION_CHECKS_RUN:-false}"
 max_subjects="${ELEVATION_MAX_SUBJECTS:-60}"
 remote="${ELEVATION_REMOTE:-origin}"
+pushed_ref="${ELEVATION_PUSHED_REF:-}"
 
 die() { printf '::error::%s\n' "$*" >&2; exit 1; }
 
@@ -110,6 +123,83 @@ for the same promotion is worse than a late one."
 fi
 
 if [ -n "$existing" ]; then
+  # --- 2a. refresh the standing `dev` -> `staging` elevation -----------------
+  # ENG-3502.  David, 2026-08-27: "option A plus the full suite."
+  #
+  # THE DEFECT.  A pull request tracks its head BRANCH, so every merge into
+  # `dev` after the elevation opened arrives as a `synchronize` — and the three
+  # gate workflows (`ci.yml`, `coverage.yml`, `postman-drift.yml`) all carry
+  # `github.event.action != 'synchronize' || !contains(fromJSON('["dev",
+  # "staging"]'), github.head_ref)`, which is ENG-3437 refusing to re-run the
+  # suite on a standing elevation.  Correct in isolation, and combined with an
+  # auto-opened, never-closed elevation it means gate 3 can only ever fire
+  # against whatever `dev` held at open time.  Measured on frontend #1658: 29
+  # commits reached `staging` with every substantive check SKIPPED.
+  #
+  # THE FIX, and it is deliberately not in the workflows.  A close followed by a
+  # reopen emits `reopened`, which is in all three `types:` lists and is not a
+  # `synchronize` — so the gate fires against the branch's real tip with the
+  # ENG-3437 leg untouched, still protecting `staging` -> `main` and every
+  # feature pull request into `staging` or `main`.
+  #
+  # WHAT DAVID REJECTED: exempting `dev` -> `staging` from the synchronize leg
+  # (B — edits the leg, and re-runs on every intermediate merge), debouncing on
+  # a timer (C — machinery, and no human waits on a schedule), and accepting the
+  # hole with a note in the header (D — makes manual QA the detector, which is
+  # what ENG-3139 set out to stop).
+  #
+  # FOUR CONDITIONS, each load-bearing:
+  #   - the PAIR is `dev` -> `staging`.  `staging` -> `main` opens as a draft
+  #     (ENG-3437) and its gate fires when a human marks it ready; reopening it
+  #     would start nothing while it is a draft, and would re-run the whole
+  #     suite if it were ready — the 58% of Actions minutes ENG-3437 reclaimed.
+  #   - the head branch is what was just PUSHED.  That is the only signal here
+  #     that new content exists.  On cron and `workflow_dispatch` the standing
+  #     elevation is left alone, so the daily backstop cannot churn it.
+  #   - an App token is in hand.  A close/reopen performed with `GITHUB_TOKEN`
+  #     starts no workflows at all, so it would be pure notification noise
+  #     dressed as a gate — exactly the empty-check-list confusion this script
+  #     already warns about in the body.
+  #   - a pull request is already open.  With none open the create path below
+  #     emits `opened` on its own and this whole branch is unnecessary.
+  #
+  # WHAT IT DOES NOT FIX: a push whose refresh run is cancelled or fails leaves
+  # that commit ungated until the next push into `dev`.  The gate is only ever
+  # as current as the last successful refresh.
+  if [ "$head_ref" = "dev" ] && [ "$base_ref" = "staging" ] \
+     && [ "$checks_run" = "true" ] && [ "$pushed_ref" = "$head_ref" ]; then
+    refresh_err="$(mktemp)"
+    echo "#$existing tracks \`$head_ref\` -> \`$base_ref\` and \`$head_ref\` just \
+moved. Closing and reopening it so the gate fires on what it now carries \
+(ENG-3502)."
+
+    # CLOSE FIRST, AND GO RED IF IT REFUSES.  A failed close leaves the
+    # elevation open and untouched, which is the safe half of this operation —
+    # the gate stays stale, nothing is lost, and the next push tries again.
+    if ! gh pr close "$existing" 2>"$refresh_err"; then
+      cat "$refresh_err" >&2
+      die "could not close #$existing to refresh it (reason above). It is still \
+OPEN and still tracks \`$head_ref\` -> \`$base_ref\`; only its checks are stale, \
+and they were already stale before this run. Nothing was lost."
+    fi
+
+    # THE DANGEROUS HALF.  Between these two calls the promotion is tracked by
+    # nothing.  A reopen that fails must be the loudest thing this script can
+    # say, because a silently-closed elevation looks exactly like a promotion
+    # nobody has started — and the cron will not fix it: `gh pr list --state
+    # open` will report none, so the next run OPENS A SECOND pull request for a
+    # promotion that already has one sitting closed.
+    if ! gh pr reopen "$existing" 2>"$refresh_err"; then
+      cat "$refresh_err" >&2
+      die "#$existing IS NOW CLOSED and could not be reopened (reason above). \
+Nothing is tracking \`$head_ref\` -> \`$base_ref\` until somebody reopens it by \
+hand. Do that rather than opening a new one, so the discussion and the review \
+history survive."
+    fi
+    echo "reopened #$existing — the gate runs against \`$head_ref\`'s current tip."
+    exit 0
+  fi
+
   echo "#$existing is already open for \`$head_ref\` -> \`$base_ref\`, and it \
 tracks the branch — nothing to do."
   exit 0
