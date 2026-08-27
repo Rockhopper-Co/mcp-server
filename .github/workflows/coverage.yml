@@ -59,6 +59,24 @@ on:
   # A feature or hotfix pull request into `staging` or `main` is UNCHANGED:
   # `synchronize` still re-tests it on every push. Only a head of `dev` or
   # `staging` — which is only ever an elevation — stops re-running.
+  # ENG-3502 — THE `synchronize` LEG BELOW IS UNCHANGED AND STAYS CORRECT. What
+  # was broken is upstream of it: a standing `dev` -> `staging` elevation only
+  # ever received `synchronize` events, so this gate never re-fired on anything
+  # merged after the pull request opened, and gate 3 tested whatever `dev` held
+  # at open time. Measured on frontend #1658 — 29 commits reached `staging` with
+  # every substantive check SKIPPED.
+  #
+  # David ruled 2026-08-27, "option A plus the full suite":
+  # `auto-elevation-pr.yml` now CLOSES AND REOPENS that one pull request when a
+  # push lands on `dev` while it is open. A reopen emits `reopened`, which is in
+  # the `types:` list below and is not a `synchronize`, so this gate fires on
+  # the branch's real tip without touching the ENG-3437 leg — which still
+  # protects `staging` -> `main` and every feature pull request into `staging`
+  # or `main`. Rejected: exempting the pair from the leg (B — re-runs on every
+  # intermediate merge into `dev`), a debounce (C — machinery, and nobody waits
+  # on a timer), accepting the hole with a note (D — makes manual QA the
+  # detector, which is what ENG-3139 set out to stop).
+  #
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
     branches: [dev, staging, main]
