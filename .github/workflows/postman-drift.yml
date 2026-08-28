@@ -65,6 +65,13 @@ on:
   #     silently kill the dispatch escape hatch this header calls load-bearing.
   #     The `github.event_name != 'pull_request' ||` leg is what protects it.
   #
+  # ENG-3570 CORRECTS THAT FIRST TRAP: the draft leg now applies ONLY to a
+  # pull request whose head is `dev` or `staging`, i.e. an elevation. Written
+  # as ENG-3437 shipped it, it skipped every draft — including the permanent
+  # `epic/**` -> `dev` drift draft the epic-branch convention mandates — so
+  # gate 2 of the four-gate topology ran nowhere. The reasoning lives on the
+  # job's `if:` below, next to the clause.
+  #
   # A feature or hotfix pull request into `staging` or `main` is UNCHANGED:
   # `synchronize` still re-tests it on every push. Only a head of `dev` or
   # `staging` — which is only ever an elevation — stops re-running.
@@ -118,11 +125,34 @@ jobs:
     # exist. Leg 3 never runs on a `synchronize` whose head is `dev` or
     # `staging`: that is a push into a standing elevation, which is where 58%
     # of this org's Actions minutes went in the 14 days to 2026-08-26.
+    #
+    # ENG-3570 — leg 1's draft check is now scoped to the ELEVATION pull
+    # requests, which is all it was ever for. As ENG-3437 wrote it, it skipped
+    # ANY draft, and the `epic/**` -> `dev` pull request is a PERMANENT draft by
+    # the epic-branch convention — the standing drift-tracking draft opened on
+    # day one and explicitly never marked ready. So gate 2 of the four-gate
+    # topology stopped running in every repository: backend #2468's `test` runs
+    # on an epic -> `dev` pull request reported `skipped` three times for three
+    # times, and 12 more did the same across `epic/org-chart`,
+    # `epic/prompt-ledger` and `epic/auto-enrollment` on 2026-08-26.
+    #
+    # The third sub-leg is what fixes it, and each half is deliberate:
+    #   - a draft whose head IS `dev` or `staging` is the elevation, so
+    #     `!contains(...)` is FALSE and the whole leg still rests on
+    #     `draft == false` — it keeps skipping until a human marks it ready,
+    #     exactly the ENG-3437 behaviour David approved;
+    #   - any OTHER draft — the epic drift draft, an ordinary draft feature
+    #     pull request — makes it TRUE, falls through to the remaining legs,
+    #     and runs.
+    # `workflow_dispatch` is untouched: it short-circuits on the first sub-leg
+    # before either of the others is evaluated.
     if: >-
-      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+      (github.event_name != 'pull_request'
+      || github.event.pull_request.draft == false
+      || !contains(fromJSON('["dev","staging"]'), github.head_ref))
       && (github.base_ref != 'dev' || startsWith(github.head_ref, 'epic/'))
       && (github.event.action != 'synchronize'
-          || !contains(fromJSON('["dev","staging"]'), github.head_ref))
+      || !contains(fromJSON('["dev","staging"]'), github.head_ref))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
