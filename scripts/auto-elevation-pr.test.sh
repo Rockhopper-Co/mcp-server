@@ -84,6 +84,22 @@ case "$sub" in
       exit 1
     fi
     ;;
+  # ENG-3502.  The refresh is two calls and the ORDER matters, so both are
+  # recorded (every call is, at the top of this stub) and each can be failed
+  # independently — a failed reopen leaves the elevation closed, which is the
+  # one state this script can create that is worse than the bug it fixes.
+  "pr close")
+    if [ -n "${GH_CLOSE_FAIL:-}" ]; then
+      printf '%s\n' "$GH_CLOSE_FAIL" >&2
+      exit 1
+    fi
+    ;;
+  "pr reopen")
+    if [ -n "${GH_REOPEN_FAIL:-}" ]; then
+      printf '%s\n' "$GH_REOPEN_FAIL" >&2
+      exit 1
+    fi
+    ;;
   *) printf 'stub gh: unhandled: %s\n' "$*" >&2; exit 127 ;;
 esac
 STUB
@@ -131,6 +147,9 @@ run() {
     GH_LIST_FAIL="${GH_LIST_FAIL:-}" \
     GH_CREATE_FAIL="${GH_CREATE_FAIL:-}" \
     GH_EDIT_FAIL="${GH_EDIT_FAIL:-}" \
+    GH_CLOSE_FAIL="${GH_CLOSE_FAIL:-}" \
+    GH_REOPEN_FAIL="${GH_REOPEN_FAIL:-}" \
+    ELEVATION_PUSHED_REF="${ELEVATION_PUSHED_REF:-}" \
     ELEVATION_HEAD="${ELEVATION_HEAD:-}" \
     ELEVATION_BASE="${ELEVATION_BASE:-}" \
     ELEVATION_REVIEWER="${ELEVATION_REVIEWER:-}" \
@@ -142,8 +161,9 @@ run() {
 }
 
 reset() {
-  unset GH_PR_LIST_JSON GH_LIST_FAIL GH_CREATE_FAIL GH_EDIT_FAIL
+  unset GH_PR_LIST_JSON GH_LIST_FAIL GH_CREATE_FAIL GH_EDIT_FAIL GH_CLOSE_FAIL GH_REOPEN_FAIL
   unset ELEVATION_HEAD ELEVATION_BASE ELEVATION_REVIEWER ELEVATION_CHECKS_RUN ELEVATION_MAX_SUBJECTS
+  unset ELEVATION_PUSHED_REF
 }
 
 logged()     { grep -q -- "$1" "$tmp/gh.log"; }
@@ -329,5 +349,144 @@ ELEVATION_HEAD=dev ELEVATION_BASE=staging run
 [ "$rc" -ne 0 ]        || fail "14 an unanswerable duplicate check must go red" "$(dump)"
 not_logged "pr create" || fail "14 IT OPENED ONE BLIND — fail-closed broken" "$(dump)"
 ok "attack: an unanswerable duplicate check fails closed, opens nothing"
+
+# ---- 16. the STAGING hop is not drafted --------------------------------------
+# ENG-3437 drafts the production elevation only.  `dev` -> `staging` is merged
+# in ~110s median and happens ~100x a fortnight; a draft there would add a click
+# to the busiest hop and buy nothing, because that leg is already gated a
+# different way (one run at `opened`, none on `synchronize`).
+reset
+ELEVATION_HEAD=dev ELEVATION_BASE=staging run
+[ "$rc" -eq 0 ]        || fail "16 staging hop exits clean" "$(dump)"
+logged "pr create"     || fail "16 staging hop opens one" "$(dump)"
+not_logged "--draft" || fail "16 STAGING HOP WAS DRAFTED — it must not be" "$(dump)"
+ok "staging hop: opened ready, not drafted"
+
+# ---- 17. the gate is the PAIR, not the base ----------------------------------
+# `--draft` keys on head=staging AND base=main, which is the matrix leg that
+# exists.  A hand-run `dev` -> `main` is not a configured promotion, so it is
+# left alone rather than silently drafted — assert that, or a later
+# simplification to `base = main` passes unnoticed.
+reset
+ELEVATION_HEAD=dev ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 run
+[ "$rc" -eq 0 ]        || fail "17 dev->main exits clean" "$(dump)"
+logged "pr create"     || fail "17 dev->main opens one" "$(dump)"
+not_logged "--draft" || fail "17 dev->main was drafted — the gate widened to the base" "$(dump)"
+ok "dev->main: not drafted — the draft gate is the head/base pair"
+
+# ---- 19. ENG-3502: a push into `dev` REFRESHES the standing elevation --------
+# The defect this whole round exists for.  The three gate workflows refuse to
+# re-run on a `synchronize` whose head is `dev` or `staging` (ENG-3437), and the
+# elevation is opened once and synchronized forever — so gate 3 only ever saw
+# whatever `dev` held at open time.  A close followed by a reopen emits
+# `reopened`, which is in all three `types:` lists and is not a `synchronize`.
+#
+# The ORDER is asserted, not just the presence: a reopen recorded before its
+# close would mean the pull request ends up closed.
+reset
+GH_PR_LIST_JSON='[{"number":2192}]'
+ELEVATION_HEAD=dev ELEVATION_BASE=staging ELEVATION_CHECKS_RUN=true \
+  ELEVATION_PUSHED_REF=dev run
+[ "$rc" -eq 0 ]           || fail "19 refresh exits clean" "$(dump)"
+logged "pr close 2192"    || fail "19 IT NEVER CLOSED — gate 3 still never fires" "$(dump)"
+logged "pr reopen 2192"   || fail "19 IT NEVER REOPENED — the elevation is now closed" "$(dump)"
+not_logged "pr create"    || fail "19 refresh must not open a second pull request" "$(dump)"
+[ "$(grep -n 'pr close' "$tmp/gh.log" | head -1 | cut -d: -f1)" \
+  -lt "$(grep -n 'pr reopen' "$tmp/gh.log" | head -1 | cut -d: -f1)" ] \
+  || fail "19 close must come BEFORE reopen" "$(dump)"
+ok "push into dev: the standing elevation is closed then reopened, no second one"
+
+# ---- 20. the cron does NOT churn it ------------------------------------------
+# `ELEVATION_PUSHED_REF` is empty on cron and `workflow_dispatch`.  Refreshing
+# there would re-run the full suite daily against content the gate already saw,
+# which is the ENG-3437 burn coming back through a different door.
+reset
+GH_PR_LIST_JSON='[{"number":2192}]'
+ELEVATION_HEAD=dev ELEVATION_BASE=staging ELEVATION_CHECKS_RUN=true run
+[ "$rc" -eq 0 ]        || fail "20 cron exits clean" "$(dump)"
+not_logged "pr close"  || fail "20 THE CRON CHURNED THE ELEVATION" "$(dump)"
+not_logged "pr create" || fail "20 cron opens nothing when one is open" "$(dump)"
+ok "cron with no push: leaves the standing elevation alone"
+
+# ---- 21. no App token: no refresh --------------------------------------------
+# A close/reopen performed with `GITHUB_TOKEN` starts no workflows at all, so it
+# would be notification noise wearing a gate's clothes — the same empty-check-
+# list confusion the body warning in case 6 exists to prevent.
+reset
+GH_PR_LIST_JSON='[{"number":2192}]'
+ELEVATION_HEAD=dev ELEVATION_BASE=staging ELEVATION_CHECKS_RUN=false \
+  ELEVATION_PUSHED_REF=dev run
+[ "$rc" -eq 0 ]       || fail "21 exits clean without an app token" "$(dump)"
+not_logged "pr close" || fail "21 refreshed with a token that starts no checks" "$(dump)"
+ok "no app token: no refresh, because reopening would start nothing"
+
+# ---- 22. ATTACK: a refused close stays red and leaves it OPEN -----------------
+# The safe half.  A failed close changes nothing: the elevation is still open,
+# its checks are as stale as they already were, and the next push retries.  It
+# must still go red — a silent skip here is a gate that quietly stops firing
+# again, which is precisely the bug being fixed.
+reset
+GH_PR_LIST_JSON='[{"number":2192}]'
+GH_CLOSE_FAIL='HTTP 403: Resource not accessible by integration'
+ELEVATION_HEAD=dev ELEVATION_BASE=staging ELEVATION_CHECKS_RUN=true \
+  ELEVATION_PUSHED_REF=dev run
+[ "$rc" -ne 0 ]        || fail "22 a refused close must go red" "$(dump)"
+not_logged "pr reopen" || fail "22 IT REOPENED A PULL REQUEST IT NEVER CLOSED" "$(dump)"
+grep -qi "still" "$tmp/err" || fail "22 the error says the elevation is still open" "$(dump)"
+ok "attack: a refused close goes red and never reaches the reopen"
+
+# ---- 23. ATTACK: a refused REOPEN is the loudest failure here -----------------
+# Between the close and the reopen the promotion is tracked by nothing, and the
+# cron cannot heal it: `--state open` reports none, so the next run would open a
+# SECOND pull request for a promotion that already has one sitting closed.
+reset
+GH_PR_LIST_JSON='[{"number":2192}]'
+GH_REOPEN_FAIL='HTTP 422: Unprocessable Entity'
+ELEVATION_HEAD=dev ELEVATION_BASE=staging ELEVATION_CHECKS_RUN=true \
+  ELEVATION_PUSHED_REF=dev run
+[ "$rc" -ne 0 ]                 || fail "23 a refused reopen must go red" "$(dump)"
+grep -q "2192" "$tmp/err"       || fail "23 the error names the closed pull request" "$(dump)"
+grep -qi "CLOSED" "$tmp/err"    || fail "23 the error says it is CLOSED" "$(dump)"
+grep -qi "by hand" "$tmp/err"   || fail "23 the error says what a human must do" "$(dump)"
+ok "attack: a refused reopen goes red, names the number and says it is closed"
+
+# ---- 18. THE PRODUCTION HOP OPENS AS A DRAFT ---------------------------------
+# The reason ENG-3437 exists.  With the suites triggering on
+# `pull_request: branches: [dev, staging, main]`, a ready `staging` -> `main`
+# elevation ran the full suite at `opened` — against the release's FIRST commit,
+# before any of it was built — and again on every push into `staging`.  Measured
+# 2026-08-12..2026-08-26: 58% of the org's Actions minutes were runs on these two
+# standing pull requests.  Drafted, it runs nothing until a human marks it ready,
+# and that click is the QA signal.
+#
+# `staging` is pushed up to `dev`'s tip first: the fixture leaves it level with
+# `main`, and a level pair opens nothing (case 1).  This mutates `origin`, so it
+# stays last.
+reset
+git push --quiet origin HEAD:refs/heads/staging
+git fetch --quiet origin
+ELEVATION_HEAD=staging ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 run
+[ "$rc" -eq 0 ]                  || fail "18 production hop exits clean" "$(dump)"
+logged "pr create"               || fail "18 production hop opens one" "$(dump)"
+logged "--draft"                 || fail "18 PRODUCTION HOP IS NOT A DRAFT — the whole suite fires at opened" "$(dump)"
+logged "--add-reviewer sperezl1" || fail "18 a drafted production hop still requests the reviewer" "$(dump)"
+ok "production hop: opened as a DRAFT, and still requests sperezl1"
+
+# ---- 24. the production elevation is NEVER refreshed -------------------------
+# ENG-3502 is scoped to the PAIR, not to "any open elevation".
+# `staging` -> `main` opens as a draft (ENG-3437): reopening it while drafted
+# starts nothing, and reopening it after a human marked it ready re-runs the
+# whole suite — the 58% of Actions minutes that round reclaimed.  Gate 4 fires
+# on `ready_for_review`, and that click stays a human's.
+#
+# Runs after case 18, which is what leaves `staging` ahead of `main`.
+reset
+GH_PR_LIST_JSON='[{"number":3000}]'
+ELEVATION_HEAD=staging ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 \
+  ELEVATION_CHECKS_RUN=true ELEVATION_PUSHED_REF=staging run
+[ "$rc" -eq 0 ]        || fail "24 production hop with one open exits clean" "$(dump)"
+not_logged "pr close"  || fail "24 THE DRAFT PRODUCTION ELEVATION WAS REFRESHED" "$(dump)"
+not_logged "pr create" || fail "24 production hop opens nothing when one is open" "$(dump)"
+ok "production hop: never refreshed — gate 4 fires when a human marks it ready"
 
 printf '\n%s checks passed\n' "$pass"
