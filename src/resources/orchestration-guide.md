@@ -31,7 +31,10 @@ If a tool returns an error like "expected versionId but received fileMsId", you 
 
 ## 2. Adding a file to Rockhopper (enrollment)
 
-Every other tool works on files Rockhopper ALREADY has. `enroll_file` is the only one that adds a new one, and reaching for it is the right move more often than it looks: `list_files` and `search_files` see only enrolled files, so a workbook the user is talking about that appears in neither is very probably one nobody has added yet — not one that does not exist. `search_drive_files` is how you find it.
+Every other tool works on files Rockhopper ALREADY has. `enroll_file` is the only one that adds a new one, and reaching for it is the right move more often than it looks: `list_files` and `search_files` see only files that are already enrolled AND not archived by this person, so a workbook the user is talking about that appears in neither is not one that does not exist. It is one of two things, and you cannot tell them apart from the empty result — ask.
+
+- **Never added.** `search_drive_files` is how you find it, then `enroll_file`.
+- **Archived by this person.** Archive is a per-person hide: the file is still enrolled, still tracked, and still on every teammate's list. It is restored from the archived list in the Rockhopper web app. There is no archive or restore tool here, so this one is the user's to undo — say so rather than offering to enroll a file that is already enrolled.
 
 **Identity.** Two ways to name the file, mutually exclusive:
 

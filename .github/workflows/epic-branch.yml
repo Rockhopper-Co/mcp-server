@@ -6,27 +6,55 @@ name: epic branch
 # Each branch validates locally and is genuinely green. The break appears only
 # where two of them MEET — a widened required field against a hand-built literal,
 # a route deleted under a test that used it — and git merges those cleanly, so
-# only a compile or a test run finds them. Since 2026-07-31 every gate in this
-# repo runs on production only (`ci.yml`, `pull_request: branches: [main]` plus
-# `push: main`), which means a merge into an epic branch runs NOTHING. The next
-# agent inherits the failure and reasonably reads it as their own. That happened
-# five times in the week of 2026-08-11.
+# only a compile or a test run finds them. The next agent inherits the failure
+# and reasonably reads it as their own. That happened five times in the week of
+# 2026-08-11.
+#
+# The line that stood here — "Since 2026-07-31 every gate in this repo runs on
+# production only (`ci.yml`, `pull_request: branches: [main]` plus `push: main`)"
+# — WAS TRUE WHEN WRITTEN AND IS NOW FALSE. ENG-3139 gave `ci.yml` the
+# four-gate topology on 2026-08-23: it fires on pull requests based on `dev`,
+# `staging` and `main`. What survives is the reason this file exists — no gate
+# anywhere covers work landing on an `epic/**` branch.
 #
 # WHAT IT IS FOR. Making a red epic branch announce itself. It is informational
 # by design: no branch protection, no required check, nothing blocks a merge.
 #
-# TRIGGER, NOT A JOB-LEVEL `if:` — the reasoning ci.yml states in its own header:
-# a job-level condition still creates the run and posts skipped checks on every
-# pull request, which is what the CI-budget decision was avoiding. `push` only.
-# Adding `pull_request` would double every run, because the merge that closes
-# the pull request is itself a push to `epic/**`.
+# ENG-3448 — `push` BECAME `pull_request`. David ruled 2026-08-27 (option A).
+# This file used to fire on the push only, and its own header argued for that:
+# "Adding `pull_request` would double every run, because the merge that closes
+# the pull request is itself a push to `epic/**`." THAT REASONING WAS CORRECT
+# AND NO LONGER APPLIES — it argued against having BOTH legs, and this is a
+# SWAP, not an addition. There is exactly one run per merge either way; the
+# only question is whether it lands before the merge or after it. Six sibling
+# repositories moved to before, and the topology's own test — who is waiting
+# for the answer — points at the author sitting on the pull request, not at
+# whoever inherits the branch afterwards.
+#
+# ACCEPTED COST, stated so nobody rediscovers it as a bug: a DIRECT push to an
+# `epic/**` branch is now UNTESTED. That includes the `chore/sync-dev-into-epic-*`
+# merges. The `epic/**` -> `dev` gate in `ci.yml` still catches it before the
+# epic reaches `dev`, so the exposure lasts only while the epic branch is alive,
+# and `workflow_dispatch` below runs this suite against any branch on demand.
+#
+# TRIGGER, NOT A JOB-LEVEL `if:` — the reasoning ci.yml states in its own
+# header: a job-level condition still creates the run and posts skipped checks
+# on every pull request. Here the trigger's own `branches:` filter does the
+# selecting, so no `if:` is needed at all.
 on:
-  push:
+  pull_request:
     branches: ['epic/**']
   workflow_dispatch:
 
 # A busy epic branch takes several merges an hour. Without this, each queues a
 # run nobody is waiting on any more.
+#
+# ENG-3439 wanted every gate keyed per pull request rather than per head
+# branch. NO CHANGE WAS NEEDED HERE, and that is measured rather than assumed:
+# under `pull_request`, `github.ref` resolves to `refs/pull/<N>/merge`, so this
+# key is already per-pull-request. It collides only with a run's own
+# re-triggers, which is what cancellation is for. A `workflow_dispatch` run has
+# no pull request and falls through to the branch ref — unchanged.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

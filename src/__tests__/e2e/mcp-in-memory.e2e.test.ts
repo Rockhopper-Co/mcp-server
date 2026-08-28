@@ -195,7 +195,13 @@ describe('MCP in-memory protocol e2e', () => {
       name: 'list_files',
       arguments: { search: 'nonexistent_file_xyz' },
     });
-    expect(JSON.stringify(result.content)).toContain('No enrolled files found');
+    const text = JSON.stringify(result.content);
+    expect(text).toContain('nonexistent_file_xyz');
+    // ENG-3402 — an empty list is the one ambiguous answer, so over the wire
+    // it must still name both causes (archived by this person / never added)
+    // rather than reading as "no such file".
+    expect(text).toMatch(/archiv/i);
+    expect(text).toContain('search_drive_files');
   });
 
   it('list_files surfaces API errors via the catch branch', async () => {
