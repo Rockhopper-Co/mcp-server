@@ -301,6 +301,22 @@ export interface UserSummary {
 
 /** One row of {@link UserSummary.teamMembers} — the team, not its roster. */
 export interface TeamMembership {
+  /**
+   * ENG-3410 (plan 30, SP07, R3) — the ONE membership that answers "my team".
+   *
+   * A SIBLING OF `team`, NOT A FIELD INSIDE IT, and the distinction is the whole
+   * reason this comment exists. The backend serialises `isPrimary` on the
+   * MEMBERSHIP row (`backend/src/resources/teams/entities/team-member.entity.ts`),
+   * so declaring it inside the nested object below type-checks perfectly,
+   * `m.team?.isPrimary` is `undefined` for every user, the selection in
+   * `resolveTeamShareTargets` falls through to nobody, and `TeamUnresolvedError`
+   * is thrown at every caller. This package ships to customers over npm, so that
+   * mistake reaches installed machines on its own publish cadence.
+   *
+   * Optional because a backend older than SP05 does not serve it. Read it
+   * through the primary-then-first fallback in `enrollment.ts`, never bare.
+   */
+  isPrimary?: boolean;
   team?: {
     /** Version-7 uuid (ENG-1966). Absent on a backend older than the re-key. */
     id?: string;

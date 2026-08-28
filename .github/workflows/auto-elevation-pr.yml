@@ -14,9 +14,34 @@ name: auto-elevation-pr
 # the `verify` job below runs it BEFORE the `elevate` job is allowed to touch
 # GitHub.  A broken decision table cannot open a pull request.
 #
-# WHAT THIS NEVER DOES: close an elevation, merge one, mark one ready or draft.
-# An open elevation is the release sitting in its normal state, not a task
-# anyone is late on.  The only action is "open one if none exists".
+# WHAT THIS NEVER DOES: merge an elevation, mark one ready, or change the draft
+# state of one that is already open.  An open elevation is the release sitting
+# in its normal state, not a task anyone is late on.
+#
+# ENG-3502 — IT DOES NOW CLOSE AND REOPEN THE `dev` -> `staging` ELEVATION, and
+# only that one, when a push lands on `dev` while it is open.  David ruled this
+# on 2026-08-27: "option A plus the full suite."  The decision table lives in
+# `scripts/auto-elevation-pr.sh` section 2a with the reasoning and the three
+# rejected options; cases 19-24 of the test file assert it in both directions.
+#
+# THE DEFECT IT FIXES.  The gate workflows refuse to re-run on a `synchronize`
+# whose head is `dev` or `staging` (ENG-3437, correct in isolation), and this
+# workflow opens an elevation once and then never touches it — so every merge
+# into `dev` after that arrived as a `synchronize` and was never gated.  Gate 3
+# could only ever fire against whatever `dev` held at open time.  Measured on
+# frontend #1658: 29 commits reached `staging` with every substantive check
+# SKIPPED.  A close followed by a reopen emits `reopened`, which is in all three
+# `types:` lists and is not a `synchronize`, so the gate fires on the real
+# content with the ENG-3437 leg untouched.
+#
+# The pull request keeps its number, its branches, its draft state and its
+# review history.  The close is how the event is emitted, never a disposition.
+#
+# That line read "mark one ready or draft" until 2026-08-26.  ENG-3437 makes the
+# `staging` -> `main` leg open its pull request AS a draft — `scripts/`
+# `auto-elevation-pr.sh` section 4 — so the suites do not start until a human
+# marks it ready.  Marking it ready is still never automation's move: that click
+# IS the QA signal, and it is the only thing that fires gate 4.
 #
 # THIS DOES NOT DISTURB THE GATE TOPOLOGY (ENG-3139).  It adds no trigger to any
 # test workflow and changes no `pull_request` base list.  It creates the pull
@@ -24,12 +49,24 @@ name: auto-elevation-pr
 # `staging` -> `main` are exactly the two hops where a human waits on the suite,
 # which is why an auto-opened elevation carrying NO checks would be worse than a
 # late hand-opened one.  See the credential note below.
+#
+# ENG-3437 changes WHEN those two gates fire, not whether: `dev` -> `staging`
+# runs once at `opened` and never again on a push into `dev`, and
+# `staging` -> `main` runs when the draft is marked ready.  58% of this org's
+# Actions minutes over the 14 days to 2026-08-26 went to re-running these two
+# standing pull requests, and a red one re-ran forever.
 
 on:
   # The two promotion branches.  A push to either is the moment a disparity can
   # appear, so this is the fast path.
   push:
     branches: [dev, staging]
+    # ENG-3502 makes this trigger do double duty: it opens the elevation when
+    # none exists, AND it is the only signal that new content landed on a
+    # standing one.  `ELEVATION_PUSHED_REF` below carries which branch was
+    # pushed, and the refresh happens only when that is the elevation's head —
+    # so cron and `workflow_dispatch` cannot churn a pull request whose gate
+    # has already seen its tip.
 
   schedule:
     # 14:40 UTC — early morning Pacific, so anything that accumulated overnight
@@ -85,6 +122,11 @@ jobs:
           - head: staging
             base: main
             reviewer: sperezl1
+            # This leg is opened as a DRAFT (ENG-3437). The `--draft` decision
+            # lives in `scripts/auto-elevation-pr.sh`, gated on this exact
+            # head/base pair, and is asserted in both directions by
+            # `scripts/auto-elevation-pr.test.sh` — which the `verify` job above
+            # runs before this job may touch GitHub.
 
     # Two runs racing would both see "no open pull request" and both create one.
     # GitHub refuses the second (the script reads that refusal as already-done),
@@ -204,4 +246,10 @@ jobs:
           ELEVATION_HEAD: ${{ matrix.head }}
           ELEVATION_BASE: ${{ matrix.base }}
           ELEVATION_REVIEWER: ${{ matrix.reviewer }}
+          # ENG-3502. Empty on `schedule` and `workflow_dispatch`, which is what
+          # keeps the daily backstop from re-running the suite against content
+          # the gate has already seen. `github.ref_name` on a push run is the
+          # pushed branch; the script compares it to the head and refreshes only
+          # on a match.
+          ELEVATION_PUSHED_REF: ${{ github.event_name == 'push' && github.ref_name || '' }}
         run: bash scripts/auto-elevation-pr.sh
