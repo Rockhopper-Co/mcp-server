@@ -11,8 +11,16 @@ export function registerFileResources(
     'rockhopper://files',
     {
       title: 'Enrolled Files',
+      // ENG-3402 / plan 28 F20 — same shared `GET /enrolled-files` query as
+      // `list_files`, so the same archive exclusion applies and the same
+      // overclaim ("All Excel files enrolled") was here too. A resource
+      // description is read by the model before it ever fetches the JSON.
       description:
-        'All Excel files enrolled in the current user\'s Rockhopper workspace',
+        'The Excel files enrolled in the current user\'s Rockhopper ' +
+        'workspace, excluding any this person has archived. Archive is a ' +
+        'per-person hide — an archived file is still enrolled and still ' +
+        'visible to teammates — and it is restored from the archived list in ' +
+        'the Rockhopper web app. Same data as the `list_files` tool.',
       mimeType: 'application/json',
     },
     async (uri) => {

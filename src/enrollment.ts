@@ -296,12 +296,17 @@ export class TeamUnresolvedError extends Error {
 /**
  * The teammates a `share_with: 'team'` enroll fans the file out to.
  *
- * Mirrors the web enrollment wizard exactly — the caller's FIRST team
+ * Mirrors the web enrollment wizard exactly — the caller's PRIMARY team
  * membership, its roster, minus the caller — because SP04 defines "team" as
  * "the wizard's default set" and two surfaces answering the same question
  * differently is worse than either answer. The backend has no team-vs-private
  * enum to lean on: `POST /enrolled-files/batch` takes an explicit list of
  * platform ids and nothing else, so the expansion happens here or nowhere.
+ *
+ * ENG-3410 (plan 30, SP07, R3) — this used to read FIRST, and first meant
+ * "whatever position the array happened to put it in". A person on two teams got
+ * their file shared with whichever roster the ORM returned first. R3 designates
+ * one membership as primary and this is the value that replaces the index.
  *
  * THROWS rather than returning an empty list when there is no team or no
  * teammate. Enrolling privately after the user said "my team" is a silent
@@ -312,7 +317,21 @@ export async function resolveTeamShareTargets(
   api: TeamDirectory,
 ): Promise<string[]> {
   const me = await api.getMe();
-  const membership = me.teamMembers?.find((m) => m.team != null);
+  // ENG-3410 — primary first, then the first usable membership.
+  //
+  // The FALLBACK IS NOT DEFENSIVE PADDING, it is the installed-client window.
+  // `is_primary` starts being written when the backend deploys; a person whose
+  // rows predate that backfill carries no primary at all, and a bare
+  // `find(m => m.isPrimary)` would throw `TeamUnresolvedError` at them instead
+  // of sharing with the team they plainly have.
+  //
+  // `m.team != null` is required on BOTH legs. A primary row whose team the
+  // backend could not serve is not an answer: selecting it yields an undefined
+  // team id and reports "you are not on a team" to somebody who is.
+  const memberships = me.teamMembers ?? [];
+  const membership =
+    memberships.find((m) => m.isPrimary && m.team != null) ??
+    memberships.find((m) => m.team != null);
   const teamId = membership?.team?.id ?? membership?.team?.internalId;
   if (teamId === undefined) {
     throw new TeamUnresolvedError(
