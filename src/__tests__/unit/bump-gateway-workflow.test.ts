@@ -194,7 +194,20 @@ function makeGatewayTree(pinnedVersion: string): string {
       '    printf "%s %s\\n" "$num" "$created" > "$state"',
       '    echo "https://github.com/Rockhopper-Co/mcp-gateway/pull/$num"',
       '    ;;',
-      '  "pr edit") ;;',
+      // ENG-3987 — THE STEADY STATE OF THE `gh` ON THE RUNNER, not an outage
+      // being simulated. `gh pr edit` resolves a pull request through a GraphQL
+      // lookup that asks for `repository.pullRequest.projectCards`; GitHub has
+      // sunset Projects (classic), so that field errors and nulls the whole
+      // `pullRequest` object with it. Any step that calls `gh pr edit` dies
+      // here, which is what makes reinstating it a failing test rather than a
+      // latent break nobody sees until a publish.
+      '  "pr edit")',
+      '    echo "GraphQL: Projects (classic) is being deprecated in favor of the new Projects experience. (repository.pullRequest.projectCards)" >&2',
+      '    exit 1',
+      '    ;;',
+      // The retitle went to REST for exactly that reason. Recorded like every
+      // other call, so the version in the title is still asserted.
+      '  "api --method") ;;',
       '  "pr merge")',
       '    if [ "${FAKE_MERGE_FAIL:-}" = "1" ]; then echo "not mergeable" >&2; exit 1; fi',
       // A merged pull request is no longer open, so the next run's `pr list`
@@ -999,8 +1012,14 @@ describe('the bump merges itself, and ONLY when the proofs passed (ENG-2843)', (
     runJob(second, env(second, remote, NEW), 'schedule');
 
     expect(ghLog(second).some((l) => l.startsWith('pr create'))).toBe(false);
-    const edit = ghLog(second).find((l) => l.startsWith('pr edit'));
-    expect(edit).toContain('206');
+
+    // ENG-3987 — the refresh goes over REST. `gh pr edit` cannot resolve a pull
+    // request at all against a github.com that has sunset Projects (classic),
+    // and the stub above fails it the way the runner's `gh` does, so this
+    // assertion is red on any implementation that calls it.
+    expect(ghLog(second).some((l) => l.startsWith('pr edit'))).toBe(false);
+    const edit = ghLog(second).find((l) => l.startsWith('api --method PATCH'));
+    expect(edit).toContain('repos/Rockhopper-Co/mcp-gateway/pulls/206');
     expect(edit).toContain(`chore(deps): pin mcp-server to ${NEW}`);
   });
 
