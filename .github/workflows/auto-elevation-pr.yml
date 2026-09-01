@@ -87,8 +87,13 @@ on:
   workflow_dispatch:
 
 # Declaring this block drops every permission not named.
-# `pull-requests: write` is what `gh pr create` and `gh pr edit --add-reviewer`
-# need; `contents: read` is for the checkout.
+# `pull-requests: write` is what `gh pr create` and the
+# `POST .../pulls/{n}/requested_reviewers` that requests the production reviewer
+# need; `contents: read` is for the checkout.  That second one was
+# `gh pr edit --add-reviewer` until ENG-3987 — same permission, and REST because
+# `gh pr edit` resolves the pull request through a GraphQL lookup that asks for
+# `repository.pullRequest.projectCards`, a field GitHub has sunset and now
+# errors on.  The permission was never the problem and does not change here.
 permissions:
   contents: read
   pull-requests: write
