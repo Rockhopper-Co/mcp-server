@@ -322,7 +322,36 @@ echo "opened $url"
 # elevation trains the reviewer to dismiss the notification, and then the
 # production one goes past unread.
 if [ -n "$reviewer" ]; then
-  if ! gh pr edit "$url" --add-reviewer "$reviewer" 2>"$err"; then
+  # REST, NOT `gh pr edit`, AND THAT IS THE WHOLE OF ENG-3987.  `gh pr edit`
+  # resolves the pull request through a GraphQL lookup that asks for
+  # `repository.pullRequest.projectCards`.  GitHub has sunset Projects
+  # (classic), so that field now returns an error AND nulls the entire
+  # `pullRequest` object with it — the command fails before it can send
+  # anything, whatever you asked it to change.  Nothing here has ever touched a
+  # project.
+  #
+  # THIS ONE HAD NEVER FIRED, WHICH IS WHY IT WAS INVISIBLE.  `$reviewer` is
+  # empty on the `dev` -> `staging` hop, and no fresh `staging` -> `main`
+  # elevation has opened here since the sunset — so this was a latent copy of a
+  # measured outage (backend #2677, run 33483694322) sitting on the ONE hop that
+  # ships to production.  It would have surfaced the first time a production
+  # elevation opened, which is the worst possible moment to discover it.
+  #
+  # THE VERSION FIX IS THE WEAKER ONE.  `gh` >= 2.73.0 strips `projectCards`
+  # from the query when its detector reports Projects v1 unsupported
+  # (`pkg/cmd/pr/shared/finder.go`), and that detector always says unsupported
+  # against github.com — so a new enough `gh` does work.  But the runner takes
+  # whatever `gh` its image ships, that block is marked for deletion upstream
+  # (`TODO projectsV1Deprecation`), and the next deprecation of a field we never
+  # asked for lands exactly the same way.  Not calling the broken path is the
+  # fix.
+  #
+  # SAME PERMISSION.  `pull-requests: write` is what `--add-reviewer` needed and
+  # what this endpoint needs; the workflow's `permissions:` block does not
+  # change.  `$url` ends in the number, which is what the endpoint wants.
+  if ! gh api --method POST \
+         "repos/{owner}/{repo}/pulls/${url##*/}/requested_reviewers" \
+         -f "reviewers[]=$reviewer" --silent 2>"$err"; then
     cat "$err" >&2
     # LOUD, and after the fact.  The pull request is already open and stays
     # open — that part succeeded and is the greater share of the value.  What

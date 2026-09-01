@@ -20,7 +20,7 @@
 #
 # `gh` is stubbed on PATH rather than mocked inside the script, so the arguments
 # the script really builds are what gets asserted — including the ones that only
-# matter on the production hop (`--add-reviewer`) and the ones that must NOT
+# matter on the production hop (the reviewer request) and the ones that must NOT
 # appear on the staging hop.  `git` is real, against a real repository, so the
 # commit-counting is not simulated either.
 #
@@ -81,6 +81,17 @@ case "$sub" in
   "pr edit")
     if [ -n "${GH_EDIT_FAIL:-}" ]; then
       printf '%s\n' "$GH_EDIT_FAIL" >&2
+      exit 1
+    fi
+    ;;
+  "api "*|"api")
+    # ENG-3987 — the reviewer request goes through REST now, because
+    # `gh pr edit` cannot resolve a pull request at all (see the last two
+    # cases).  Failed independently of `pr edit` so that "the reviewer was
+    # refused" and "the whole lookup is broken" stay two distinguishable
+    # outcomes, which is exactly the distinction the old stub could not make.
+    if [ -n "${GH_API_FAIL:-}" ]; then
+      printf '%s\n' "$GH_API_FAIL" >&2
       exit 1
     fi
     ;;
@@ -147,6 +158,7 @@ run() {
     GH_LIST_FAIL="${GH_LIST_FAIL:-}" \
     GH_CREATE_FAIL="${GH_CREATE_FAIL:-}" \
     GH_EDIT_FAIL="${GH_EDIT_FAIL:-}" \
+    GH_API_FAIL="${GH_API_FAIL:-}" \
     GH_CLOSE_FAIL="${GH_CLOSE_FAIL:-}" \
     GH_REOPEN_FAIL="${GH_REOPEN_FAIL:-}" \
     ELEVATION_PUSHED_REF="${ELEVATION_PUSHED_REF:-}" \
@@ -161,7 +173,7 @@ run() {
 }
 
 reset() {
-  unset GH_PR_LIST_JSON GH_LIST_FAIL GH_CREATE_FAIL GH_EDIT_FAIL GH_CLOSE_FAIL GH_REOPEN_FAIL
+  unset GH_PR_LIST_JSON GH_LIST_FAIL GH_CREATE_FAIL GH_EDIT_FAIL GH_CLOSE_FAIL GH_REOPEN_FAIL GH_API_FAIL
   unset ELEVATION_HEAD ELEVATION_BASE ELEVATION_REVIEWER ELEVATION_CHECKS_RUN ELEVATION_MAX_SUBJECTS
   unset ELEVATION_PUSHED_REF
 }
@@ -212,7 +224,7 @@ ok "disparity, pull request already open: opens NOTHING, names the existing one"
 reset
 ELEVATION_HEAD=dev ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 run
 [ "$rc" -eq 0 ]                     || fail "4 reviewer hop exits clean" "$(dump)"
-logged "--add-reviewer sperezl1" || fail "4 sperezl1 is requested" "$(dump)"
+logged "reviewers\[\]=sperezl1" || fail "4 sperezl1 is requested" "$(dump)"
 ok "production hop: requests sperezl1"
 
 # ---- 5. the staging hop must NOT ---------------------------------------------
@@ -221,7 +233,7 @@ ok "production hop: requests sperezl1"
 # then he misses the production one.
 reset
 ELEVATION_HEAD=dev ELEVATION_BASE=staging run
-not_logged "add-reviewer" || fail "5 staging hop requests nobody" "$(dump)"
+not_logged "requested_reviewers" || fail "5 staging hop requests nobody" "$(dump)"
 ok "staging hop: requests nobody"
 
 # ---- 6. no app token: the warning is in the BODY ------------------------------
@@ -272,7 +284,7 @@ ok "attack: a non-duplicate create failure stays red and prints gh's reason"
 # silently no-ops, the production elevation looks reviewed-by-nobody and the
 # only signal is a log line nobody opens.
 reset
-GH_EDIT_FAIL='GraphQL: Could not resolve to a User with the login of sperezl1.'
+GH_API_FAIL='HTTP 422: Reviews may only be requested from collaborators.'
 ELEVATION_HEAD=dev ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 run
 [ "$rc" -ne 0 ] || fail "10 a refused reviewer request must go red" "$(dump)"
 grep -qi "sperezl1" "$tmp/err" || fail "10 the error names the reviewer" "$(dump)"
@@ -469,7 +481,7 @@ ELEVATION_HEAD=staging ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 run
 [ "$rc" -eq 0 ]                  || fail "18 production hop exits clean" "$(dump)"
 logged "pr create"               || fail "18 production hop opens one" "$(dump)"
 logged "--draft"                 || fail "18 PRODUCTION HOP IS NOT A DRAFT — the whole suite fires at opened" "$(dump)"
-logged "--add-reviewer sperezl1" || fail "18 a drafted production hop still requests the reviewer" "$(dump)"
+logged "reviewers\[\]=sperezl1" || fail "18 a drafted production hop still requests the reviewer" "$(dump)"
 ok "production hop: opened as a DRAFT, and still requests sperezl1"
 
 # ---- 24. the production elevation is NEVER refreshed -------------------------
@@ -488,5 +500,52 @@ ELEVATION_HEAD=staging ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 \
 not_logged "pr close"  || fail "24 THE DRAFT PRODUCTION ELEVATION WAS REFRESHED" "$(dump)"
 not_logged "pr create" || fail "24 production hop opens nothing when one is open" "$(dump)"
 ok "production hop: never refreshed — gate 4 fires when a human marks it ready"
+
+# ---- 25. THE CASE ENG-3987 EXISTS FOR --------------------------------------
+# The production reviewer request must survive a `gh` whose `pr edit` cannot
+# resolve a pull request AT ALL.
+#
+# WHAT HAPPENED.  `gh pr edit` asks for `repository.pullRequest.projectCards` in
+# its lookup.  GitHub has sunset Projects (classic), so that field now returns
+# an error AND nulls the whole `pullRequest` object with it — the edit fails
+# before it can send anything, whatever you asked it to change.  Measured on
+# backend run 33483694322, where the same call in the same script broke the
+# elevation refresh; fixed there in #2677 and ported here.
+#
+# WHY IT WAS INVISIBLE HERE.  This line had never fired: `ELEVATION_REVIEWER` is
+# empty on the `dev` -> `staging` hop, and no fresh `staging` -> `main`
+# elevation has opened since the sunset.  So the break was latent on the ONE hop
+# that ships to production, and would have surfaced the first time somebody cut
+# a release.
+#
+# `GH_EDIT_FAIL` here is not an outage being simulated.  It is the STEADY STATE
+# of the `gh` on the runner, and this case says the reviewer request must not go
+# through a command that has it.  It fails on any implementation that calls
+# `gh pr edit`.
+reset
+GH_EDIT_FAIL='GraphQL: Projects (classic) is being deprecated in favor of the new Projects experience, see: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/. (repository.pullRequest.projectCards)'
+ELEVATION_HEAD=dev ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 run
+[ "$rc" -eq 0 ] \
+  || fail "25 THE REVIEWER REQUEST STILL GOES THROUGH \`gh pr edit\` — the production hop dies" "$(dump)"
+not_logged "pr edit" \
+  || fail "25 \`gh pr edit\` was called; its lookup cannot resolve a PR" "$(dump)"
+logged "requested_reviewers" || fail "25 the reviewer was not requested at all" "$(dump)"
+logged "reviewers\[\]=sperezl1" || fail "25 sperezl1 is no longer the one requested" "$(dump)"
+logged "pulls/99"             || fail "25 the request did not name the pull request just opened" "$(dump)"
+ok "production reviewer request avoids the broken lookup, and still names sperezl1"
+
+# ---- 26. ATTACK: a genuinely refused reviewer request is still LOUD ---------
+# Routing around `gh pr edit` must not route around the ERROR.  A production
+# elevation with no reviewer looks exactly like one nobody has got to yet, and
+# the only other signal is a log line nobody opens.  Asserted separately from
+# case 10 because that case now fails the REST call at the point the script
+# reads its exit status — this one proves the message still reaches a human.
+reset
+GH_API_FAIL='HTTP 422: Reviews may only be requested from collaborators.'
+ELEVATION_HEAD=dev ELEVATION_BASE=main ELEVATION_REVIEWER=sperezl1 run
+[ "$rc" -ne 0 ] || fail "26 A REFUSED REVIEWER REQUEST EXITED GREEN" "$(dump)"
+grep -qi "sperezl1" "$tmp/err" || fail "26 the error names the reviewer" "$(dump)"
+grep -qi "collaborators" "$tmp/err" || fail "26 gh's own reason is not printed" "$(dump)"
+ok "attack: a refused reviewer request goes red and prints the endpoint's reason"
 
 printf '\n%s checks passed\n' "$pass"
