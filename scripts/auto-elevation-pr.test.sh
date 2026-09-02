@@ -34,7 +34,16 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 pass=0
-ok()   { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
+attacks=0
+# `attacks` is counted off the `attack:` prefix the ATTACK cases give their
+# `ok` message, so neither number in the summary can drift from the cases that
+# actually ran.  ENG-4065 — the workflow header used to state both by hand, and
+# every one of the nine repositories carrying it had them wrong.
+ok()   {
+  pass=$((pass + 1))
+  case "$1" in attack:*) attacks=$((attacks + 1)) ;; esac
+  printf '  ok   %s\n' "$1"
+}
 fail() { printf '  FAIL %s\n' "$1" >&2; printf '       %s\n' "${2:-}" >&2; exit 1; }
 
 # ---- a stub `gh` that records what it was asked to do ------------------------
@@ -548,4 +557,4 @@ grep -qi "sperezl1" "$tmp/err" || fail "26 the error names the reviewer" "$(dump
 grep -qi "collaborators" "$tmp/err" || fail "26 gh's own reason is not printed" "$(dump)"
 ok "attack: a refused reviewer request goes red and prints the endpoint's reason"
 
-printf '\n%s checks passed\n' "$pass"
+printf '\n%s checks passed, %s of them attacks\n' "$pass" "$attacks"
