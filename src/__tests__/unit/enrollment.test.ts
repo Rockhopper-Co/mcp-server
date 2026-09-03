@@ -229,6 +229,57 @@ describe('resolveTeamShareTargets', () => {
       'them-2',
     ]);
   });
+
+  // ENG-4219 — AN ALL-GOOGLE TEAM IS THE CASE THAT FAILS CLOSED.
+  //
+  // The target side used to read `msId` alone while the SELF side at :346
+  // already read both. Every member of a Google-only team therefore mapped to
+  // null, the roster filtered to empty, and the caller was told "you are the
+  // only member of your team" — a false statement the assistant relays as
+  // fact. A MIXED Microsoft/Google team hides this: the surviving Microsoft
+  // members keep the list non-empty and nothing throws. Hence all-Google, and
+  // hence asserting on the RETURNED IDS — a test that merely calls the
+  // function passes against the broken code, because throwing is what it did.
+  it('returns Google-linked teammates on a team with no Microsoft members', async () => {
+    const api = directory(
+      { googleId: 'g-me', teamMembers: [{ team: { id: 't' } }] },
+      {
+        name: 'Finance',
+        teamMembers: [
+          { user: { googleId: 'g-me' } },
+          { user: { googleId: 'g-2' } },
+          { user: { googleId: 'g-3' } },
+        ],
+      },
+    );
+    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual([
+      'g-2',
+      'g-3',
+    ]);
+  });
+
+  // ENG-4219 defect 2 — THE CALLER MUST BE EXCLUDED BY EITHER OF THEIR IDS.
+  //
+  // `mine` used to be a single `msId ?? googleId` value compared against ids
+  // drawn from a different field, so a caller holding BOTH providers whose
+  // roster row is serialized with only the Google one matched nothing and was
+  // handed their own file to be shared with. Comparing against the SET of the
+  // caller's identities removes the cross-namespace comparison rather than
+  // patching it.
+  it('excludes the caller when the roster identifies them by their other provider', async () => {
+    const api = directory(
+      { msId: 'ms-me', googleId: 'g-me', teamMembers: [{ team: { id: 't' } }] },
+      {
+        teamMembers: [
+          { user: { googleId: 'g-me' } },
+          { user: { msId: 'them-2' } },
+        ],
+      },
+    );
+    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual([
+      'them-2',
+    ]);
+  });
 });
 
 /**
