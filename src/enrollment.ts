@@ -343,10 +343,33 @@ export async function resolveTeamShareTargets(
   }
 
   const team = await api.getTeam(teamId);
-  const mine = me.msId ?? me.googleId ?? null;
+  // ENG-4219 — READ THE SAME PAIR ON BOTH SIDES.
+  //
+  // The self side already read `msId ?? googleId`; the target side read `msId`
+  // alone, so a Google-linked teammate mapped to null and was filtered out
+  // below. A team with no Microsoft members filtered to EMPTY and reported
+  // "you are the only member of your team" to somebody with four colleagues —
+  // false, and relayed to the user as fact by the assistant.
+  //
+  // The identifier stays the PLATFORM id rather than moving to the internal
+  // `UserSummary.id` uuid, which reads like the better answer and is not one:
+  // the backend resolves every element of `shareWithUserMsIds` with
+  // `findOneByMsId` (`where: { msId }`), so an internal id matches no row and
+  // each teammate is skipped with a log line the user never sees — a silent
+  // no-op, strictly worse than today's wrong error. A teammate with NEITHER
+  // provider linked is still dropped here for the same reason: that endpoint
+  // has no way to reach them.
+  //
+  // `mine` is a SET of the caller's identities, not a single `??` pick. The
+  // roster may serialize a two-provider caller by whichever id it holds, and
+  // one value compared against the other namespace never matches — which put
+  // the caller in their own share list.
+  const mine = new Set(
+    [me.msId, me.googleId].filter((id): id is string => !!id),
+  );
   const targets = (team.teamMembers ?? [])
-    .map((member) => member.user?.msId ?? null)
-    .filter((id): id is string => !!id && id !== mine);
+    .map((member) => member.user?.msId ?? member.user?.googleId ?? null)
+    .filter((id): id is string => !!id && !mine.has(id));
 
   if (targets.length === 0) {
     throw new TeamUnresolvedError(
