@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { remediationFor } from '../../auth/remediation.js';
 
 describe('cli bootstrap', () => {
   afterEach(() => {
@@ -179,7 +180,12 @@ describe('cli bootstrap', () => {
     handler();
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('401'));
+    // ENG-4222: this launch resolved a PAT, so the handler must still carry the
+    // PAT remediation. `stringContaining('401')` alone passed both before and
+    // after the branch existed and could not tell them apart.
+    const message = errorSpy.mock.calls[0][0] as string;
+    expect(message).toContain('401');
+    expect(message).toContain(remediationFor('pat'));
   });
 
   /**

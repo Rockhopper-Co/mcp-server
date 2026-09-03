@@ -2,6 +2,7 @@
 
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { ApiClient } from './api-client.js';
+import { remediationFor } from './auth/remediation.js';
 import {
   AuthResolutionError,
   resolveAuth,
@@ -174,8 +175,8 @@ try {
 apiClient.setAuthExpiredHandler(() => {
   log.warn({ event: 'auth_failed', reason: 'expired_mid_session' }, 'auth_failed');
   console.error(
-    'Error: Rockhopper rejected the token (401) — it expired or was revoked after this server started. ' +
-      'Create a new Personal Access Token in Rockhopper Settings and restart this MCP server.',
+    'Error: Rockhopper rejected the token (401) — it expired or was revoked ' +
+      `after this server started. ${remediationFor(resolved.source)}`,
   );
 });
 
