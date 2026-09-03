@@ -5,6 +5,13 @@ describe('cli bootstrap', () => {
     vi.resetModules();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    // ENG-4222 — `vi.resetModules()` clears the module CACHE but leaves
+    // `vi.doMock` registrations standing, so a test that stubs auth resolution
+    // silently re-answers it for every sibling that imports the CLI
+    // afterwards. Unmocked here rather than at the end of the mocking test: a
+    // failure there would skip the cleanup and the leak would surface as an
+    // unrelated test failing further down the file.
+    vi.doUnmock('../../auth/resolve-auth.js');
   });
 
   it('should exit when ROCKHOPPER_TOKEN is malformed (ENG-1444)', async () => {
@@ -174,6 +181,107 @@ describe('cli bootstrap', () => {
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('401'));
+  });
+
+  /**
+   * ENG-4222 — THE MID-SESSION 401 MUST NAME THE CREDENTIAL THE USER HOLDS.
+   *
+   * The handler above branched on nothing and told everybody to "Create a new
+   * Personal Access Token in Rockhopper Settings". A user who set the server
+   * up the way the README recommends never created one — they signed in
+   * through a browser, and the device grant's token is minted with a 60-minute
+   * life and has no refresh endpoint, so ANY session outliving an hour reaches
+   * this message by design. It sent them to mint a credential they do not need
+   * instead of restarting to re-approve.
+   *
+   * Asserting on the EMITTED STRING per source, not on "something was written
+   * to stderr" — the assertion twenty lines up is exactly that weaker shape and
+   * passes against the broken code. The negative assertion is the load-bearing
+   * one: a device-grant user must not be pointed at a Personal Access Token.
+   */
+  it.each([
+    ['device-grant', 'device-grant'],
+    ['stored-oauth', 'stored-oauth'],
+  ])(
+    'tells a %s user to restart and re-approve, never to mint a token',
+    async (_label, source) => {
+      vi.stubEnv('ROCKHOPPER_API_URL', 'http://localhost:3100');
+      vi.stubEnv('ROCKHOPPER_TOKEN', '');
+
+      const setAuthExpiredHandlerMock = vi.fn();
+      vi.doMock('../../auth/resolve-auth.js', () => ({
+        resolveAuth: vi
+          .fn()
+          .mockResolvedValue({ accessToken: 'oauth-access-token', source }),
+        AuthResolutionError: class extends Error {},
+      }));
+      vi.doMock('../../api-client.js', () => ({
+        ApiClient: vi.fn().mockImplementation(function () {
+          return {
+            getMe: vi.fn().mockResolvedValue({ internalId: 1 }),
+            setDrivingHuman: vi.fn(),
+            setAuthExpiredHandler: setAuthExpiredHandlerMock,
+          };
+        }),
+      }));
+      vi.doMock('../../server.js', () => ({
+        createServer: vi.fn().mockReturnValue({ connect: vi.fn() }),
+      }));
+      vi.doMock('@modelcontextprotocol/server/stdio', () => ({
+        serveStdio: vi.fn().mockReturnValue({ close: vi.fn() }),
+      }));
+
+      const errorSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+
+      await import('../../cli.js');
+      const handler = setAuthExpiredHandlerMock.mock.calls[0][0] as () => void;
+      handler();
+
+      const message = errorSpy.mock.calls[0][0] as string;
+      expect(message).toContain('401');
+      expect(message).not.toContain('Personal Access Token');
+      expect(message).toMatch(/restart|re-launch/i);
+    },
+  );
+
+  // The PAT message is CORRECT today and must survive the branch above. A
+  // change that fixes the device-grant wording by making every message generic
+  // would pass the assertions above and quietly lose the one instruction that
+  // was already right.
+  it('still tells a PAT user to mint a new token on a mid-session 401', async () => {
+    vi.stubEnv('ROCKHOPPER_TOKEN', 'rh_pat_test_token');
+    vi.stubEnv('ROCKHOPPER_API_URL', 'http://localhost:3100');
+
+    const setAuthExpiredHandlerMock = vi.fn();
+    vi.doMock('../../api-client.js', () => ({
+      ApiClient: vi.fn().mockImplementation(function () {
+        return {
+          getMe: vi.fn().mockResolvedValue({ internalId: 1 }),
+          setDrivingHuman: vi.fn(),
+          setAuthExpiredHandler: setAuthExpiredHandlerMock,
+        };
+      }),
+    }));
+    vi.doMock('../../server.js', () => ({
+      createServer: vi.fn().mockReturnValue({ connect: vi.fn() }),
+    }));
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
+      serveStdio: vi.fn().mockReturnValue({ close: vi.fn() }),
+    }));
+
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    await import('../../cli.js');
+    const handler = setAuthExpiredHandlerMock.mock.calls[0][0] as () => void;
+    handler();
+
+    const message = errorSpy.mock.calls[0][0] as string;
+    expect(message).toContain('401');
+    expect(message).toContain('Personal Access Token');
   });
 
   /**
