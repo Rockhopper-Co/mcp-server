@@ -2,10 +2,10 @@
 
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { ApiClient } from './api-client.js';
+import { remediationFor } from './auth/remediation.js';
 import {
   AuthResolutionError,
   resolveAuth,
-  type AuthSource,
   type ResolvedAuth,
 } from './auth/resolve-auth.js';
 import {
@@ -36,26 +36,6 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   log.error({ event: 'unhandled_rejection', err: reason }, 'unhandled_rejection');
 });
-
-/**
- * ENG-4222 — WHAT TO DO NEXT, NAMED FOR THE CREDENTIAL THE USER ACTUALLY HOLDS.
- *
- * One function because there were two call sites and only one of them branched.
- * The preflight path told a browser-signed-in user to re-launch; the
- * mid-session 401 handler told everybody to "Create a new Personal Access
- * Token in Rockhopper Settings" — a credential a device-grant user never made
- * and does not need. That is not an edge case: the device grant's token is
- * minted with a 60-minute life and has no refresh endpoint, so every session
- * that outlives an hour reaches the mid-session message by design.
- *
- * Keep this the ONLY place the remediation sentence is written. The two call
- * sites drifted precisely because each carried its own copy.
- */
-function remediationFor(source: AuthSource): string {
-  return source === 'pat'
-    ? 'Create a new Personal Access Token in Rockhopper Settings and restart this MCP server.'
-    : 'Restart this MCP server — it will run the browser sign-in again.';
-}
 
 // ENG-1444: auth resolution order is
 //   1. ROCKHOPPER_TOKEN env var (Personal Access Token — headless / CI)
