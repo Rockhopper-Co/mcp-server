@@ -145,14 +145,25 @@ jobs:
 
     # Two runs racing would both see "no open pull request" and both create one.
     # GitHub refuses the second (the script reads that refusal as already-done),
-    # but serialising is the cheaper protection. Per PAIR, so the two legs never
-    # queue behind each other.
+    # but a concurrency group is the cheaper protection. Per PAIR, so the two
+    # legs never queue behind each other.
     #
-    # `cancel-in-progress: false`: a queued run must WAIT, not evaporate. A
-    # cancelled run leaves the disparity untracked until the next trigger.
+    # `cancel-in-progress: true` (ENG-4183). This operation is idempotent and
+    # last-write-wins by nature — it makes the elevation pull request reflect the
+    # CURRENT head — so a superseded run's close/reopen is pure waste. Before
+    # this, three pushes 12 seconds apart each performed their own close/reopen;
+    # `reopened` is a `pull_request` activity type so it retriggers every gate
+    # workflow, and closing cancels the in-flight ones. Two complete gate sets
+    # were started and destroyed on one head sha (frontend #1799, 2026-09-03).
+    # The self-hosted fleet's 2-7 minute queue used to coalesce rapid pushes and
+    # was masking this; the workflow is GitHub-hosted now and runs in ~30s, so
+    # nothing else collapses them.
+    # Do NOT "restore" `false` on the reasoning that an elevation run must never
+    # be cancelled: only a SUPERSEDED run is cancelled, and the run that replaces
+    # it does the same idempotent work against a newer head.
     concurrency:
       group: auto-elevation-pr-${{ github.repository }}-${{ matrix.head }}-${{ matrix.base }}
-      cancel-in-progress: false
+      cancel-in-progress: true
 
     steps:
       # `fetch-depth: 0` is load-bearing. The default shallow checkout truncates
