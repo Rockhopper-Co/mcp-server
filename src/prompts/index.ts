@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { assertChangeHistoryComplete } from '../not-ready.js';
+import { renderMentions } from '../mentions.js';
 import { formatVersion } from '../version-format.js';
 
 export function registerPrompts(server: McpServer, api: ApiClient): void {
@@ -135,7 +136,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
               const cell = c.cellReference ? ` [${c.cellReference}]` : '';
               const replyCount = c.replies?.length || 0;
               return (
-                `- **${author}**${cell}: "${c.message}" (${c.createdAt})` +
+                `- **${author}**${cell}: "${renderMentions(c.message)}" (${c.createdAt})` +
                 (replyCount ? ` — ${replyCount} replies` : '')
               );
             })

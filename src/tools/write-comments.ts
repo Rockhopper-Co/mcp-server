@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import { renderMentions } from '../mentions.js';
 
 export function registerWriteCommentTools(
   server: McpServer,
@@ -51,7 +52,7 @@ export function registerWriteCommentTools(
               type: 'text',
               text:
                 `Comment created (id: ${comment.internalId}):\n` +
-                `"${comment.message}"` +
+                `"${renderMentions(comment.message)}"` +
                 (comment.cellReference
                   ? ` at ${comment.cellReference}`
                   : ''),
@@ -108,7 +109,7 @@ export function registerWriteCommentTools(
           content: [
             {
               type: 'text',
-              text: `Reply created (id: ${reply.internalId}): "${reply.message}"`,
+              text: `Reply created (id: ${reply.internalId}): "${renderMentions(reply.message)}"`,
             },
           ],
         };

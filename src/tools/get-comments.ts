@@ -2,13 +2,14 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import type { FileChat } from '../types.js';
+import { renderMentions } from '../mentions.js';
 
 function formatComment(c: FileChat, indent = 0): string {
   const prefix = '  '.repeat(indent);
   const author = c.authorName || c.authorEmail || 'Unknown';
   const cell = c.cellReference ? ` [${c.cellReference}]` : '';
   const resolved = c.resolved ? ' (resolved)' : '';
-  let line = `${prefix}- **${author}**${cell}${resolved}: ${c.message} — ${c.createdAt}`;
+  let line = `${prefix}- **${author}**${cell}${resolved}: ${renderMentions(c.message)} — ${c.createdAt}`;
   if (c.replies?.length) {
     line += '\n' + c.replies.map((r) => formatComment(r, indent + 1)).join('\n');
   }
