@@ -602,6 +602,76 @@ describe('get_file_comments rendering arms', () => {
   });
 });
 
+/**
+ * ENG-4345 — the id a caller needs in order to act on what it just read.
+ *
+ * `reply_to_comment` and `resolve_comment` both take a `chatId`, and the
+ * orchestration guide says it is the `internalId` from `get_file_comments`.
+ * The renderer emitted author, cell, resolved, message and timestamp and no
+ * identifier at all, so the only `chatId` obtainable on this whole surface was
+ * the one `add_comment` hands back. An agent could therefore reply to a comment
+ * it had written itself, in that session, and to nothing else — every thread a
+ * colleague left was unreachable.
+ *
+ * `FileChat.internalId` was already on the payload; only the rendering dropped
+ * it. Replies recurse through the same function, so the nested case is the one
+ * that proves a reply is addressable too, not just the thread head.
+ */
+describe('get_file_comments emits the internalId a write tool needs (ENG-4345)', () => {
+  const comment = (over: Record<string, unknown>) => ({
+    internalId: 1,
+    message: 'Check A1',
+    source: 'rockhopper',
+    cellReference: 'Sheet1!A1',
+    resolved: false,
+    authorName: 'Alice',
+    authorEmail: 'alice@test.com',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    editedOn: null,
+    replies: [],
+    ...over,
+  });
+
+  it('renders the id of a top-level thread', async () => {
+    const api = createMockApiClient();
+    api.getFileComments.mockResolvedValue([
+      comment({ internalId: 604, message: 'parent' }),
+    ]);
+
+    const text = (await readHandler(api, 'get_file_comments')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    expect(text).toContain('id: 604');
+  });
+
+  /**
+   * The reply is the case the recursion has to carry: answering a teammate
+   * means resolving the thread head AND being able to address a reply within
+   * it, and both ids arrive through the same `formatComment` call.
+   */
+  it('renders the id of a nested reply, not just the thread head', async () => {
+    const api = createMockApiClient();
+    api.getFileComments.mockResolvedValue([
+      comment({
+        internalId: 604,
+        message: 'parent',
+        replies: [
+          comment({ internalId: 605, message: 'child', authorName: 'Bob' }),
+        ],
+      }),
+    ]);
+
+    const text = (await readHandler(api, 'get_file_comments')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    const reply = text.split('\n').find((l) => l.includes('**Bob**')) ?? '';
+    expect(reply).toContain('id: 605');
+  });
+});
+
 describe('get_reviews rendering arms', () => {
   const review = (over: Record<string, unknown>) => ({
     id: 500,
