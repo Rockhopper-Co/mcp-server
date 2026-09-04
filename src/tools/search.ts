@@ -220,7 +220,7 @@ export function registerSearchTool(
                 type: 'text',
                 text: page.totalCount === 0
                   ? 'No unattributed changes found for this file.'
-                  : `End of pages reached (${page.totalCount} total across the file).`,
+                  : `End of pages reached (${describeRemainingCount(page.totalCount, cursor)}).`,
               },
             ],
           };
@@ -234,7 +234,7 @@ export function registerSearchTool(
 
         // Header line: this page's slice + total + per-sheet hint
         lines.push(
-          `Showing ${displayed.length} of ${page.changes.length} change(s) on this page (${page.totalCount} total across the file).`,
+          `Showing ${displayed.length} of ${page.changes.length} change(s) on this page (${describeRemainingCount(page.totalCount, cursor)}).`,
         );
         if (summary.length > 0) {
           const topSheets = summary
@@ -285,6 +285,32 @@ export function registerSearchTool(
       }
     },
   );
+}
+
+/**
+ * ENG-4346 - assemble the sentence that describes `totalCount` from the
+ * predicate that actually scoped the query.
+ *
+ * `totalCount` is the number of rows remaining in the snapshot FROM THE
+ * CURSOR POSITION ONWARD, inclusive of the page being rendered - not a count
+ * over the file. It coincides with a file total only on the unscoped read,
+ * where the cursor sits at the start of the snapshot. Measured on staging
+ * 2026-09-03 over one snapshot: page 1 reported 1647 and page 2 of that same
+ * snapshot reported 647, both rendered as "total across the file".
+ *
+ * Per `docs/conventions/metric-descriptions.md` the fragment is selected by
+ * the predicate that fired - the presence of a cursor - and never written
+ * freehand, so a file-wide phrase is emitted ONLY where the query computed a
+ * file-wide number. The number itself is never dropped: the size of the
+ * change set is what a caller most needs.
+ *
+ * NOT covered: whether the backend's `totalCount` is itself correct. That is
+ * ENG-4338. This assembler describes the value it is handed, faithfully.
+ */
+function describeRemainingCount(totalCount: number, cursor?: string): string {
+  return cursor
+    ? `${totalCount} remaining from this page onward`
+    : `${totalCount} in this file`;
 }
 
 function formatChangeRows(

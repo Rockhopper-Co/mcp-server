@@ -28,6 +28,9 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
         // KI-097: switched to cursor-paginated route. Top-of-prompt summary
         // uses `totalCount` for the full file count; the per-cell preview
         // uses up to 20 rows from this first page (sufficient for a recap).
+        // ENG-4346 - `totalCount` counts rows remaining from the cursor
+        // onward, so it is a FILE total only on this unscoped read. Passing a
+        // cursor here would make the "total" label below false.
         api.getUnattributedChangesPaginated(fileMsId),
       ]);
 
@@ -181,7 +184,9 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
         api.getFileComments(fileMsId),
         // KI-097: switched to cursor-paginated route. The file-overview
         // prompt only displays a total count, so we use `totalCount` from
-        // the first page — no need to fetch every row.
+        // the first page — no need to fetch every row. ENG-4346 - that is
+        // sound only because no cursor is passed: `totalCount` counts rows
+        // remaining from the cursor onward, not rows in the file.
         api.getUnattributedChangesPaginated(fileMsId),
       ]);
 
