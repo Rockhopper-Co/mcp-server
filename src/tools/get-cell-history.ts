@@ -6,6 +6,7 @@ import {
   isNotReady,
   notReadyToolResult,
 } from '../not-ready.js';
+import { parseCellAddress, sheetNamesAgree } from './cell-address.js';
 
 export function registerGetCellHistoryTool(
   server: McpServer,
@@ -30,7 +31,12 @@ export function registerGetCellHistoryTool(
         sheetName: z.string().describe('Name of the worksheet'),
         cellAddress: z
           .string()
-          .describe('Cell address (e.g. "A1", "B12", "Sheet1!C3")'),
+          .describe(
+            'Cell address, bare or sheet-qualified (e.g. "A1", "B12", ' +
+              '"Sheet1!C3", "\'My Sheet\'!C3"). A sheet prefix must name the ' +
+              'same worksheet as sheetName. One cell only — a range such as ' +
+              '"A1:B2" is refused.',
+          ),
       }),
       annotations: {
         readOnlyHint: true,
@@ -38,17 +44,47 @@ export function registerGetCellHistoryTool(
       },
     },
     async ({ fileMsId, sheetName, cellAddress }) => {
+      // ENG-4340 — parse BEFORE any API call. A malformed or contradictory
+      // address is a refusal naming the address; it must never reach the
+      // "No history found" branch, which asserts the cell has no recorded
+      // changes.
+      const parsed = parseCellAddress(cellAddress);
+      if (!parsed.ok) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text:
+                `Cannot read "${cellAddress}" as a cell address: ${parsed.reason}. ` +
+                `This is a bad address, NOT a cell without changes — nothing was looked up.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+      if (parsed.sheet !== null && !sheetNamesAgree(parsed.sheet, sheetName)) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text:
+                `Conflicting worksheets: cellAddress "${cellAddress}" names sheet ` +
+                `"${parsed.sheet}" but sheetName is "${sheetName}". Nothing was ` +
+                `looked up — re-send with the two in agreement.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+      const cell = parsed.cell;
+
       try {
         // Plan 02 ruling 5 (STRICT): completeness FIRST. A pending fold means
         // the change-log window is mid-rewrite, so rows served now are a
         // partial view an assistant would summarise as the whole truth.
         await assertChangeHistoryComplete(api, fileMsId);
 
-        const history = await api.getCellHistory(
-          fileMsId,
-          sheetName,
-          cellAddress,
-        );
+        const history = await api.getCellHistory(fileMsId, sheetName, cell);
 
         // ENG-1638 (P3-2): a ledger-served entry carries a backend-rendered
         // `formatted` line — 'vX.Y.Z: <value> — <provenance> (driven by
@@ -69,9 +105,12 @@ export function registerGetCellHistoryTool(
           content: [
             {
               type: 'text',
+              // Render the normalized cell, so the qualified and bare forms
+              // of one address answer identically rather than merely
+              // equivalently.
               text: history.length
-                ? `Cell ${cellAddress} on "${sheetName}" — ${history.length} change(s):\n\n${summary}`
-                : `No history found for ${cellAddress} on "${sheetName}".`,
+                ? `Cell ${cell} on "${sheetName}" — ${history.length} change(s):\n\n${summary}`
+                : `No history found for ${cell} on "${sheetName}".`,
             },
           ],
         };
