@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import { displayUserName } from '../user-display-name.js';
 
 export function registerGetReviewsTool(
   server: McpServer,
@@ -83,9 +84,13 @@ export function registerGetReviewsTool(
 
         const summary = reviews
           .map((r) => {
-            const reviewer = r.requester
-              ? `${r.requester.firstName} ${r.requester.lastName}`
-              : 'Unknown';
+            // ENG-4384 — one expression for both ways we can fail to name
+            // somebody. The ternary this replaces guarded the requester being
+            // ABSENT and nothing guarded it being NAMELESS, so a requester
+            // with null name parts rendered `null null` while a missing one
+            // rendered `Unknown`. Same question, two answers, one of them a
+            // string a model reads as a person's name.
+            const reviewer = displayUserName(r.requester) ?? 'Unknown';
             return (
               `- **${r.subject}** (id: ${r.id}, status: ${r.status})` +
               ` — requested by ${reviewer} on ${r.createdAt}` +

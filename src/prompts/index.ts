@@ -4,6 +4,7 @@ import type { ApiClient } from '../api-client.js';
 import { assertChangeHistoryComplete } from '../not-ready.js';
 import { renderMentions } from '../mentions.js';
 import { formatVersion } from '../version-format.js';
+import { displayUserName } from '../user-display-name.js';
 
 export function registerPrompts(server: McpServer, api: ApiClient): void {
   server.registerPrompt(
@@ -91,8 +92,14 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
             .map(
               (r) =>
                 `- "${r.subject}" (status: ${r.status}, id: ${r.id})` +
+                // ENG-4384 — the twin of the `get_reviews` expression, and
+                // the reason the helper is shared rather than copied. The
+                // segment is still OMITTED for a genuinely absent requester;
+                // a requester who exists but carries no name says `Unknown`,
+                // because dropping the segment there would state that nobody
+                // asked for the review — a different falsehood.
                 (r.requester
-                  ? ` — requested by ${r.requester.firstName} ${r.requester.lastName}`
+                  ? ` — requested by ${displayUserName(r.requester) ?? 'Unknown'}`
                   : '') +
                 (r.description ? `\n  Description: ${r.description}` : ''),
             )
