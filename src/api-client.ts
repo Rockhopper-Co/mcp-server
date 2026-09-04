@@ -176,9 +176,22 @@ export class ApiClient {
   /**
    * ENG-1756: declare (or clear) the human driving this agent. The CLI sets
    * it from the `/users/me` preflight (`msId`/`googleId` — the PAT owner);
-   * subsequent writes then carry `X-Driving-Human`. While unset, the backend
-   * resolves the driving human as the PAT owner server-side, so writes keep
-   * working — this header is the explicit, forward-compatible form.
+   * subsequent writes then carry `X-Driving-Human`.
+   *
+   * ⛔ THERE IS NO SERVER-SIDE FALLBACK. This docblock used to end "while
+   * unset, the backend resolves the driving human as the PAT owner
+   * server-side, so writes keep working". ENG-4220 measured that FALSE and
+   * corrected the sentence at the CALL site (`cli.ts`) while leaving it here,
+   * at the definition — which is the copy a reader of this method actually
+   * opens.
+   *
+   * What the backend really does: the guard reads `request.userPlatformId`,
+   * the PAT middleware sets that from `User.getPlatformId()`, and that method
+   * IS `msId || googleId` — the same two fields the CLI reads. So the
+   * "fallback" only ever fires when the header would have been sent anyway,
+   * and an account linked to neither provider 403s on EVERY write. Passing
+   * `null` here is not a degraded mode that still works; it is a write outage,
+   * and `cli.ts` warns on stderr when it happens.
    */
   setDrivingHuman(platformId: string | null): void {
     this.drivingHumanPlatformId = platformId;
@@ -516,11 +529,18 @@ export class ApiClient {
    * the row was written rather than at read time. That is why this package,
    * which holds no delegated assertion, can ask the question at all.
    *
-   * Unlike {@link searchDriveFiles} there is no `NO_DELEGATED_TOKEN` refusal to
-   * classify: a caller who has never linked Microsoft gets a 200 with an empty
-   * list and `freshness.lastFailureReason === 'no_delegated_token'`. The refusal
-   * moved from the status code into the body, so a reader that only checks for
-   * a thrown error will report an unlinked account as an empty drive.
+   * Unlike {@link searchDriveFiles} there is no thrown refusal to classify: a
+   * caller with no working Microsoft link gets a 200 with an empty list and the
+   * reason in `freshness.lastFailureReason`. The refusal moved from the status
+   * code into the body, so a reader that only checks for a thrown error will
+   * report an unlinked account as an empty drive.
+   *
+   * ENG-4311 — that field carries the backend's SCREAMING_SNAKE
+   * `GraphLinkFailure` value (`NO_DELEGATED_TOKEN`, `DELEGATED_TOKEN_REJECTED`,
+   * `DELEGATED_TOKEN_UNREADABLE`, `CONSENT_REQUIRED`), never the lowercase
+   * outcome name this sentence used to quote. `list_unenrolled_files` compared
+   * the lowercase one, so its guard against exactly the failure described above
+   * could not fire. Read it through `graphLinkFailureFrom`, never by hand.
    */
   async listDriveInventory(params?: {
     enrollment?: DriveInventoryEnrollment;

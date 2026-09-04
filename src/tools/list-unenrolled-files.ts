@@ -1,6 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import {
+  GRAPH_LINK_FAILURE_TEXT,
+  graphLinkFailureFrom,
+} from '../graph-link-failure.js';
 import type {
   DriveInventoryFreshness,
   DriveInventoryItem,
@@ -190,17 +194,20 @@ function renderEmpty(
   freshness: DriveInventoryFreshness,
   nextCursor: string | null = null,
 ): string {
-  // ORDER IS LOAD-BEARING. An unlinked account and a first refresh that has not
+  // ORDER IS LOAD-BEARING. A broken link and a first refresh that has not
   // finished both mean there is nothing to page THROUGH, so sending the model
   // after another page instead of `connect_microsoft` starts a loop that cannot
   // end. Those two branches come first and keep their own instruction.
-  if (freshness.lastFailureReason === 'no_delegated_token') {
-    return (
-      'Rockhopper cannot see this user\'s workbooks: their Microsoft account ' +
-      'is not linked. Run `connect_microsoft` first — this list will be empty ' +
-      'until it is, which is not the same as having nothing to add.'
-    );
-  }
+  //
+  // ENG-4311 — this used to compare `lastFailureReason === 'no_delegated_token'`
+  // against a producer that writes the SCREAMING_SNAKE `GraphLinkFailure` enum,
+  // so it never matched and this branch was dead: a user with no working link
+  // fell through to the never-refreshed message below and was told a scan had
+  // been started and to try again shortly. Neither was true. The four codes are
+  // kept APART rather than collapsed, because three of them name a different
+  // person who has to act — see `graph-link-failure.ts`.
+  const linkFailure = graphLinkFailureFrom(freshness.lastFailureReason);
+  if (linkFailure) return GRAPH_LINK_FAILURE_TEXT[linkFailure];
 
   if (!freshness.asOf) {
     return (
