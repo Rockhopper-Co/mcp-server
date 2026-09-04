@@ -113,6 +113,12 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
   ): Promise<{
     enrollmentId: string;
     sharedWith: number;
+    /**
+     * ENG-4279 — teammates on the roster the share could not reach, because
+     * they have no Microsoft or Google account linked. Reported to the user;
+     * `0` for a `share_with: 'me'` enroll, which shares with nobody by design.
+     */
+    skipped: number;
     serverOutcome: ServerEnrollmentOutcome | null;
   }> {
     const file = {
@@ -125,14 +131,16 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
       return {
         enrollmentId: queued.enrollmentId,
         sharedWith: 0,
+        skipped: 0,
         serverOutcome: serverOutcomeOf(queued, target),
       };
     }
-    const targets = await resolveTeamShareTargets(api);
+    const { targets, unreachable } = await resolveTeamShareTargets(api);
     const queued = await api.enrollFileSharedWith(file, targets);
     return {
       enrollmentId: queued.enrollmentId,
       sharedWith: targets.length,
+      skipped: unreachable,
       serverOutcome: serverOutcomeOf(queued, target),
     };
   }
@@ -219,13 +227,21 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
       const restoring = known === 'restore_confirmation_required';
 
       try {
-        const { enrollmentId, sharedWith, serverOutcome } = await enroll(
-          target,
-          share_with,
-        );
+        const { enrollmentId, sharedWith, skipped, serverOutcome } =
+          await enroll(target, share_with);
+        // ENG-4279 — SAY WHO WAS LEFT OUT. Sharing with 1 of 4 and reporting
+        // plain success is the damaging half of that defect: the user is told
+        // the team has the file and three colleagues silently do not. The
+        // remedy is named because the drop is fixable by the people it names.
         const who =
           share_with === 'team'
-            ? ` and shared with ${sharedWith} teammate(s)`
+            ? ` and shared with ${sharedWith} teammate(s)` +
+              (skipped > 0
+                ? `. ${skipped} other team member(s) could NOT be included ` +
+                  'because they have no Microsoft or Google account linked ' +
+                  'to Rockhopper — ask them to link one in Rockhopper ' +
+                  'Settings, then share the file with them again'
+                : '')
             : ' — visible to you only';
         // ENG-2536: the SERVER's verdict wins over the one inferred from the
         // lookup taken before the write. The two can disagree, and when they
@@ -247,6 +263,9 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
             enrollmentId,
             shareWith: share_with,
             sharedWithCount: sharedWith,
+            // ENG-4279 — structured alongside the prose, so a client that
+            // renders `detail` rather than the text still sees the drop.
+            skippedCount: skipped,
           },
         });
       } catch (error) {
