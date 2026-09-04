@@ -9,7 +9,10 @@ function formatComment(c: FileChat, indent = 0): string {
   const author = c.authorName || c.authorEmail || 'Unknown';
   const cell = c.cellReference ? ` [${c.cellReference}]` : '';
   const resolved = c.resolved ? ' (resolved)' : '';
-  let line = `${prefix}- **${author}**${cell}${resolved}: ${renderMentions(c.message)} — ${c.createdAt}`;
+  // ENG-4345 — `reply_to_comment` and `resolve_comment` take this id as their
+  // `chatId`, and this is the only place a caller can read one for a thread it
+  // did not create itself. Same `(id: N)` shape `add_comment` answers with.
+  let line = `${prefix}- **${author}**${cell}${resolved}: ${renderMentions(c.message)} — ${c.createdAt} (id: ${c.internalId})`;
   if (c.replies?.length) {
     line += '\n' + c.replies.map((r) => formatComment(r, indent + 1)).join('\n');
   }
