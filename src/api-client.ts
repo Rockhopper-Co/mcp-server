@@ -71,11 +71,20 @@ export interface ApiClientConfig {
    * ENG-1756 (plan §9 decision 15) — provenance-context EMIT config. Every
    * WRITE call carries `X-Rockhopper-Surface` + `X-Rockhopper-Session-Id`
    * (and `X-Driving-Human` once known) so the backend's decision-15
-   * admission never 403s a well-behaved agent client and the capture
+   * admission can name the human behind an agent write, and the capture
    * sidecar (`cell_change_provenance_context`) gets its surface/session.
-   * Defaults: surface `'mcp'`, a per-client-instance UUID session id, no
-   * driving human until {@link ApiClient.setDrivingHuman} is called (the
-   * backend then falls back to the PAT owner — the same human).
+   * Defaults: surface `'mcp'`, a per-client-instance UUID session id, and no
+   * driving human until {@link ApiClient.setDrivingHuman} is called.
+   *
+   * ⛔ AN UNSET DRIVING HUMAN IS NOT A WORKING DEGRADED MODE. This sentence
+   * used to end "the backend then falls back to the PAT owner — the same
+   * human". ENG-4220 measured that FALSE and corrected it at the call site;
+   * ENG-4276 found the claim still standing HERE, and found the `mcp-gateway`
+   * reasoning from it — which is why that gateway shipped for months setting
+   * no driving human at all. {@link ApiClient.setDrivingHuman} carries the
+   * full measurement; the short form is that the backend resolves
+   * `msId || googleId`, the same two fields a caller reads, so the "fallback"
+   * only ever fires when the header would have been sent anyway.
    */
   provenanceContext?: {
     /** `'mcp'` (local server, default) | `'gateway'` (remote gateway). */
