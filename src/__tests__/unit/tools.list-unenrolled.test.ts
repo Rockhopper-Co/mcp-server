@@ -382,3 +382,149 @@ describe('list_unenrolled_files pagination', () => {
 function res_text(res: { content: Array<{ text: string }> }): string {
   return res.content[0].text;
 }
+
+/**
+ * ENG-4311 — THE VALUES THE BACKEND ACTUALLY WRITES.
+ *
+ * Every fixture above spells the reason `'no_delegated_token'`, and the branch
+ * guarding against "we never managed to look" compares that literal. The
+ * producer writes something else entirely:
+ *
+ *   `graph-link-errors.ts` defines `GraphLinkFailure` as a SCREAMING_SNAKE
+ *   enum; `user-drive-inventory-refresh.service.ts:136` passes
+ *   `error.reason` — one of those four values — as the recorded reason;
+ *   `user-drive-sync-state.service.ts:124` stores it as
+ *   `detail.reason ?? outcome`, and `detail.reason` is always set on that
+ *   path; `user-drive-inventory.service.ts:318` serializes it verbatim.
+ *
+ * So the lowercase literal never matches, the branch is dead, and a user whose
+ * Microsoft link is missing or dead falls through to the "first scan has not
+ * finished, one has been started, try again shortly" message — an instruction
+ * to retry, addressed to a state no retry can change.
+ *
+ * These cases use the enum values. The `'no_delegated_token'` cases above stay
+ * exactly as they are: that literal is still reachable through the
+ * `?? outcome` fallback and from any older backend, so both spellings must
+ * work.
+ */
+describe('list_unenrolled_files — the reason codes the backend really sends (ENG-4311)', () => {
+  /** A user who has never had a successful scan and has no Microsoft link. */
+  const NEVER_SCANNED_UNLINKED = {
+    asOf: null,
+    stale: true,
+    refreshing: false,
+    lastFailureAt: '2026-09-03T21:00:00.000Z',
+    consecutiveFailures: 1,
+  };
+
+  /** A user whose link worked last week and has since died. */
+  const SCANNED_THEN_BROKEN = {
+    asOf: '2026-08-28T09:00:00.000Z',
+    stale: true,
+    refreshing: false,
+    lastFailureAt: '2026-09-03T21:00:00.000Z',
+    consecutiveFailures: 4,
+  };
+
+  async function render(freshness: unknown, nextCursor: string | null = null) {
+    const api = createMockApiClient();
+    api.listDriveInventory.mockResolvedValue({
+      items: [],
+      freshness,
+      nextCursor,
+    });
+    const { handler } = handlerFor(api);
+    return res_text(await handler({}));
+  }
+
+  it('tells a never-linked user to connect Microsoft, not that a scan is running', async () => {
+    const text = await render({
+      ...NEVER_SCANNED_UNLINKED,
+      lastFailureReason: 'NO_DELEGATED_TOKEN',
+    });
+
+    expect(text).toContain('connect_microsoft');
+    // The specific harm: today this renders the never-refreshed copy, which
+    // asserts an action that did not happen and asks for a retry.
+    expect(text).not.toMatch(/has been started/i);
+    expect(text).not.toMatch(/try again/i);
+  });
+
+  it('tells a user whose link was revoked to reconnect, and does not claim a scan is pending', async () => {
+    const text = await render({
+      ...SCANNED_THEN_BROKEN,
+      lastFailureReason: 'DELEGATED_TOKEN_REJECTED',
+    });
+
+    expect(text).toMatch(/revoked|expired|reconnect/i);
+    expect(text).toContain('connect_microsoft');
+    expect(text).not.toMatch(/^Every workbook/);
+  });
+
+  it('names an administrator for a tenant that has not approved Rockhopper', async () => {
+    const text = await render({
+      ...NEVER_SCANNED_UNLINKED,
+      lastFailureReason: 'CONSENT_REQUIRED',
+    });
+
+    expect(text).toMatch(/administrator/i);
+    expect(text).not.toMatch(/has been started/i);
+  });
+
+  /**
+   * ENG-2614 measured this exact loop on the search surface: handing a connect
+   * link to a user whose TENANT is the blocker sends them to Microsoft, gets
+   * them refused, and returns them here with the same link. The remedy is
+   * someone else's to take, so the tool must not offer the user's one.
+   */
+  it('does NOT offer connect_microsoft when only an administrator can act', async () => {
+    const text = await render({
+      ...NEVER_SCANNED_UNLINKED,
+      lastFailureReason: 'CONSENT_REQUIRED',
+    });
+
+    expect(text).not.toContain('connect_microsoft');
+  });
+
+  it('says the stored credential could not be read, and that it is ours to fix', async () => {
+    const text = await render({
+      ...SCANNED_THEN_BROKEN,
+      lastFailureReason: 'DELEGATED_TOKEN_UNREADABLE',
+    });
+
+    expect(text).toContain('connect_microsoft');
+    expect(text).not.toMatch(/has been started/i);
+  });
+
+  it('prefers the link answer over a pagination hint, for the real reason codes too', async () => {
+    const text = await render(
+      { ...NEVER_SCANNED_UNLINKED, lastFailureReason: 'NO_DELEGATED_TOKEN' },
+      'keep-going',
+    );
+
+    expect(text).toContain('connect_microsoft');
+    expect(text).not.toContain('keep-going');
+  });
+
+  /**
+   * THE REFUSAL MUST STAY REACHABLE. A fix that answers "your link is broken"
+   * to everybody would replace a wrong reassurance with a wrong alarm, and the
+   * second is worse: it is unfalsifiable from the user's side.
+   */
+  it('still says everything is covered for a healthy account with nothing to add', async () => {
+    const text = await render(FRESH);
+
+    expect(text).toMatch(/^Every workbook/);
+    expect(text).not.toContain('connect_microsoft');
+  });
+
+  it('still reports an ordinary refresh failure as a refresh failure', async () => {
+    const text = await render({
+      ...SCANNED_THEN_BROKEN,
+      lastFailureReason: 'graph_unavailable',
+    });
+
+    expect(text).toContain('graph_unavailable');
+    expect(text).not.toContain('connect_microsoft');
+  });
+});
