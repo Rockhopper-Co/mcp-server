@@ -1,6 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import {
+  GRAPH_LINK_FAILURE_TEXT,
+  graphLinkFailureFrom,
+} from '../graph-link-failure.js';
 import type {
   DriveInventoryFreshness,
   DriveInventoryItem,
@@ -57,6 +61,14 @@ export function registerListUnenrolledFilesTool(
         'and asks nothing. The answer comes from stored records rather than a ' +
         'live Microsoft read, so it is dated — pass a listed file\'s `msId` ' +
         'and `driveMsId` to `enroll_file` to add it. ' +
+        // ENG-4283. Stated up front, in `enroll_file`'s words, because the
+        // model has to know the scope BEFORE it picks the tool: offered as the
+        // answer to a Google Workspace customer's "what could I add?", this
+        // returns an empty list whose emptiness means nothing about their
+        // drive, and the tool cannot un-ask the question afterwards.
+        'MICROSOFT ONLY — it lists OneDrive and SharePoint workbooks and ' +
+        'covers no other storage. An account with no Microsoft link gets ' +
+        'nothing from it, which is not a statement about what that user has. ' +
         // ENG-2814. The model has to know a short page is not an answer, or it
         // will report "nothing to add" from the middle of a walk.
         'PAGINATED: a response ending with a cursor has MORE files past it, ' +
@@ -186,21 +198,75 @@ function renderFound(
   );
 }
 
+/**
+ * ENG-4283 — the backend's code for "no Microsoft tenant on this account".
+ *
+ * Duplicated from `DriveInventoryFreshnessDto` rather than imported, for the
+ * same reason `graph-link-failure.ts` duplicates its four: this package ships
+ * over npm and takes no build dependency on the API tree. EXACT match, and no
+ * case folding — a value this package has not learned about is not "probably
+ * this one", and guessing at a spelling is precisely what left ENG-4311's
+ * comparison dead for a release.
+ */
+const NO_MICROSOFT_TENANT = 'NO_MICROSOFT_TENANT';
+
+/**
+ * What to tell the assistant when the lane does not serve this account.
+ *
+ * Three rules, each answering a specific way the old message did harm:
+ *  - **No retry language.** Nothing about this changes on a later call, and a
+ *    model complies with "try again shortly" indefinitely.
+ *  - **No `connect_microsoft`.** There is no tenant behind it for this user, so
+ *    the link would send them to Microsoft to be refused (ENG-2614).
+ *  - **Names the scope and the alternative**, so the answer is usable rather
+ *    than only correct — a Google customer's files are enrolled a different way
+ *    and the assistant should say so instead of stopping at a refusal.
+ */
+const NO_MICROSOFT_TENANT_TEXT =
+  'Rockhopper\'s drive inventory covers OneDrive and SharePoint, and this ' +
+  'account has no Microsoft link — so there is nothing for it to list and ' +
+  'nothing to retry. This is NOT evidence that every workbook is already in ' +
+  'Rockhopper, and it does not mean the user has no files: it means this ' +
+  'particular list cannot see them. Do not call `list_unenrolled_files` again ' +
+  'for this user, and do not report their drive as covered. If they use ' +
+  'Google Workspace, their spreadsheets are added through Rockhopper directly ' +
+  'rather than from this list.';
+
 function renderEmpty(
   freshness: DriveInventoryFreshness,
   nextCursor: string | null = null,
 ): string {
-  // ORDER IS LOAD-BEARING. An unlinked account and a first refresh that has not
+  // ORDER IS LOAD-BEARING. A broken link and a first refresh that has not
   // finished both mean there is nothing to page THROUGH, so sending the model
   // after another page instead of `connect_microsoft` starts a loop that cannot
   // end. Those two branches come first and keep their own instruction.
-  if (freshness.lastFailureReason === 'no_delegated_token') {
-    return (
-      'Rockhopper cannot see this user\'s workbooks: their Microsoft account ' +
-      'is not linked. Run `connect_microsoft` first — this list will be empty ' +
-      'until it is, which is not the same as having nothing to add.'
-    );
+  //
+  // ENG-4311 — this used to compare `lastFailureReason === 'no_delegated_token'`
+  // against a producer that writes the SCREAMING_SNAKE `GraphLinkFailure` enum,
+  // so it never matched and this branch was dead: a user with no working link
+  // fell through to the never-refreshed message below and was told a scan had
+  // been started and to try again shortly. Neither was true. The four codes are
+  // kept APART rather than collapsed, because three of them name a different
+  // person who has to act — see `graph-link-failure.ts`.
+  // ENG-4283 — FIRST, ahead of every other branch including the link failures.
+  //
+  // The four states below all assume this lane COVERS the caller and something
+  // went wrong on the way to filling it. An account with no Microsoft tenant is
+  // a fifth thing: the refresh returns before it writes a sync-state row, so
+  // `asOf` stays null and `refreshing` stays false PERMANENTLY, and the
+  // never-refreshed branch below fires on every call — asserting a scan "has
+  // been started" when none was, and instructing a retry that cannot terminate.
+  //
+  // It outranks the link failures rather than following them because a link
+  // failure names something a user or an administrator can fix, and this names
+  // something neither can: sending a Google-only customer to
+  // `connect_microsoft` is ENG-2614's loop with an extra hop.
+  if (freshness.inapplicableReason === NO_MICROSOFT_TENANT) {
+    return NO_MICROSOFT_TENANT_TEXT;
   }
+
+  const linkFailure = graphLinkFailureFrom(freshness.lastFailureReason);
+  if (linkFailure) return GRAPH_LINK_FAILURE_TEXT[linkFailure];
 
   if (!freshness.asOf) {
     return (

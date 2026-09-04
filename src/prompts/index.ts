@@ -2,7 +2,9 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { assertChangeHistoryComplete } from '../not-ready.js';
+import { renderMentions } from '../mentions.js';
 import { formatVersion } from '../version-format.js';
+import { displayUserName } from '../user-display-name.js';
 
 export function registerPrompts(server: McpServer, api: ApiClient): void {
   server.registerPrompt(
@@ -27,6 +29,9 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
         // KI-097: switched to cursor-paginated route. Top-of-prompt summary
         // uses `totalCount` for the full file count; the per-cell preview
         // uses up to 20 rows from this first page (sufficient for a recap).
+        // ENG-4346 - `totalCount` counts rows remaining from the cursor
+        // onward, so it is a FILE total only on this unscoped read. Passing a
+        // cursor here would make the "total" label below false.
         api.getUnattributedChangesPaginated(fileMsId),
       ]);
 
@@ -87,8 +92,14 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
             .map(
               (r) =>
                 `- "${r.subject}" (status: ${r.status}, id: ${r.id})` +
+                // ENG-4384 — the twin of the `get_reviews` expression, and
+                // the reason the helper is shared rather than copied. The
+                // segment is still OMITTED for a genuinely absent requester;
+                // a requester who exists but carries no name says `Unknown`,
+                // because dropping the segment there would state that nobody
+                // asked for the review — a different falsehood.
                 (r.requester
-                  ? ` — requested by ${r.requester.firstName} ${r.requester.lastName}`
+                  ? ` — requested by ${displayUserName(r.requester) ?? 'Unknown'}`
                   : '') +
                 (r.description ? `\n  Description: ${r.description}` : ''),
             )
@@ -135,7 +146,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
               const cell = c.cellReference ? ` [${c.cellReference}]` : '';
               const replyCount = c.replies?.length || 0;
               return (
-                `- **${author}**${cell}: "${c.message}" (${c.createdAt})` +
+                `- **${author}**${cell}: "${renderMentions(c.message)}" (${c.createdAt})` +
                 (replyCount ? ` — ${replyCount} replies` : '')
               );
             })
@@ -180,7 +191,9 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
         api.getFileComments(fileMsId),
         // KI-097: switched to cursor-paginated route. The file-overview
         // prompt only displays a total count, so we use `totalCount` from
-        // the first page — no need to fetch every row.
+        // the first page — no need to fetch every row. ENG-4346 - that is
+        // sound only because no cursor is passed: `totalCount` counts rows
+        // remaining from the cursor onward, not rows in the file.
         api.getUnattributedChangesPaginated(fileMsId),
       ]);
 

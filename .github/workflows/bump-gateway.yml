@@ -410,8 +410,36 @@ jobs:
             "- **Merged by the job** — ENG-2843, David 2026-08-20: this pull request merges itself into \`dev\` because the two proofs above already ran against this exact tree. It exists to record the change, not to re-derive a decision. \`dev\` deploys nowhere; the elevation to \`staging\` stays a human's.")
           open=$(gh pr list --repo Rockhopper-Co/mcp-gateway --head chore/mcp-server-sync --state open --json number --jq '.[0].number // empty')
           if [ -n "$open" ]; then
-            gh pr edit "$open" --repo Rockhopper-Co/mcp-gateway \
-              --title "chore(deps): pin mcp-server to $V" --body "$body"
+            # REST, NOT `gh pr edit`, AND THAT IS ENG-3987. `gh pr edit`
+            # resolves the pull request through a GraphQL lookup that asks for
+            # `repository.pullRequest.projectCards`. GitHub has sunset Projects
+            # (classic), so that field now returns an error AND nulls the entire
+            # `pullRequest` object with it — the command dies before it can
+            # PATCH anything. Nothing here has ever touched a project.
+            #
+            # THIS IS THE STEADY-STATE PATH, NOT AN EDGE CASE. The branch is
+            # force-pushed on every publish, so the second and every subsequent
+            # publish finds the pull request already open and lands here. Its
+            # title and body carry the VERSION being pinned; a failure here
+            # leaves a pull request advertising a version it no longer contains,
+            # and the merge step below then merges that. Measured in the same
+            # shape on backend run 33483694322, fixed in backend #2677.
+            #
+            # A NEWER `gh` MASKS IT AND IS THE WEAKER FIX: >= 2.73.0 strips the
+            # field when its detector reports Projects v1 unsupported, but the
+            # runner takes whatever its image ships and upstream marks that
+            # block for deletion. Not calling the broken path is the fix.
+            #
+            # `-F body=@file` reads the file as a STRING with no type
+            # conversion, so a body that happened to read `true` still goes up
+            # as text. `--repo` has no REST equivalent; the owner and repo are
+            # spelled out in the path instead, and this is a CROSS-repo write so
+            # `{owner}/{repo}` would resolve to the wrong repository.
+            body_file="$(mktemp)"
+            printf '%s' "$body" > "$body_file"
+            gh api --method PATCH "repos/Rockhopper-Co/mcp-gateway/pulls/$open" \
+              -f "title=chore(deps): pin mcp-server to $V" \
+              -F "body=@$body_file" --silent
             echo "Updated https://github.com/Rockhopper-Co/mcp-gateway/pull/$open"
           else
             gh pr create --repo Rockhopper-Co/mcp-gateway --base dev --head chore/mcp-server-sync \
