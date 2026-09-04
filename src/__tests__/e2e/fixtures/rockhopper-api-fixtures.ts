@@ -70,6 +70,23 @@ const sampleReview = {
   },
 };
 
+/**
+ * ENG-4339 — a review on a version of a file that is NOT `file-1`. Its id and
+ * subject differ from `sampleReview` so a test can prove WHICH file answered.
+ */
+const otherFileReview = {
+  id: 882,
+  subject: 'Another file review',
+  description: 'Please approve this new version',
+  status: 'APPROVED',
+  createdAt: '2026-08-24T01:28:17.529Z',
+  requester: {
+    internalId: 2,
+    firstName: 'Sebastian',
+    lastName: 'Perez Lawrence',
+  },
+};
+
 /** ENG-2205: what `/users/me` reports about the presenting token. */
 export interface MockApiOptions {
   /**
@@ -485,6 +502,15 @@ export function handleMockRockhopperRequest(
 
     if (method === 'GET' && path === '/reviews/versions/101/requests') {
       sendJson(res, 200, [sampleReview]);
+      return;
+    }
+
+    // ENG-4339 — version 882 belongs to a DIFFERENT file than `file-1`, so a
+    // call carrying both identifiers is distinguishable by review ID. Without
+    // this the two lanes both answered `sampleReview` and the cross-file leak
+    // was invisible to the suite.
+    if (method === 'GET' && path === '/reviews/versions/882/requests') {
+      sendJson(res, 200, [otherFileReview]);
       return;
     }
 

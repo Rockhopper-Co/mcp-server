@@ -181,6 +181,29 @@ export interface DriveInventoryFreshness {
   /** Coarse reason code. Never a Microsoft error body — those quote names. */
   lastFailureReason: string | null;
   consecutiveFailures: number;
+  /**
+   * ENG-4283 — why this inventory does not serve this account AT ALL, or
+   * `null`/absent when it does.
+   *
+   * NOT a failure. `lastFailureReason` means a refresh ran and something went
+   * wrong, which a retry or a reconnect can change. This means no refresh will
+   * ever run, because the lane reads Microsoft Graph and the account has no
+   * Microsoft tenant to read. Every other field is then null-or-zero forever,
+   * which is byte-for-byte what a genuine first run looks like — so this field
+   * is the only thing that separates them, and the client may not infer it.
+   *
+   * Optional because this package ships to customers over npm on its own
+   * clock: a `npx` user picks up `latest` against whatever backend their tenant
+   * runs, so a deployment that predates the field is a real case. Absent means
+   * "this backend does not answer the question", which keeps the old handling
+   * rather than guessing at it.
+   *
+   * Typed as a bare string, not a union, because a value added on the server is
+   * invisible here until someone edits this line. Readers match the codes they
+   * know EXACTLY and fall through on anything else — see
+   * `list-unenrolled-files.ts`.
+   */
+  inapplicableReason?: string | null;
 }
 
 /** Which slice of the inventory was asked for. */

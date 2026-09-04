@@ -301,6 +301,42 @@ describe('MCP in-memory protocol e2e', () => {
     );
   });
 
+  // ENG-4339 — the reproduction, end to end through the MCP protocol. Version
+  // 882 belongs to a different file than `file-1`; before the fix this
+  // answered with 882's APPROVED review under `file-1`'s handle.
+  it('get_reviews refuses versionId + fileMsId rather than answering with the version\'s file', async () => {
+    const result = await client.callTool({
+      name: 'get_reviews',
+      arguments: { fileMsId: 'file-1', versionId: 882 },
+    });
+    const text = JSON.stringify(result.content);
+
+    expect(result.isError).toBe(true);
+    expect(text).toContain('Provide versionId or fileMsId, not both');
+    // Neither lane's data leaks: not the foreign version's review (882), and
+    // not the file's own (500) either.
+    expect(text).not.toContain('Another file review');
+    expect(text).not.toContain('Please review v1');
+    expect(text).not.toContain('882,');
+    expect(text).not.toContain('id: 500');
+  });
+
+  it('get_reviews still answers each identifier alone, from its own lane', async () => {
+    const byVersion = await client.callTool({
+      name: 'get_reviews',
+      arguments: { versionId: 882 },
+    });
+    expect(byVersion.isError).toBeFalsy();
+    expect(JSON.stringify(byVersion.content)).toContain('id: 882');
+
+    const byFile = await client.callTool({
+      name: 'get_reviews',
+      arguments: { fileMsId: 'file-1' },
+    });
+    expect(byFile.isError).toBeFalsy();
+    expect(JSON.stringify(byFile.content)).toContain('id: 500');
+  });
+
   it('get_reviews returns the empty-result message', async () => {
     const result = await client.callTool({
       name: 'get_reviews',

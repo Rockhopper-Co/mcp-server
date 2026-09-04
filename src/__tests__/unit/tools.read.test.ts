@@ -103,6 +103,91 @@ describe('read tool handlers', () => {
     expect(result.content[0].text).toContain('Provide either versionId or fileMsId');
   });
 
+  // ENG-4339 — the guard covered both-ABSENT and left both-PRESENT open, so a
+  // caller holding `fileMsId` from `list_files` and `versionId` from
+  // `get_file_versions` (the natural state of an agent) got the VERSION's
+  // reviews rendered under the FILE's handle, with nothing naming the file
+  // they actually came from. Reproduced on staging 2026-09-03: a file with no
+  // reviews answered with another file's approved review.
+  //
+  // Asserted on the review IDS, not on a count: a count matches while the set
+  // is wrong, which is the exact failure.
+  describe('get_reviews conflicting identifiers', () => {
+    const seedBothLanes = () => {
+      const api = createMockApiClient();
+      api.getReviewsForVersion.mockResolvedValue([
+        {
+          id: 882,
+          subject: 'Another file review',
+          status: 'APPROVED',
+          createdAt: '2026-08-24T01:28:17.529Z',
+          requester: { firstName: 'Sebastian', lastName: 'Perez Lawrence' },
+        },
+      ]);
+      api.getReviewsForLatestVersion.mockResolvedValue([
+        {
+          id: 500,
+          subject: 'This file review',
+          status: 'PENDING',
+          createdAt: '2026-01-01T00:00:00Z',
+          requester: { firstName: 'Grace', lastName: 'Hopper' },
+        },
+      ]);
+      return api;
+    };
+
+    it('refuses versionId + fileMsId instead of silently discarding fileMsId', async () => {
+      const api = seedBothLanes();
+
+      const result = await readHandler(api, 'get_reviews')({
+        versionId: 882,
+        fileMsId: 'file-1',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain(
+        'Provide versionId or fileMsId, not both',
+      );
+      // No data at all — not the version's review, and not the file's either.
+      expect(result.content[0].text).not.toContain('882');
+      expect(result.content[0].text).not.toContain('500');
+      expect(api.getReviewsForVersion).not.toHaveBeenCalled();
+      expect(api.getReviewsForLatestVersion).not.toHaveBeenCalled();
+    });
+
+    it('refuses the same pair in the other argument order', async () => {
+      const api = seedBothLanes();
+
+      const result = await readHandler(api, 'get_reviews')({
+        fileMsId: 'file-1',
+        versionId: 882,
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain(
+        'Provide versionId or fileMsId, not both',
+      );
+      expect(result.content[0].text).not.toContain('882');
+      expect(result.content[0].text).not.toContain('500');
+      expect(api.getReviewsForVersion).not.toHaveBeenCalled();
+      expect(api.getReviewsForLatestVersion).not.toHaveBeenCalled();
+    });
+
+    it('still serves each identifier on its own, from its own lane', async () => {
+      const byVersion = await readHandler(seedBothLanes(), 'get_reviews')({
+        versionId: 882,
+      });
+      expect(byVersion.isError).toBeUndefined();
+      expect(byVersion.content[0].text).toContain('id: 882');
+
+      const byFile = await readHandler(seedBothLanes(), 'get_reviews')({
+        fileMsId: 'file-1',
+      });
+      expect(byFile.isError).toBeUndefined();
+      expect(byFile.content[0].text).toContain('id: 500');
+    });
+  });
+
   it('search_files should return error payload on API failure', async () => {
     const server = createMockMcpServer();
     const api = createMockApiClient();
