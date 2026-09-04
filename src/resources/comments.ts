@@ -1,6 +1,7 @@
 import { ResourceTemplate } from '@modelcontextprotocol/server';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
+import { renderCommentTreeMentions } from '../mentions.js';
 
 export function registerCommentResources(
   server: McpServer,
@@ -19,7 +20,9 @@ export function registerCommentResources(
       mimeType: 'application/json',
     },
     async (uri, { fileMsId }) => {
-      const comments = await api.getFileComments(fileMsId as string);
+      const comments = renderCommentTreeMentions(
+        await api.getFileComments(fileMsId as string),
+      );
       return {
         contents: [
           {
