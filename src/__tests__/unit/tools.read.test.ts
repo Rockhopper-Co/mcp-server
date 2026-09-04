@@ -802,6 +802,63 @@ describe('get_reviews rendering arms', () => {
     expect(text.trimEnd().endsWith('2026-01-01T00:00:00Z')).toBe(true);
   });
 
+  /**
+   * ENG-4384 — a requester who EXISTS but carries no profile name.
+   *
+   * The ternary above guards the requester being absent and nothing guarded
+   * it being nameless, so `${firstName} ${lastName}` interpolated two nulls
+   * and printed the literal four-character word twice. `firstName` and
+   * `lastName` are `nullable: true` on the backend user row, and a provider
+   * sign-in is what used to fill them — so this is unreachable for a
+   * Microsoft or Google account and ordinary for an identity-service one.
+   */
+  it('says Unknown for a requester with no name at all, never the word null', async () => {
+    const api = createMockApiClient();
+    api.getReviewsForVersion.mockResolvedValue([
+      review({ requester: { internalId: 7, firstName: null, lastName: null } }),
+    ]);
+
+    const text = (await readHandler(api, 'get_reviews')({ versionId: 101 }))
+      .content[0].text;
+
+    expect(text).not.toContain('null');
+    expect(text).toContain('requested by Unknown');
+  });
+
+  /** Half a name is a name. Rendering `Dana null` is the same defect. */
+  it('renders the name parts it has when only one of the two is present', async () => {
+    const api = createMockApiClient();
+    api.getReviewsForVersion.mockResolvedValue([
+      review({ requester: { internalId: 8, firstName: 'Dana', lastName: null } }),
+    ]);
+
+    const text = (await readHandler(api, 'get_reviews')({ versionId: 101 }))
+      .content[0].text;
+
+    expect(text).toContain('requested by Dana');
+    expect(text).not.toContain('null');
+    expect(text).not.toContain('Unknown');
+  });
+
+  /**
+   * THE ARM THAT MUST STAY REACHABLE. A fix that answered `Unknown` for
+   * everybody would satisfy both cases above while destroying attribution
+   * for every named requester, so the surname-only case is asserted here
+   * rather than left to the happy path at the top of this block.
+   */
+  it('still names a surname-only requester rather than collapsing to Unknown', async () => {
+    const api = createMockApiClient();
+    api.getReviewsForVersion.mockResolvedValue([
+      review({ requester: { internalId: 9, firstName: null, lastName: 'Whitfield' } }),
+    ]);
+
+    const text = (await readHandler(api, 'get_reviews')({ versionId: 101 }))
+      .content[0].text;
+
+    expect(text).toContain('requested by Whitfield');
+    expect(text).not.toContain('Unknown');
+  });
+
   it('says no reviews were found rather than printing an empty list', async () => {
     const api = createMockApiClient();
     api.getReviewsForLatestVersion.mockResolvedValue([]);
