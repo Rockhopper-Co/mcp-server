@@ -421,7 +421,7 @@ describe('read tool handlers', () => {
       const text = result.content[0].text;
       expect(text).toContain('More pages available');
       expect(text).toContain('cursor="next-cursor-xyz"');
-      expect(text).toContain('1500 total across the file');
+      expect(text).toContain('1500 in this file');
     });
 
     it('returns end-of-pages message when changes is empty but totalCount > 0', async () => {
@@ -443,7 +443,7 @@ describe('read tool handlers', () => {
       const result = await handler({ fileMsId: 'file-1' });
 
       expect(result.content[0].text).toContain(
-        'End of pages reached (42 total across the file)',
+        'End of pages reached (42 in this file)',
       );
     });
 
@@ -468,6 +468,100 @@ describe('read tool handlers', () => {
       expect(result.content[0].text).toBe(
         'No unattributed changes found for this file.',
       );
+    });
+
+    /**
+     * ENG-4346 - `totalCount` is the number of rows remaining in the snapshot
+     * from the cursor position onward, INCLUSIVE of the page being rendered.
+     * It equals a file total only on the unscoped read, where the cursor sits
+     * at the start. Measured on staging 2026-09-03 over one snapshot of
+     * `01JNFO22KRI4ETJCY5GJHYLBAIYNORB7SK`: page 1 reported 1647, page 2 of
+     * that same snapshot reported 647.
+     *
+     * The invariant: a quantity described with a file-wide phrase is
+     * snapshot-invariant, so two pages of one snapshot can never disagree
+     * about one. Asserted on the RENDERED STRING, because the string is what
+     * a model quotes back to the customer.
+     */
+    const FILE_WIDE_PHRASE =
+      /(\d+)[^.()]*?\b(?:across the file|in this file|file-wide|total for the file)\b/g;
+
+    const fileWideQuantities = (text: string): number[] =>
+      [...text.matchAll(FILE_WIDE_PHRASE)].map((m) => Number(m[1]));
+
+    it('page 1 and page 2 of one snapshot never disagree about a file-wide quantity (ENG-4346)', async () => {
+      const row = (id: number) => ({
+        id,
+        changeType: 'update',
+        sheetName: 'Sheet1',
+        cellAddress: `A${id}`,
+        oldValue: id,
+        newValue: id + 1,
+        byUserPlatformId: 'u-1',
+        byUserPlatformType: 'microsoft',
+        processingStatus: 'pending',
+        attributionDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      });
+      const snapshotId = '1757000000000';
+      const snapshotCreatedAt = '2026-09-03T00:00:00.000Z';
+
+      const renderPage = async (
+        args: Record<string, unknown>,
+        page: Record<string, unknown>,
+      ): Promise<string> => {
+        const server = createMockMcpServer();
+        const api = createMockApiClient();
+        api.getUnattributedChangesPaginated.mockResolvedValue(page);
+        registerTools(server as any, api as any);
+        const handler = server.registerTool.mock.calls.find(
+          (c) => c[0] === 'get_unattributed_changes',
+        )?.[2];
+        return (await handler(args)).content[0].text;
+      };
+
+      // Page 1 - unscoped read. 1000 rows served, 1647 remaining from the start.
+      const pageOne = await renderPage(
+        { fileMsId: 'file-1' },
+        {
+          changes: Array.from({ length: 1000 }, (_, i) => row(i + 1)),
+          nextCursor: 'cursor-page-2',
+          totalCount: 1647,
+          snapshotId,
+          snapshotCreatedAt,
+        },
+      );
+
+      // Page 2 - same snapshot, scoped by the cursor. 647 remaining from here.
+      const pageTwo = await renderPage(
+        { fileMsId: 'file-1', cursor: 'cursor-page-2' },
+        {
+          changes: Array.from({ length: 647 }, (_, i) => row(i + 1001)),
+          nextCursor: null,
+          totalCount: 647,
+          snapshotId,
+          snapshotCreatedAt,
+        },
+      );
+
+      const claimedOnPageOne = fileWideQuantities(pageOne);
+      const claimedOnPageTwo = fileWideQuantities(pageTwo);
+
+      // A cursor-scoped page did not compute a file total, so it must not
+      // describe any number with a file-wide phrase.
+      expect(claimedOnPageTwo).toEqual([]);
+
+      // The invariant that follows: no quantity is called file-wide on one
+      // page and given a different value on the other.
+      expect(
+        claimedOnPageTwo.filter((n) => !claimedOnPageOne.includes(n)),
+      ).toEqual([]);
+
+      // The remaining-count is the size of the change set - the thing a caller
+      // most needs. Relabelling it must not delete it.
+      expect(pageOne).toContain('1647');
+      expect(pageTwo).toContain('647');
     });
   });
 });
@@ -599,6 +693,76 @@ describe('get_file_comments rendering arms', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('backend said no');
+  });
+});
+
+/**
+ * ENG-4345 — the id a caller needs in order to act on what it just read.
+ *
+ * `reply_to_comment` and `resolve_comment` both take a `chatId`, and the
+ * orchestration guide says it is the `internalId` from `get_file_comments`.
+ * The renderer emitted author, cell, resolved, message and timestamp and no
+ * identifier at all, so the only `chatId` obtainable on this whole surface was
+ * the one `add_comment` hands back. An agent could therefore reply to a comment
+ * it had written itself, in that session, and to nothing else — every thread a
+ * colleague left was unreachable.
+ *
+ * `FileChat.internalId` was already on the payload; only the rendering dropped
+ * it. Replies recurse through the same function, so the nested case is the one
+ * that proves a reply is addressable too, not just the thread head.
+ */
+describe('get_file_comments emits the internalId a write tool needs (ENG-4345)', () => {
+  const comment = (over: Record<string, unknown>) => ({
+    internalId: 1,
+    message: 'Check A1',
+    source: 'rockhopper',
+    cellReference: 'Sheet1!A1',
+    resolved: false,
+    authorName: 'Alice',
+    authorEmail: 'alice@test.com',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    editedOn: null,
+    replies: [],
+    ...over,
+  });
+
+  it('renders the id of a top-level thread', async () => {
+    const api = createMockApiClient();
+    api.getFileComments.mockResolvedValue([
+      comment({ internalId: 604, message: 'parent' }),
+    ]);
+
+    const text = (await readHandler(api, 'get_file_comments')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    expect(text).toContain('id: 604');
+  });
+
+  /**
+   * The reply is the case the recursion has to carry: answering a teammate
+   * means resolving the thread head AND being able to address a reply within
+   * it, and both ids arrive through the same `formatComment` call.
+   */
+  it('renders the id of a nested reply, not just the thread head', async () => {
+    const api = createMockApiClient();
+    api.getFileComments.mockResolvedValue([
+      comment({
+        internalId: 604,
+        message: 'parent',
+        replies: [
+          comment({ internalId: 605, message: 'child', authorName: 'Bob' }),
+        ],
+      }),
+    ]);
+
+    const text = (await readHandler(api, 'get_file_comments')({
+      fileMsId: 'file-1',
+    })).content[0].text;
+
+    const reply = text.split('\n').find((l) => l.includes('**Bob**')) ?? '';
+    expect(reply).toContain('id: 605');
   });
 });
 
