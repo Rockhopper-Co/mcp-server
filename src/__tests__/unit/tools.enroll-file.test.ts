@@ -143,6 +143,100 @@ describe('share_with is required and never defaulted (D5/D6)', () => {
 
     expect(outcomeOf(result)).toBe('share_with_required');
     expect(api.enrollFileSharedWith).not.toHaveBeenCalled();
+    // ENG-4279 — and it still says so in the words that are TRUE here. This
+    // roster really does hold one person; the ticket is about the case where
+    // it does not, and that message must not leak into this one.
+    expect(result.content[0].text).toContain('only member of the Finance team');
+  });
+});
+
+/**
+ * ENG-4279 — WHAT THE USER IS TOLD WHEN A TEAMMATE CANNOT BE REACHED.
+ *
+ * The backend resolves share targets with `findOneByMsId`, so a colleague with
+ * no Microsoft and no Google link cannot be reached by any id — that is settled
+ * and is not what these assert. They assert that the drop is SAID rather than
+ * swallowed, which is the whole of this fix.
+ */
+describe('a teammate with no provider link is reported, not swallowed', () => {
+  it('names the count instead of claiming the caller has no colleagues', async () => {
+    const api = createMockApiClient();
+    api.getMe.mockResolvedValue({
+      internalId: 1,
+      teamMembers: [{ team: { internalId: 2 } }],
+    });
+    api.getTeam.mockResolvedValue({
+      internalId: 2,
+      name: 'Finance',
+      teamMembers: [
+        { user: { internalId: 1 } },
+        { user: { internalId: 2 } },
+        { user: { internalId: 3 } },
+        { user: { internalId: 4 } },
+        { user: { internalId: 5 } },
+      ],
+    });
+    const result = await handlerFor(api)({ url: URL, share_with: 'team' });
+    const text = result.content[0].text;
+
+    expect(outcomeOf(result)).toBe('share_with_required');
+    expect(api.enrollFileSharedWith).not.toHaveBeenCalled();
+    expect(text).toContain('None of the 4 other members of the Finance team');
+    // The false sentence this ticket exists to remove, asserted absent — a
+    // test that only checked the new text would pass while both were present.
+    expect(text).not.toContain('only member');
+    // The remedy is what makes it actionable rather than merely accurate.
+    expect(text).toContain('Rockhopper Settings');
+  });
+
+  it('reports the dropped teammates on a partially shared enroll', async () => {
+    const api = createMockApiClient();
+    api.getMe.mockResolvedValue({
+      internalId: 1,
+      msId: 'ms-user-1',
+      teamMembers: [{ team: { internalId: 2 } }],
+    });
+    api.getTeam.mockResolvedValue({
+      internalId: 2,
+      name: 'Finance',
+      teamMembers: [
+        { user: { internalId: 1, msId: 'ms-user-1' } },
+        { user: { internalId: 2, msId: 'ms-user-2' } },
+        { user: { internalId: 3 } },
+        { user: { internalId: 4 } },
+        { user: { internalId: 5 } },
+      ],
+    });
+    const result = await handlerFor(api)({ url: URL, share_with: 'team' });
+    const text = result.content[0].text;
+
+    // It SUCCEEDS — one teammate really was reached, and refusing the whole
+    // enroll over the other three would be a worse answer than today's.
+    expect(outcomeOf(result)).toBe('enrolled');
+    expect(api.enrollFileSharedWith).toHaveBeenCalledWith(
+      { msId: 'ms-item-9', driveMsId: 'drive-9', name: 'Becklar_RMR_Model.xlsx' },
+      ['ms-user-2'],
+    );
+    expect(text).toContain('shared with 1 teammate(s)');
+    expect(text).toContain('3 other team member(s) could NOT be included');
+    // Structured too, for a client that renders `detail` over the prose.
+    expect(text).toContain('"skippedCount":3');
+  });
+
+  /**
+   * The paired silence. Every assertion above would also pass if the sentence
+   * were unconditional, which would tell a fully-linked team that colleagues
+   * were dropped when none were.
+   */
+  it('says nothing about drops when every teammate was reached', async () => {
+    const api = createMockApiClient();
+    const result = await handlerFor(api)({ url: URL, share_with: 'team' });
+    const text = result.content[0].text;
+
+    expect(outcomeOf(result)).toBe('enrolled');
+    expect(text).toContain('shared with 1 teammate(s)');
+    expect(text).not.toContain('could NOT be included');
+    expect(text).toContain('"skippedCount":0');
   });
 });
 
