@@ -528,3 +528,162 @@ describe('list_unenrolled_files — the reason codes the backend really sends (E
     expect(text).not.toContain('connect_microsoft');
   });
 });
+
+/**
+ * ENG-4283 — THE FIFTH EMPTY STATE: this lane does not serve this account.
+ *
+ * The four states this file already separates all assume the drive inventory
+ * COVERS the caller and something went wrong on the way to filling it. A
+ * Google Workspace customer is a fifth thing: there is no Microsoft tenant, so
+ * `user-drive-inventory-refresh.service.ts` returns before it ever writes a
+ * sync-state row, `asOf` stays `null` and `refreshing` stays `false` FOREVER,
+ * and the never-refreshed branch fires on every call — telling a user a scan
+ * "has been started" when none was and none ever will be, and instructing a
+ * retry that cannot terminate.
+ *
+ * The client cannot derive this. `asOf: null, refreshing: false` is what a
+ * genuine first-run looks like too, which is the whole defect, so the backend
+ * says it explicitly through `inapplicableReason` and this file believes it.
+ */
+describe('list_unenrolled_files — an account this inventory does not serve (ENG-4283)', () => {
+  /** What a Google-only customer's freshness payload actually carries. */
+  const NO_MICROSOFT_TENANT = {
+    asOf: null,
+    stale: true,
+    refreshing: false,
+    lastFailureAt: null,
+    lastFailureReason: null,
+    consecutiveFailures: 0,
+    inapplicableReason: 'NO_MICROSOFT_TENANT',
+  };
+
+  async function render(freshness: unknown, nextCursor: string | null = null) {
+    const api = createMockApiClient();
+    api.listDriveInventory.mockResolvedValue({
+      items: [],
+      freshness,
+      nextCursor,
+    });
+    const { handler } = handlerFor(api);
+    return res_text(await handler({}));
+  }
+
+  /**
+   * THE DEFECT ITSELF. Both halves are asserted because both are separately
+   * harmful: the first is a false statement about an action, the second is an
+   * instruction the model complies with, in a loop nothing ends.
+   */
+  it('never claims a scan was started for an account with no Microsoft tenant', async () => {
+    const text = await render(NO_MICROSOFT_TENANT);
+
+    expect(text).not.toContain('has been started');
+    expect(text).not.toContain('is running now');
+    expect(text).not.toMatch(/try again/i);
+  });
+
+  it('says what the inventory covers and that this account has no Microsoft link', async () => {
+    const text = await render(NO_MICROSOFT_TENANT);
+
+    expect(text).toMatch(/OneDrive/);
+    expect(text).toMatch(/SharePoint/);
+    expect(text).toMatch(/Microsoft/);
+  });
+
+  /**
+   * ENG-2614's loop, one layer up. `connect_microsoft` mints a delegated token
+   * against a tenant this account does not have, so offering it sends the user
+   * to Microsoft to be refused and returned holding the same nothing.
+   */
+  it('does not offer connect_microsoft to an account with no Microsoft tenant', async () => {
+    const text = await render(NO_MICROSOFT_TENANT);
+
+    expect(text).not.toContain('connect_microsoft');
+  });
+
+  it('does not report an empty list as evidence the drive is already covered', async () => {
+    const text = await render(NO_MICROSOFT_TENANT);
+
+    expect(text).not.toMatch(/^Every workbook/);
+    expect(text).toMatch(/not evidence|nothing to add|does not mean/i);
+  });
+
+  /**
+   * ORDER. A cursor on this response is meaningless — there are no rows to page
+   * through and never will be — so the pagination hint must not win, exactly as
+   * the link-failure branches already refuse to lose to it.
+   */
+  it('prefers the unserved-account answer over a pagination hint', async () => {
+    const text = await render(NO_MICROSOFT_TENANT, 'cursor-abc');
+
+    expect(text).not.toContain('cursor-abc');
+    expect(text).not.toContain('MORE FILES REMAIN');
+  });
+
+  /**
+   * THE FALLBACK MUST STAY EXACTLY AS IT WAS. This package ships to customers
+   * over npm and a `npx` user picks up `latest` against whatever backend their
+   * tenant runs, so a deployment that predates the field is a real case — and
+   * for a genuine first run the old message is the RIGHT one.
+   */
+  it('keeps the first-scan message when the backend does not send the field', async () => {
+    const text = await render({
+      asOf: null,
+      stale: true,
+      refreshing: false,
+      lastFailureAt: null,
+      lastFailureReason: null,
+      consecutiveFailures: 0,
+    });
+
+    expect(text).toContain('has been started');
+  });
+
+  it('keeps the first-scan message when the backend says the lane does apply', async () => {
+    const text = await render({ ...NO_MICROSOFT_TENANT, inapplicableReason: null });
+
+    expect(text).toContain('has been started');
+  });
+
+  /**
+   * An unrecognised code is NOT "probably the no-tenant one" — that guess is
+   * how ENG-4311's dead comparison survived. It falls through to the existing
+   * handling rather than being read as a refusal this package has not learned.
+   */
+  it('ignores an inapplicable code this package does not know', async () => {
+    const text = await render({
+      ...NO_MICROSOFT_TENANT,
+      inapplicableReason: 'SOMETHING_ADDED_LATER',
+    });
+
+    expect(text).toContain('has been started');
+  });
+
+  /**
+   * ORDER, against the branch directly above it. A no-tenant account should
+   * never carry a link-failure code — no sync-state row is ever written for it
+   * — but if the two ever arrive together, the one naming something NOBODY can
+   * fix has to win. Losing this race sends a Google-only customer to
+   * `connect_microsoft`, which is ENG-2614's loop with an extra hop.
+   */
+  it('prefers the unserved-account answer over a Microsoft link failure', async () => {
+    const text = await render({
+      ...NO_MICROSOFT_TENANT,
+      lastFailureReason: 'NO_DELEGATED_TOKEN',
+    });
+
+    expect(text).not.toContain('connect_microsoft');
+    expect(text).toMatch(/OneDrive/);
+  });
+
+  /**
+   * The model has to know the scope BEFORE it picks the tool, or it offers a
+   * OneDrive/SharePoint answer to a Google customer's question and only finds
+   * out from the refusal. `enroll_file` already states it this way.
+   */
+  it('states the Microsoft-only scope in the tool description', () => {
+    const { call } = handlerFor(createMockApiClient());
+
+    expect(call?.[1].description).toMatch(/MICROSOFT ONLY/);
+    expect(call?.[1].description).toMatch(/OneDrive/);
+  });
+});
