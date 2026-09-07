@@ -31,6 +31,7 @@ import {
   type RequestStateCodec,
 } from '@modelcontextprotocol/server';
 import { RockhopperApiError, type ApiClient } from './api-client.js';
+import { GRAPH_LINK_FAILURE } from './graph-link-failure.js';
 import type { DriveSearchItem } from './types.js';
 
 /**
@@ -95,6 +96,15 @@ export type DriveSearchOutcome =
   | 'microsoft_admin_approval_required'
   /** Microsoft could not answer, or the caller is searching too fast. */
   | 'search_unavailable'
+  /**
+   * ENG-4313 — the backend REFUSED this caller. Its own outcome and not a
+   * flavour of `search_unavailable`, for the reason
+   * `microsoft_admin_approval_required` is not one either: the two name
+   * opposite next moves. `search_unavailable` means try again; this means the
+   * answer will not change until somebody acts outside this session, and a
+   * retry costs a unit of the session's search budget for nothing.
+   */
+  | 'search_refused'
   /** This Rockhopper deployment serves no drive-search route yet. */
   | 'backend_unsupported'
   /** The confirmation named a file this session's search never returned. */
@@ -261,6 +271,15 @@ export function classifyDriveSearchFailure(
           'they have worked on lately.',
       };
     }
+    // ENG-4313 — these two used to fall through to the catch-all below, which
+    // blames Microsoft for a call Microsoft never received, calls a permanent
+    // answer transient, and asks a model to retry it. Neither is retryable.
+    if (error.status === 401) {
+      return { outcome: 'search_refused', message: CREDENTIAL_REJECTED_TEXT };
+    }
+    if (error.status === 403) {
+      return { outcome: 'search_refused', message: SEARCH_REFUSED_TEXT };
+    }
   }
 
   return {
@@ -288,12 +307,17 @@ export function isNoDelegatedToken(error: unknown): boolean {
  * have never connected", and treating the two alike is how the user ends up
  * in a loop: handed a connect link, sent to Microsoft, refused, handed the
  * same link again. Only the fine `reason` separates them.
+ *
+ * ENG-4311 — the value now comes from the SHARED constant rather than a local
+ * one. This file spelled the enum correctly and `list-unenrolled-files.ts`
+ * spelled it `'no_delegated_token'`, which matched nothing the backend writes;
+ * one repo held two spellings of one enum, and the wrong one was in the file
+ * nobody re-read. A second copy is what produced that, so there is one copy.
  */
-const CONSENT_REQUIRED = 'CONSENT_REQUIRED';
-
 export function isAdminConsentRequired(error: unknown): boolean {
   return (
-    error instanceof RockhopperApiError && error.reason === CONSENT_REQUIRED
+    error instanceof RockhopperApiError &&
+    error.reason === GRAPH_LINK_FAILURE.CONSENT_REQUIRED
   );
 }
 
@@ -315,3 +339,34 @@ export const ADMIN_CONSENT_TEXT =
   'https://docs.rockhopper.co/it-setup/approve-file-access, which has ' +
   'the approval link and what it grants. Everything else in Rockhopper ' +
   'keeps working meanwhile. Do not retry this search.';
+
+/**
+ * ENG-4313 — the 401: this session's credential is no longer accepted.
+ *
+ * Says nothing about Microsoft, because Microsoft was never reached. The
+ * remedy is the one `auth/remediation.ts` names for a mid-session 401 — the
+ * server has to be restarted so it can authenticate again — and the human
+ * hears it there, on stderr; this is the same fact told to the model so it
+ * stops calling instead of retrying into a budget it will exhaust.
+ */
+export const CREDENTIAL_REJECTED_TEXT =
+  'Rockhopper rejected this session\'s credential — it expired or was revoked ' +
+  'after this server started. Nothing was searched, and this says nothing ' +
+  'about what the user has. Restarting the MCP server lets it sign in again; ' +
+  'a Personal Access Token holder needs a new one. Do not retry this search.';
+
+/**
+ * ENG-4313 — the 403: the caller was refused, and refusal is not an outage.
+ *
+ * Deliberately does NOT guess WHY. A 403 on this route can be a token that
+ * holds the wrong scope, a route the account may not use, or a policy the
+ * client cannot see, and naming one of them would send the user to fix
+ * something that is not broken. What it CAN say for certain is that repeating
+ * the call changes nothing, which is the part that costs the session budget.
+ */
+export const SEARCH_REFUSED_TEXT =
+  'Rockhopper refused this file search for this user — this is a permissions ' +
+  'answer, not an outage, and nothing was searched. It is not an empty drive. ' +
+  'Retrying will return the same answer, so do not retry this search. Ask the ' +
+  'user to paste the workbook link and call `enroll_file` with it, or to check ' +
+  'in Rockhopper Settings that this connection may search their files.';

@@ -178,6 +178,66 @@ describe('classifyDriveSearchFailure', () => {
       'search_unavailable',
     );
   });
+
+  /**
+   * ENG-4313 — A REFUSAL IS NOT AN OUTAGE.
+   *
+   * 401 and 403 used to fall through to the catch-all, which names Microsoft
+   * as the failing party, calls the condition transient ("just now", "in a
+   * moment") and tells the model to try again. Microsoft was never called —
+   * the backend refused before it got there — and no retry can change either
+   * answer.
+   *
+   * The retry is not free. `tools/drive-search.ts` claims a budget unit BEFORE
+   * the network call, so each obedient retry of a permanent refusal spends one
+   * of the session's 20 searches; twenty later the tool stops answering at all
+   * and the human has been told nothing true at any point.
+   */
+  it('does not blame Microsoft or ask for a retry when the caller was refused', () => {
+    const { message } = classifyDriveSearchFailure(
+      new RockhopperApiError(403, 'Forbidden', null),
+    );
+
+    expect(message).not.toMatch(/try again/i);
+    expect(message).not.toContain('Microsoft could not answer');
+    // The same instruction `ADMIN_CONSENT_TEXT` already carries, for the same
+    // reason: a model that reads "could not" helpfully offers to retry.
+    expect(message).toMatch(/do not retry/i);
+  });
+
+  it('names the credential, not the drive, when the token was rejected', () => {
+    const { message } = classifyDriveSearchFailure(
+      new RockhopperApiError(401, 'Unauthorized', null),
+    );
+
+    expect(message).not.toMatch(/try again/i);
+    expect(message).not.toContain('Microsoft could not answer');
+    expect(message).toMatch(/expired|revoked|sign in|restart/i);
+  });
+
+  /**
+   * THE CATCH-ALL MUST STAY REACHABLE. A 5xx, a timeout and a 429 genuinely
+   * ARE "try again in a moment", and turning every failure into a permanent
+   * refusal would be the opposite error — it would stop a model retrying the
+   * one case where retrying is right.
+   */
+  it('still tells the model to retry a genuine outage', () => {
+    const { outcome, message } = classifyDriveSearchFailure(
+      new RockhopperApiError(500, 'boom', null),
+    );
+
+    expect(outcome).toBe('search_unavailable');
+    expect(message).toMatch(/try again/i);
+    expect(message).toContain('not an empty drive');
+  });
+
+  it('still tells the model to retry when it is being rate limited', () => {
+    const { message } = classifyDriveSearchFailure(
+      new RockhopperApiError(429, 'slow down', null),
+    );
+
+    expect(message).toMatch(/try again/i);
+  });
 });
 
 describe('isNoDelegatedToken', () => {

@@ -111,10 +111,10 @@ describe('resolveTeamShareTargets', () => {
         ],
       },
     );
-    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual([
-      'them-2',
-      'them-3',
-    ]);
+    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual({
+      targets: ['them-2', 'them-3'],
+      unreachable: 0,
+    });
     expect(api.getTeam).toHaveBeenCalledWith('team-uuid');
   });
 
@@ -215,9 +215,13 @@ describe('resolveTeamShareTargets', () => {
       { msId: 'me-1', teamMembers: [{ team: { id: 't' } }] },
       { teamMembers: [{ user: { msId: null } }, { user: { msId: 'them-2' } }] },
     );
-    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual([
-      'them-2',
-    ]);
+    // ENG-4279 — the drop is unchanged; what is new is that it is COUNTED.
+    // This case is exactly the silent one: shared with one, one dropped, and
+    // before the count there was nothing to report it with.
+    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual({
+      targets: ['them-2'],
+      unreachable: 1,
+    });
   });
 
   it('identifies a Google caller by googleId when there is no msId', async () => {
@@ -225,9 +229,155 @@ describe('resolveTeamShareTargets', () => {
       { googleId: 'g-1', teamMembers: [{ team: { id: 't' } }] },
       { teamMembers: [{ user: { msId: 'g-1' } }, { user: { msId: 'them-2' } }] },
     );
-    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual([
-      'them-2',
-    ]);
+    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual({
+      targets: ['them-2'],
+      unreachable: 0,
+    });
+  });
+
+  // ENG-4219 — AN ALL-GOOGLE TEAM IS THE CASE THAT FAILS CLOSED.
+  //
+  // The target side used to read `msId` alone while the SELF side at :346
+  // already read both. Every member of a Google-only team therefore mapped to
+  // null, the roster filtered to empty, and the caller was told "you are the
+  // only member of your team" — a false statement the assistant relays as
+  // fact. A MIXED Microsoft/Google team hides this: the surviving Microsoft
+  // members keep the list non-empty and nothing throws. Hence all-Google, and
+  // hence asserting on the RETURNED IDS — a test that merely calls the
+  // function passes against the broken code, because throwing is what it did.
+  it('returns Google-linked teammates on a team with no Microsoft members', async () => {
+    const api = directory(
+      { googleId: 'g-me', teamMembers: [{ team: { id: 't' } }] },
+      {
+        name: 'Finance',
+        teamMembers: [
+          { user: { googleId: 'g-me' } },
+          { user: { googleId: 'g-2' } },
+          { user: { googleId: 'g-3' } },
+        ],
+      },
+    );
+    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual({
+      targets: ['g-2', 'g-3'],
+      unreachable: 0,
+    });
+  });
+
+  // ENG-4219 defect 2 — THE CALLER MUST BE EXCLUDED BY EITHER OF THEIR IDS.
+  //
+  // `mine` used to be a single `msId ?? googleId` value compared against ids
+  // drawn from a different field, so a caller holding BOTH providers whose
+  // roster row is serialized with only the Google one matched nothing and was
+  // handed their own file to be shared with. Comparing against the SET of the
+  // caller's identities removes the cross-namespace comparison rather than
+  // patching it.
+  it('excludes the caller when the roster identifies them by their other provider', async () => {
+    const api = directory(
+      { msId: 'ms-me', googleId: 'g-me', teamMembers: [{ team: { id: 't' } }] },
+      {
+        teamMembers: [
+          { user: { googleId: 'g-me' } },
+          { user: { msId: 'them-2' } },
+        ],
+      },
+    );
+    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual({
+      targets: ['them-2'],
+      unreachable: 0,
+    });
+  });
+
+  // ENG-4279 — "NOBODY WE CAN ADDRESS" IS NOT "YOU HAVE NO COLLEAGUES".
+  //
+  // ENG-4219 fixed the `msId`-only READ. The residual it named in its own
+  // comment — "a teammate with NEITHER provider linked is still dropped here"
+  // — is true about the MECHANISM and is not a licence for the MESSAGE to
+  // state the opposite. An all-identity-service team filters to empty by the
+  // same arithmetic as the all-Google team above, and reaches the same false
+  // sentence by a different route.
+  //
+  // Asserting merely that `TeamUnresolvedError` is thrown passes against the
+  // broken code, because throwing is exactly what it does. The assertion has
+  // to be on the TEXT.
+  it('does not claim a solo team when the roster is real but unaddressable', async () => {
+    const api = directory(
+      { internalId: 1, teamMembers: [{ team: { id: 't' } }] },
+      {
+        name: 'Finance',
+        teamMembers: [
+          { user: { internalId: 1 } },
+          { user: { internalId: 2 } },
+          { user: { internalId: 3 } },
+          { user: { internalId: 4 } },
+          { user: { internalId: 5 } },
+        ],
+      },
+    );
+    await expect(resolveTeamShareTargets(api as never)).rejects.toThrow(
+      /None of the 4 other members of the Finance team/,
+    );
+    await expect(resolveTeamShareTargets(api as never)).rejects.not.toThrow(
+      /only member/,
+    );
+  });
+
+  // The caller's OWN row is unaddressable too when they have no provider link,
+  // and it must not be counted as a colleague. Identified by `internalId` —
+  // NEVER by comparing two absent provider ids, which are equal for every
+  // unlinked person and would erase real teammates.
+  it('does not count the caller among the unaddressable', async () => {
+    const api = directory(
+      { internalId: 1, teamMembers: [{ team: { id: 't' } }] },
+      {
+        name: 'Finance',
+        teamMembers: [{ user: { internalId: 1 } }, { user: { internalId: 2 } }],
+      },
+    );
+    await expect(resolveTeamShareTargets(api as never)).rejects.toThrow(
+      /None of the 1 other members/,
+    );
+  });
+
+  // THE PARTIAL DROP, which is the more damaging half: the file IS shared, the
+  // tool reports success, and the teammates who were dropped are mentioned
+  // nowhere. A test asserting `targets` has one entry passes today and pins
+  // the defect — the count of what was DROPPED is the new fact.
+  it('reports how many teammates were dropped on a mixed team', async () => {
+    const api = directory(
+      { internalId: 1, msId: 'ms-me', teamMembers: [{ team: { id: 't' } }] },
+      {
+        name: 'Finance',
+        teamMembers: [
+          { user: { internalId: 1, msId: 'ms-me' } },
+          { user: { internalId: 2, msId: 'ms-them' } },
+          { user: { internalId: 3 } },
+          { user: { internalId: 4 } },
+          { user: { internalId: 5 } },
+        ],
+      },
+    );
+    await expect(resolveTeamShareTargets(api as never)).resolves.toEqual({
+      targets: ['ms-them'],
+      unreachable: 3,
+    });
+  });
+
+  // ⛔ THE REFUSAL THAT MUST STAY REACHABLE. ENG-4219's acceptance line —
+  // "the 'you are the only member' refusal still fires for a genuinely
+  // single-member team" — is what scoped this ticket out of that one, and a
+  // fix that made every roster produce the new message would be a regression
+  // wearing a fix's clothes.
+  it('still says "only member" for a genuinely single-member team', async () => {
+    const api = directory(
+      { internalId: 1, msId: 'ms-me', teamMembers: [{ team: { id: 't' } }] },
+      {
+        name: 'Finance',
+        teamMembers: [{ user: { internalId: 1, msId: 'ms-me' } }],
+      },
+    );
+    await expect(resolveTeamShareTargets(api as never)).rejects.toThrow(
+      /only member of the Finance team/,
+    );
   });
 });
 

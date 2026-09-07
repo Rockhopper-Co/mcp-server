@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { remediationFor } from '../../auth/remediation.js';
 
 describe('cli bootstrap', () => {
   afterEach(() => {
@@ -144,7 +145,13 @@ describe('cli bootstrap', () => {
     const setAuthExpiredHandlerMock = vi.fn();
     const apiClientMock = vi.fn().mockImplementation(function () {
       return {
-        getMe: vi.fn().mockResolvedValue({ internalId: 1 }),
+        // ENG-4220: `msId` is load-bearing here even though this spec is about
+        // the 401 handler. The fixture used to be a bare `{ internalId: 1 }`,
+        // which is what an account linked to NEITHER provider looks like — and
+        // that now prints its own stderr warning, so `not.toHaveBeenCalled()`
+        // below would fail for a reason this test does not care about. A linked
+        // account is also the honest fixture for "a successful start".
+        getMe: vi.fn().mockResolvedValue({ internalId: 1, msId: 'ms-oid-1' }),
         setDrivingHuman: vi.fn(),
         setAuthExpiredHandler: setAuthExpiredHandlerMock,
       };
@@ -173,7 +180,12 @@ describe('cli bootstrap', () => {
     handler();
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('401'));
+    // ENG-4222: this launch resolved a PAT, so the handler must still carry the
+    // PAT remediation. `stringContaining('401')` alone passed both before and
+    // after the branch existed and could not tell them apart.
+    const message = errorSpy.mock.calls[0][0] as string;
+    expect(message).toContain('401');
+    expect(message).toContain(remediationFor('pat'));
   });
 
   /**
@@ -183,8 +195,15 @@ describe('cli bootstrap', () => {
    * A Rockhopper account can be Google-side, in which case `/users/me` carries
    * `googleId` and no `msId`; dropping that arm sends `undefined` into
    * `setDrivingHuman`, which is neither the id nor the explicit `null` the API
-   * client is typed for. The third arm matters for the same reason in reverse:
-   * `null` is the deliberate "let the backend resolve the PAT owner" signal.
+   * client is typed for.
+   *
+   * ENG-4220 corrected what the third arm MEANS. It used to be described here
+   * as "the deliberate 'let the backend resolve the PAT owner' signal" — the
+   * backend does no such thing (`user.entity.ts:371-373` makes its fallback
+   * the same `msId || googleId`), so that `null` is a total write outage, not
+   * a handoff. The assertion is unchanged on purpose: sending an internal id
+   * instead would write an unresolvable attribution, so the client still sends
+   * `null` and now WARNS about it — see the two ENG-4220 specs below.
    */
   it.each([
     ['a Microsoft account', { msId: 'ms-oid-1', googleId: 'g-oid-1' }, 'ms-oid-1'],
@@ -218,6 +237,95 @@ describe('cli bootstrap', () => {
       expect(setDrivingHumanMock).toHaveBeenCalledWith(expected);
     },
   );
+
+  /**
+   * ENG-4220 — an account with neither provider id cannot perform ANY write,
+   * and nothing told the person who installed this server.
+   *
+   * `setDrivingHuman(null)` omits `X-Driving-Human` (`api-client.ts:288-290`),
+   * and the backend guard's fallback is `request.userPlatformId`
+   * (`jwt-or-api-key.guard.ts:233`), which `User.getPlatformId()` defines as
+   * the SAME `msId || googleId` pair this preflight already read
+   * (`user.entity.ts:371-373`). Both null on both sides, so the guard 403s
+   * every write. The arm above asserts the `null` is still sent; this asserts
+   * the client no longer stays SILENT about what that null means.
+   *
+   * Asserted on stderr because that is the only channel a stdio server has to
+   * a human — a 403 rendered into a tool result is read by the model and by
+   * nobody else. Same shape as the mid-session-expiry notice below it.
+   */
+  it('warns on stderr when the account carries no linkable provider id (ENG-4220)', async () => {
+    vi.stubEnv('ROCKHOPPER_TOKEN', 'rh_pat_test_token');
+    vi.stubEnv('ROCKHOPPER_API_URL', 'http://localhost:3100');
+
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const apiClientMock = vi.fn().mockImplementation(function () {
+      return {
+        getMe: vi
+          .fn()
+          .mockResolvedValue({ internalId: 1, msId: null, googleId: null }),
+        setDrivingHuman: vi.fn(),
+        setAuthExpiredHandler: vi.fn(),
+      };
+    });
+
+    vi.doMock('../../server.js', () => ({
+      createServer: vi.fn().mockReturnValue({ connect: vi.fn() }),
+    }));
+    vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
+      serveStdio: vi.fn().mockReturnValue({ close: vi.fn() }),
+    }));
+
+    await import('../../cli.js');
+
+    // The remediation, not just "something went wrong": name the action that
+    // fixes it (link an account) and the fact that reads keep working, so the
+    // reader can tell a degraded server from a broken one.
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Microsoft or Google'),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Reads still work'),
+    );
+  });
+
+  /**
+   * ENG-4220 — the negative half. A linked account must NOT get the warning:
+   * a notice that fires for everybody is noise the reader learns to skip, and
+   * it would be indistinguishable from the real thing when it matters.
+   */
+  it('stays silent about the driving human when a provider id IS present (ENG-4220)', async () => {
+    vi.stubEnv('ROCKHOPPER_TOKEN', 'rh_pat_test_token');
+    vi.stubEnv('ROCKHOPPER_API_URL', 'http://localhost:3100');
+
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const apiClientMock = vi.fn().mockImplementation(function () {
+      return {
+        getMe: vi.fn().mockResolvedValue({ internalId: 1, googleId: 'g-oid-1' }),
+        setDrivingHuman: vi.fn(),
+        setAuthExpiredHandler: vi.fn(),
+      };
+    });
+
+    vi.doMock('../../server.js', () => ({
+      createServer: vi.fn().mockReturnValue({ connect: vi.fn() }),
+    }));
+    vi.doMock('../../api-client.js', () => ({ ApiClient: apiClientMock }));
+    vi.doMock('@modelcontextprotocol/server/stdio', () => ({
+      serveStdio: vi.fn().mockReturnValue({ close: vi.fn() }),
+    }));
+
+    await import('../../cli.js');
+
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('Microsoft or Google'),
+    );
+  });
 
   it('talks to production when ROCKHOPPER_API_URL is not set', async () => {
     // The default every `npx rockhopper-mcp` launch depends on, and the one

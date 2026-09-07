@@ -10,9 +10,19 @@ name: auto-elevation-pr
 # EVERY DECISION LIVES IN `scripts/auto-elevation-pr.sh`, NOT HERE.  A workflow
 # that inlines its logic in `run:` blocks can only be tested in production.
 # `scripts/auto-elevation-pr.test.sh` drives that script against a real git
-# repository with `gh` stubbed on PATH — 15 cases, including four attacks — and
-# the `verify` job below runs it BEFORE the `elevate` job is allowed to touch
-# GitHub.  A broken decision table cannot open a pull request.
+# repository with `gh` stubbed on PATH, and the `verify` job below runs it
+# BEFORE the `elevate` job is allowed to touch GitHub.  A broken decision table
+# cannot open a pull request.
+#
+# THE CASE COUNT IS DELIBERATELY NOT WRITTEN HERE.  ENG-4065: this line read
+# "15 cases, including four attacks" while the suite ran 28 and 10, and every one
+# of the nine repositories carrying this workflow was wrong on 2026-09-01 —
+# including the one whose numbers had just been hand-corrected, still off by one.
+# A count re-typed into a comment goes stale silently, and it reads as authority
+# in the one place a reader checks to decide how much to trust the gate.  The
+# suite prints its own tally on every run — `N checks passed, M of them attacks`,
+# counted from the assertions that actually fired — so read the `verify` job's
+# log instead of trusting a number here.
 #
 # WHAT THIS NEVER DOES: merge an elevation, mark one ready, or change the draft
 # state of one that is already open.  An open elevation is the release sitting
@@ -87,8 +97,13 @@ on:
   workflow_dispatch:
 
 # Declaring this block drops every permission not named.
-# `pull-requests: write` is what `gh pr create` and `gh pr edit --add-reviewer`
-# need; `contents: read` is for the checkout.
+# `pull-requests: write` is what `gh pr create` and the
+# `POST .../pulls/{n}/requested_reviewers` that requests the production reviewer
+# need; `contents: read` is for the checkout.  That second one was
+# `gh pr edit --add-reviewer` until ENG-3987 — same permission, and REST because
+# `gh pr edit` resolves the pull request through a GraphQL lookup that asks for
+# `repository.pullRequest.projectCards`, a field GitHub has sunset and now
+# errors on.  The permission was never the problem and does not change here.
 permissions:
   contents: read
   pull-requests: write
@@ -130,14 +145,25 @@ jobs:
 
     # Two runs racing would both see "no open pull request" and both create one.
     # GitHub refuses the second (the script reads that refusal as already-done),
-    # but serialising is the cheaper protection. Per PAIR, so the two legs never
-    # queue behind each other.
+    # but a concurrency group is the cheaper protection. Per PAIR, so the two
+    # legs never queue behind each other.
     #
-    # `cancel-in-progress: false`: a queued run must WAIT, not evaporate. A
-    # cancelled run leaves the disparity untracked until the next trigger.
+    # `cancel-in-progress: true` (ENG-4183). This operation is idempotent and
+    # last-write-wins by nature — it makes the elevation pull request reflect the
+    # CURRENT head — so a superseded run's close/reopen is pure waste. Before
+    # this, three pushes 12 seconds apart each performed their own close/reopen;
+    # `reopened` is a `pull_request` activity type so it retriggers every gate
+    # workflow, and closing cancels the in-flight ones. Two complete gate sets
+    # were started and destroyed on one head sha (frontend #1799, 2026-09-03).
+    # The self-hosted fleet's 2-7 minute queue used to coalesce rapid pushes and
+    # was masking this; the workflow is GitHub-hosted now and runs in ~30s, so
+    # nothing else collapses them.
+    # Do NOT "restore" `false` on the reasoning that an elevation run must never
+    # be cancelled: only a SUPERSEDED run is cancelled, and the run that replaces
+    # it does the same idempotent work against a newer head.
     concurrency:
       group: auto-elevation-pr-${{ github.repository }}-${{ matrix.head }}-${{ matrix.base }}
-      cancel-in-progress: false
+      cancel-in-progress: true
 
     steps:
       # `fetch-depth: 0` is load-bearing. The default shallow checkout truncates

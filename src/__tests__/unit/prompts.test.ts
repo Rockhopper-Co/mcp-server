@@ -144,6 +144,49 @@ describe('pending-reviews prompt rendering', () => {
     expect(text).not.toContain('undefined');
   });
 
+  /**
+   * ENG-4384 — the prompt twin of the `get_reviews` defect, same expression.
+   *
+   * `Unknown` rather than dropping the segment: the requester EXISTS here, so
+   * omitting "requested by" would say nobody asked for the review, which is a
+   * different falsehood. The omit branch below stays for a genuinely absent
+   * requester.
+   */
+  it('says Unknown for a requester with no name, never the word null', async () => {
+    const api = createMockApiClient();
+    api.getReviewsForLatestVersion.mockResolvedValue([
+      {
+        id: 79,
+        subject: 'Nameless requester',
+        status: 'PENDING',
+        requester: { internalId: 7, firstName: null, lastName: null },
+      },
+    ]);
+
+    const text = await renderPrompt('pending-reviews', api);
+
+    expect(text).not.toContain('null');
+    expect(text).toContain('requested by Unknown');
+  });
+
+  it('renders the one name part it has instead of pairing it with null', async () => {
+    const api = createMockApiClient();
+    api.getReviewsForLatestVersion.mockResolvedValue([
+      {
+        id: 80,
+        subject: 'Half-named requester',
+        status: 'PENDING',
+        requester: { internalId: 8, firstName: 'Dana', lastName: null },
+      },
+    ]);
+
+    const text = await renderPrompt('pending-reviews', api);
+
+    expect(text).toContain('requested by Dana');
+    expect(text).not.toContain('null');
+    expect(text).not.toContain('Unknown');
+  });
+
   it('says there are no reviews rather than printing an empty section', async () => {
     const api = createMockApiClient();
     api.getReviewsForLatestVersion.mockResolvedValue([]);

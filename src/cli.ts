@@ -2,6 +2,7 @@
 
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { ApiClient } from './api-client.js';
+import { remediationFor } from './auth/remediation.js';
 import {
   AuthResolutionError,
   resolveAuth,
@@ -99,9 +100,43 @@ try {
   // ENG-1756 (plan §9 decision 15): the PAT owner IS the human driving this
   // local agent — reuse the preflight to declare them, so every write carries
   // `X-Driving-Human` and the backend's anonymous-agent-write admission
-  // never fires for this client. Best-effort: while unset, the backend
-  // resolves the PAT owner server-side (same human).
-  apiClient.setDrivingHuman(me?.msId ?? me?.googleId ?? null);
+  // never fires for this client.
+  //
+  // ENG-4220: the line that used to sit here said "Best-effort: while unset,
+  // the backend resolves the PAT owner server-side (same human)". That was
+  // FALSE and it hid a total write outage. The backend does not resolve the
+  // owner — the guard reads `request.userPlatformId`
+  // (`jwt-or-api-key.guard.ts:233`), the PAT middleware sets that from
+  // `User.getPlatformId()` (`pat-auth.middleware.ts:132`), and that method IS
+  // `msId || googleId` (`user.entity.ts:371-373`) — the same two fields read
+  // on the line below. So the documented fallback only ever fires when the
+  // header would already have been sent, and an account linked to neither
+  // provider 403s on EVERY write.
+  //
+  // This client deliberately does NOT paper over it by sending `internalId`
+  // instead. The value lands in `driving_human_platform_id`, and the only
+  // readers of that column match `User.msId`/`googleId` exactly
+  // (`users.service.ts:361-364`, `actor-names.ts:44`) — an internal id there
+  // would be recorded as an attribution no reader can resolve, on a financial
+  // audit trail, from a package customers pin by version. Admitting the write
+  // is a backend change; the client's job is to say so before the first tool
+  // call fails opaquely.
+  const drivingHumanPlatformId = me?.msId ?? me?.googleId ?? null;
+  apiClient.setDrivingHuman(drivingHumanPlatformId);
+  if (drivingHumanPlatformId === null) {
+    log.warn(
+      { event: 'driving_human_unresolvable', internalId: me?.internalId },
+      'driving_human_unresolvable',
+    );
+    // stderr, not a tool result: a tool result is read by the model and by
+    // nobody else, and this is the person's problem to fix, not the model's.
+    console.error(
+      'Warning: this Rockhopper account is not linked to Microsoft or Google, ' +
+        'so every write will be refused with "no resolvable driving human" (403).\n' +
+        'Reads still work. To enable writes, link a Microsoft or Google account ' +
+        'in Rockhopper Settings, then restart this MCP server.',
+    );
+  }
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes('401') || msg.includes('403')) {
@@ -140,8 +175,8 @@ try {
 apiClient.setAuthExpiredHandler(() => {
   log.warn({ event: 'auth_failed', reason: 'expired_mid_session' }, 'auth_failed');
   console.error(
-    'Error: Rockhopper rejected the token (401) — it expired or was revoked after this server started. ' +
-      'Create a new Personal Access Token in Rockhopper Settings and restart this MCP server.',
+    'Error: Rockhopper rejected the token (401) — it expired or was revoked ' +
+      `after this server started. ${remediationFor(resolved.source)}`,
   );
 });
 
