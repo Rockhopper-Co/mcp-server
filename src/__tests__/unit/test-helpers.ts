@@ -1,7 +1,49 @@
 import { createHmac } from 'node:crypto';
-import { vi } from 'vitest';
+import { vi, type Mock } from 'vitest';
 
-export function createMockApiClient() {
+// vitest 5 infers `Mock<Procedure>` for every `vi.fn()`, and `Procedure` is NOT
+// re-exported from `vitest` — so an exported helper's inferred return type cannot
+// be named and `tsc` fails with TS2883 under `declaration: true`. Naming the shape
+// here is the fix; `Mock` is exported and carries `Procedure` as its default arg.
+export interface MockApiClient {
+  deriveStateKey: (domain: string) => Buffer;
+  getMe: Mock;
+  getTeam: Mock;
+  beginMicrosoftConnect: Mock;
+  getMicrosoftLink: Mock;
+  unlinkMicrosoft: Mock;
+  listEnrolledFiles: Mock;
+  listDriveInventory: Mock;
+  searchDriveFiles: Mock;
+  resolveEnrollmentUrl: Mock;
+  getEnrollmentInfo: Mock;
+  createEnrolledFile: Mock;
+  enrollFileSharedWith: Mock;
+  getEnrolledFile: Mock;
+  getFileVersions: Mock;
+  getFileVersion: Mock;
+  getFoldStatus: Mock;
+  getCellHistory: Mock;
+  getFileComments: Mock;
+  getComment: Mock;
+  createComment: Mock;
+  replyToComment: Mock;
+  resolveComment: Mock;
+  getReviewsForVersion: Mock;
+  getReviewsForLatestVersion: Mock;
+  getReview: Mock;
+  getReviewActivities: Mock;
+  createReviewRequest: Mock;
+  approveReview: Mock;
+  getUnattributedChangesBySheet: Mock;
+  getUnattributedChangesPaginated: Mock;
+  updateEnrolledFile: Mock;
+  createVersion: Mock;
+  discardChanges: Mock;
+  cancelReview: Mock;
+}
+
+export function createMockApiClient(): MockApiClient {
   return {
     // ENG-2816 — a FIXED key, deliberately. Every mock client derives the same
     // one, so a spec that mints on one server and verifies on another models
@@ -310,7 +352,13 @@ export function createMockApiClient() {
   };
 }
 
-export function createMockMcpServer() {
+export interface MockMcpServer {
+  registerTool: Mock;
+  registerResource: Mock;
+  registerPrompt: Mock;
+}
+
+export function createMockMcpServer(): MockMcpServer {
   return {
     registerTool: vi.fn(),
     registerResource: vi.fn(),
