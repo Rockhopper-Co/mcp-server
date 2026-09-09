@@ -69,6 +69,12 @@ export function registerListUnenrolledFilesTool(
         'MICROSOFT ONLY — it lists OneDrive and SharePoint workbooks and ' +
         'covers no other storage. An account with no Microsoft link gets ' +
         'nothing from it, which is not a statement about what that user has. ' +
+        // ENG-4271: an organisation's automatic-enrollment scope governs only
+        // which files its own background sweep enrolls on its own; it never
+        // stops `enroll_file` from adding any file listed here by hand.
+        'Every file here can be enrolled by hand with `enroll_file` — an ' +
+        'organisation\'s automatic-enrollment rules only narrow what its own ' +
+        'background sweep picks up on its own, never what you can add. ' +
         // ENG-2814. The model has to know a short page is not an answer, or it
         // will report "nothing to add" from the middle of a walk.
         'PAGINATED: a response ending with a cursor has MORE files past it, ' +
