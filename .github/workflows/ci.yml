@@ -101,9 +101,21 @@ on:
   # and therefore finds nothing on an elevation whose head IS `dev` — rc=0 with
   # zero tests executed. There is no such step here.
   #
+  # ENG-4573 (2026-09-08) — A FIFTH GATE: feature -> `epic/**` now runs this
+  # file too. `'epic/**'` is added to `branches` below. David reviews and
+  # merges every feature -> epic pull request himself, and the epic branch
+  # sits for days while a whole feature accumulates on it — the same "someone
+  # waits" test that gates 2-4 use, applied to a hop this topology previously
+  # left ungated. Measured on plan 39 (backend, but the gap is structural, not
+  # per-repo): a feature -> epic pull request ran NOTHING, and real defects
+  # reached the epic branch, caught only afterwards by the epic -> `dev` drift
+  # draft. NO JOB-CONDITION CHANGE WAS NEEDED: the existing first leg,
+  # `github.base_ref != 'dev' || ...`, is already true for any `epic/**` base,
+  # so the run fires unconditionally once the trigger admits it. Gates 1-4 are
+  # unchanged — see docs/conventions/ci-gate-topology.md in knowledge-base.
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
-    branches: [dev, staging, main]
+    branches: [dev, staging, main, 'epic/**']
   workflow_dispatch:
 
 # ENG-3439 — keyed on the pull request NUMBER, never on the head branch. The
