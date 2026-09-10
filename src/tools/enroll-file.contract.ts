@@ -81,6 +81,12 @@ export const ENROLL_DESCRIPTION =
   'Use this whenever `search_files` or `list_files` cannot find a file the ' +
   'user is asking about — a file Rockhopper does not know about is not a ' +
   'missing file, it is an un-enrolled one. ' +
+  // ENG-4271: an organisation running automatic enrollment scopes WHICH
+  // spreadsheets its own sweep tracks — it never limits this tool, which
+  // always enrolls the exact file named.
+  'This always enrolls the file you name. An organisation\'s automatic-' +
+  'enrollment rules only govern which files its own background sweep finds ' +
+  'on its own; they never stop you from adding any file by hand here. ' +
   // ENG-2204: the `driveMsId` + `msId` pair has one honest source, and naming
   // it here is what keeps a model from assembling a pair out of ids it read
   // somewhere else and enrolling a file the user never named.
