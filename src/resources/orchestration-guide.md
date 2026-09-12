@@ -171,7 +171,7 @@ Rockhopper supports both Microsoft Excel files (M365 / OneDrive) and Google Shee
 
 | Field | Microsoft Excel | Google Sheets |
 |-------|------------------|----------------|
-| `fileType` | `microsoft_xlsx` | `google_sheets` |
+| `fileType` | `microsoft_xlsx`, `microsoft_xlsm` | `gdrive_xlsx` (a workbook stored in Drive), `gsheet_native` (a Google Sheet) |
 | `driveMsId` | OneDrive / SharePoint drive ID | Google Drive file ID (yes, the field name is misleading for the Google case) |
 | `platformId` (= `fileMsId`) | Microsoft graph file ID | Google Drive file ID |
 
@@ -185,6 +185,7 @@ Tool failures return structured responses with `isError: true` and a human-reada
 - **409 / "conflict"** — state-machine violation (e.g. approving an already-approved review).
 - **403 / "forbidden"** — permission error (e.g. non-reviewer calling `approve_review`).
 - **5xx** — server-side error. Retry once; if it persists, surface the error to the user — don't loop.
+- **`CELL_HISTORY_UNAVAILABLE`** — `get_cell_history` cannot report that cell's history for that file. It is NOT an empty history and NOT a failure to retry: say the history is unavailable, and never report that the cell has no changes.
 
 When a tool returns `isError: true`, do not silently retry with the same arguments. Either correct the arguments based on the error message or surface the failure.
 
