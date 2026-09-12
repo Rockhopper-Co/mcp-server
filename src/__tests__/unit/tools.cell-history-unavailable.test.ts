@@ -5,8 +5,8 @@
 //
 // The contract these tests pin: an UNANSWERABLE read is a refusal a model can
 // branch on, and a real zero stays a plain, trustworthy zero.
-import { describe, expect, it } from 'vitest';
-import { RockhopperApiError } from '../../api-client.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiClient, RockhopperApiError } from '../../api-client.js';
 import { registerTools } from '../../tools/index.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
 
@@ -103,5 +103,64 @@ describe('get_cell_history — an unavailable source is not an empty history', (
     for (const banned of ['Google', 'Microsoft', 'Excel', 'ledger', 'poll']) {
       expect(description).not.toContain(banned);
     }
+  });
+});
+
+// The SEAM: the code is a string agreed across two repositories, and a test
+// that constructs the error by hand proves nothing about whether the client
+// reads it off the wire. This drives the REAL `ApiClient` over the exact body
+// the backend's `CellHistoryUnavailableHttpException` serialises
+// (`backend/src/resources/file-versions/cell-history-unavailable-http.exception.ts`),
+// pinned by that repo's e2e assertion on `res.body.code`.
+describe('the refusal survives the wire, not just the unit test', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const BACKEND_422_BODY = {
+    statusCode: 422,
+    code: 'CELL_HISTORY_UNAVAILABLE',
+    message:
+      'Rockhopper cannot report the change history of this cell for this ' +
+      'file. This is not an empty history: no changes can be listed, and none ' +
+      'can be ruled out. Retrying will not change this answer.',
+  };
+
+  it('parses the code off a real 422 body and refuses through the tool', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        statusText: 'Unprocessable Entity',
+        headers: { get: () => null },
+        text: () => Promise.resolve(JSON.stringify(BACKEND_422_BODY)),
+        json: () => Promise.resolve(BACKEND_422_BODY),
+      }),
+    );
+    const real = new ApiClient({
+      baseUrl: 'https://api.invalid',
+      token: 'rh_pat_test',
+    });
+
+    const err = await real
+      .getCellHistory('file-1', 'Sheet1', 'A1')
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+    expect(err).toBeInstanceOf(RockhopperApiError);
+    expect((err as RockhopperApiError).code).toBe('CELL_HISTORY_UNAVAILABLE');
+    // 422 must NOT be classified as the retry lane — that would put an
+    // assistant into a poll loop against an answer that cannot change.
+    expect((err as { notReady?: unknown }).notReady).toBeUndefined();
+
+    // …and the same error, through the registered tool, is a refusal.
+    const api = createMockApiClient();
+    api.getCellHistory.mockRejectedValue(err);
+    const result = await getHandler(api)(args);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('CELL_HISTORY_UNAVAILABLE');
   });
 });
