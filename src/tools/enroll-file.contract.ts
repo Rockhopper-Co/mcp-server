@@ -18,16 +18,19 @@ export const ENROLL_INPUT_SCHEMA = z.object({
     .string()
     .optional()
     .describe(
-      "The workbook's SharePoint or OneDrive address, exactly as copied from " +
-        'the browser bar. Use this whenever the user can paste a link — it is ' +
-        'the only input that names one specific file with no guessing.',
+      "The file's address, exactly as copied from the browser bar — " +
+        'SharePoint, OneDrive, Google Sheets or Google Drive. Use this ' +
+        'whenever the user can paste a link: it is the only input that names ' +
+        'one specific file with no guessing, and it is the only way to add a ' +
+        'Google file.',
     ),
   driveMsId: z
     .string()
     .optional()
     .describe(
-      'Microsoft drive id. Only for a file already identified by another tool; ' +
-        'must be sent together with `msId`, and never alongside `url`.',
+      'Microsoft drive id. Only for a Microsoft file already identified by ' +
+        '`search_drive_files`; must be sent together with `msId`, and never ' +
+        'alongside `url`. A Google file has no drive id — add it by `url`.',
     ),
   msId: z
     .string()
@@ -66,10 +69,13 @@ export const ENROLL_INPUT_SCHEMA = z.object({
 });
 
 export const ENROLL_DESCRIPTION =
-  'Add a Microsoft Excel workbook to Rockhopper so it can be versioned, ' +
-  "reviewed and tracked. Takes the file's SharePoint or OneDrive link (best), " +
-  'or a `driveMsId` + `msId` pair. ' +
-  'MICROSOFT ONLY — Google Sheets and Drive links are refused. ' +
+  'Add a spreadsheet to Rockhopper so it can be versioned, reviewed and ' +
+  "tracked. Takes the file's link (best) — SharePoint, OneDrive, Google " +
+  'Sheets or Google Drive — or, for a Microsoft file, a `driveMsId` + `msId` ' +
+  'pair. ' +
+  'Excel workbooks and Google Sheets are both added the same way; a Google ' +
+  'Doc, a Slides deck or another kind of Drive file is not a spreadsheet and ' +
+  'is reported as untracked. ' +
   'You MUST ask the user who may see the file and pass their answer as ' +
   '`share_with` ("me" or "team"); calling without it returns the question ' +
   'instead of enrolling. ' +
@@ -91,8 +97,10 @@ export const ENROLL_DESCRIPTION =
   // it here is what keeps a model from assembling a pair out of ids it read
   // somewhere else and enrolling a file the user never named.
   'If the user cannot produce a link, call `search_drive_files` first, have ' +
-  'them confirm which candidate they meant, and pass the `driveMsId` + `msId` ' +
-  'that confirmation returned. Never enroll a file the user has not named.';
+  'them confirm which candidate they meant, and pass back exactly what that ' +
+  'confirmation returned — the `driveMsId` + `msId` pair for a Microsoft ' +
+  'file, or the `url` for a Google one. Never enroll a file the user has not ' +
+  'named.';
 
 export const ENROLL_ANNOTATIONS = {
   readOnlyHint: false,
@@ -100,7 +108,7 @@ export const ENROLL_ANNOTATIONS = {
   // call on an already-enrolled file changes nothing.
   destructiveHint: false,
   idempotentHint: true,
-  // It reaches SharePoint / OneDrive through Rockhopper.
+  // It reaches the user's own file storage through Rockhopper.
   openWorldHint: true,
 } as const;
 

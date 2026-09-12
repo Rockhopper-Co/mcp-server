@@ -109,6 +109,10 @@ describe('search_drive_files registration', () => {
     expect(Object.keys(spec.inputSchema.shape)).toEqual([
       'query',
       'scope',
+      // ENG-4958 — which storage to search. An ENUM of two literals, not a
+      // URL and not free text: the point of this assertion is that no input
+      // here can aim a network call anywhere the model chooses.
+      'provider',
       'limit',
       'confirm_index',
       'confirm_token',
