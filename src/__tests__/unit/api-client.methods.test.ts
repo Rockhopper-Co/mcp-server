@@ -217,10 +217,15 @@ describe('enrollment methods put the backend DTO shapes on the wire', () => {
     vi.unstubAllGlobals();
   });
 
-  it('marks a single enroll as microsoft so the Google branch is never taken', async () => {
+  it('sends a Microsoft enroll as the (driveMsId, msId) pair', async () => {
     const fetchSpy = mockFetch({ enrollmentId: 'e1', status: 'queued' });
     vi.stubGlobal('fetch', fetchSpy);
-    await client.createEnrolledFile({ msId: 'm', driveMsId: 'd', name: 'B.xlsx' });
+    await client.createEnrolledFile({
+      provider: 'microsoft',
+      fileId: 'm',
+      driveMsId: 'd',
+      name: 'B.xlsx',
+    });
     expect(fetchSpy.mock.calls[0][0]).toBe(
       'https://api.rockhopper.co/enrolled-files',
     );
@@ -233,11 +238,37 @@ describe('enrollment methods put the backend DTO shapes on the wire', () => {
     vi.unstubAllGlobals();
   });
 
+  /**
+   * ENG-4958 — THE CASE THAT COULD NOT BE EXPRESSED. `accountType` was the
+   * literal `'microsoft'` at this write site, so a Google file the backend was
+   * already willing to enroll was unreachable from this package by any route.
+   *
+   * `platformId`, never `msId`: the backend's Google branch requires it, and a
+   * Drive id sent as `msId` writes a row keyed on a value nothing looks up.
+   * And NO `fileType` — the backend derives it from the Drive mime type on the
+   * caller's own access probe, so a client cannot assert what a file is.
+   */
+  it('sends a Google enroll as platformId with no drive id and no asserted type', async () => {
+    const fetchSpy = mockFetch({ enrollmentId: 'e1', status: 'queued' });
+    vi.stubGlobal('fetch', fetchSpy);
+    await client.createEnrolledFile({
+      provider: 'google',
+      fileId: 'drive-file-1',
+      name: 'Budget',
+    });
+    expect(bodyOf(fetchSpy)).toEqual({
+      platformId: 'drive-file-1',
+      name: 'Budget',
+      accountType: 'google',
+    });
+    vi.unstubAllGlobals();
+  });
+
   it('wraps a shared enroll as a one-item batch with the share list', async () => {
     const fetchSpy = mockFetch({ enrollmentId: 'e2', status: 'queued' });
     vi.stubGlobal('fetch', fetchSpy);
     await client.enrollFileSharedWith(
-      { msId: 'm', driveMsId: 'd', name: 'B.xlsx' },
+      { provider: 'microsoft', fileId: 'm', driveMsId: 'd', name: 'B.xlsx' },
       ['ms-bob'],
     );
     expect(fetchSpy.mock.calls[0][0]).toBe(
@@ -261,6 +292,23 @@ describe('enrollment methods put the backend DTO shapes on the wire', () => {
     vi.unstubAllGlobals();
   });
 
+  /**
+   * ENG-4958 — the id SPACE, not a label. The backend reads a Microsoft list
+   * as `msId`s and a Google list as `platformId`s, so a Drive id sent under
+   * `microsoft` matches no row and answers `not_enrolled` for a file the
+   * tenant already tracks.
+   */
+  it('asks info/bulk in the Google id space when told to', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+    await client.getEnrollmentInfo(['drive-1'], 'google');
+    expect(bodyOf(fetchSpy)).toEqual({
+      ids: ['drive-1'],
+      accountType: 'google',
+    });
+    vi.unstubAllGlobals();
+  });
+
   it('lifts the backend refusal code onto the thrown error', async () => {
     // Without this, `ACCESS_UNPROVEN` and `FILE_ACCESS_DENIED` are two 403s
     // with different prose, and the tool would have to match on wording.
@@ -276,7 +324,12 @@ describe('enrollment methods put the backend DTO shapes on the wire', () => {
     });
     vi.stubGlobal('fetch', fetchSpy);
     await expect(
-      client.createEnrolledFile({ msId: 'm', driveMsId: 'd', name: 'n' }),
+      client.createEnrolledFile({
+        provider: 'microsoft',
+        fileId: 'm',
+        driveMsId: 'd',
+        name: 'n',
+      }),
     ).rejects.toMatchObject({ status: 403, code: 'ACCESS_UNPROVEN' });
     vi.unstubAllGlobals();
   });

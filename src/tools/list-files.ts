@@ -60,7 +60,13 @@ export function registerListFilesTool(
     {
       title: 'List Enrolled Files',
       description:
-        'List the Excel files enrolled in the user\'s Rockhopper workspace. ' +
+        // ENG-4958: "Excel files" was the whole interface a model saw, and a
+        // model does not reach for a tool that says Excel when the user asks
+        // about a Google Sheet. Rockhopper has tracked both for a year; the
+        // sentence had not caught up. Each row already prints its own
+        // `fileType`, so the model can still tell them apart.
+        "List the files the user tracks in Rockhopper — Excel workbooks and " +
+        'Google Sheets alike. ' +
         'Optionally filter by search term matching file names. ' +
         ARCHIVE_DISCLOSURE,
       inputSchema: z.object({

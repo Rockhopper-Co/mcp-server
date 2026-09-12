@@ -66,7 +66,7 @@ describe('enroll_file registration', () => {
     );
   });
 
-  it('tells the model it is Microsoft-only and that it must ask about sharing', () => {
+  it('tells the model which files it takes and that it must ask about sharing', () => {
     const server = createMockMcpServer();
     registerTools(server as never, createMockApiClient() as never, {
       capabilities: ['files:write'],
@@ -75,7 +75,13 @@ describe('enroll_file registration', () => {
       (c) => c[0] === 'enroll_file',
     )?.[1] as { description: string };
 
-    expect(spec.description).toContain('MICROSOFT ONLY');
+    // ENG-4958 — the REFUSAL is gone and its absence is asserted, not just the
+    // new sentence. A test that only checked the new text would pass while the
+    // old claim survived elsewhere in the same constant, and the description is
+    // the entire interface a model sees.
+    expect(spec.description).not.toContain('MICROSOFT ONLY');
+    expect(spec.description).not.toContain('Google Sheets and Drive links are refused');
+    expect(spec.description).toContain('Google Sheets');
     expect(spec.description).toContain('share_with');
     // The broken-stream promise: a re-call after a lost answer is safe.
     expect(spec.description).toContain('already_enrolled');
@@ -101,7 +107,8 @@ describe('share_with is required and never defaulted (D5/D6)', () => {
 
     expect(outcomeOf(result)).toBe('enrolled');
     expect(api.createEnrolledFile).toHaveBeenCalledWith({
-      msId: 'ms-item-9',
+      provider: 'microsoft',
+      fileId: 'ms-item-9',
       driveMsId: 'drive-9',
       name: 'Becklar_RMR_Model.xlsx',
     });
@@ -116,7 +123,12 @@ describe('share_with is required and never defaulted (D5/D6)', () => {
     expect(api.createEnrolledFile).not.toHaveBeenCalled();
     // `ms-user-1` is the caller; sharing a file with yourself is not sharing.
     expect(api.enrollFileSharedWith).toHaveBeenCalledWith(
-      { msId: 'ms-item-9', driveMsId: 'drive-9', name: 'Becklar_RMR_Model.xlsx' },
+      {
+        provider: 'microsoft',
+        fileId: 'ms-item-9',
+        driveMsId: 'drive-9',
+        name: 'Becklar_RMR_Model.xlsx',
+      },
       ['ms-user-2'],
     );
   });
@@ -214,7 +226,12 @@ describe('a teammate with no provider link is reported, not swallowed', () => {
     // enroll over the other three would be a worse answer than today's.
     expect(outcomeOf(result)).toBe('enrolled');
     expect(api.enrollFileSharedWith).toHaveBeenCalledWith(
-      { msId: 'ms-item-9', driveMsId: 'drive-9', name: 'Becklar_RMR_Model.xlsx' },
+      {
+        provider: 'microsoft',
+        fileId: 'ms-item-9',
+        driveMsId: 'drive-9',
+        name: 'Becklar_RMR_Model.xlsx',
+      },
       ['ms-user-2'],
     );
     expect(text).toContain('shared with 1 teammate(s)');
