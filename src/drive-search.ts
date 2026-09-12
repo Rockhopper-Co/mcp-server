@@ -150,6 +150,20 @@ export interface Candidate {
   parentPath: string | null;
   lastModifiedAt: string | null;
   enrollmentState: DriveSearchItem['enrollmentState'];
+  /**
+   * ENG-4958 — which storage this candidate came from, and the link to it.
+   *
+   * BOTH are sealed into the confirmation set, not re-derived on the way back.
+   * The confirmed answer hands `enroll_file` a `url` for a Google file and an
+   * id pair for a Microsoft one; deciding that from anything the model can
+   * influence would let a model turn a Microsoft pick into a Google enroll.
+   *
+   * Optional so a confirmation token sealed by an older build still verifies
+   * and still resolves — its candidates read as Microsoft, which is what they
+   * were.
+   */
+  provider?: DriveSearchItem['provider'];
+  webUrl?: string | null;
 }
 
 /**
@@ -228,6 +242,8 @@ export function toCandidate(item: DriveSearchItem): Candidate {
     parentPath: item.parentPath,
     lastModifiedAt: item.lastModifiedAt,
     enrollmentState: item.enrollmentState,
+    provider: item.provider ?? 'microsoft',
+    webUrl: item.webUrl,
   };
 }
 

@@ -10,6 +10,7 @@ import {
 } from '../enrollment.js';
 import type {
   EnrollmentState,
+  FileProvider,
   QueuedEnrollment,
   ServerEnrollmentOutcome,
 } from '../types.js';
@@ -42,9 +43,19 @@ import {
  *    `confirm_restore: true` writes anything.
  */
 
-/** One resolved Microsoft file plus what Rockhopper already knows about it. */
+/**
+ * One resolved file plus what Rockhopper already knows about it.
+ *
+ * ENG-4958 — `provider` is carried, never assumed. The three write sites in
+ * `api-client.ts` hardcoded `accountType: 'microsoft'`, so a Google file the
+ * backend was already willing to enroll could not be enrolled from here at
+ * all. `fileId` is whichever id that provider uses: a Graph driveItem id, or a
+ * Drive file id.
+ */
 interface Target {
-  msId: string;
+  provider: FileProvider;
+  fileId: string;
+  /** Microsoft only. Empty for a Google file, which has no drive id. */
   driveMsId: string;
   name: string;
   state: EnrollmentState;
@@ -66,8 +77,12 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
     if (args.url) {
       const resolved = await api.resolveEnrollmentUrl(args.url);
       return {
-        msId: resolved.msId,
-        driveMsId: resolved.driveMsId,
+        // ENG-4958: taken from the ANSWER, not guessed from the link shape.
+        // A backend older than the Google lane sends no `provider` and only
+        // ever resolves Microsoft files, so the fallback is the truth there.
+        provider: resolved.provider ?? 'microsoft',
+        fileId: resolved.msId,
+        driveMsId: resolved.driveMsId ?? '',
         name: resolved.name,
         state: resolved.enrollmentState,
       };
@@ -75,9 +90,12 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
 
     const msId = args.msId as string;
     const driveMsId = args.driveMsId as string;
-    const [info] = await api.getEnrollmentInfo([msId]);
+    // The id pair is Microsoft's by construction — `search_drive_files` is the
+    // one honest source of it, and a Google candidate carries no drive id.
+    const [info] = await api.getEnrollmentInfo([msId], 'microsoft');
     return {
-      msId,
+      provider: 'microsoft',
+      fileId: msId,
       driveMsId,
       // The bulk read withholds `name` for a hidden or stub row, and an id
       // enroll has no other source for it. The backend fills the real name
@@ -102,7 +120,9 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
   ): ServerEnrollmentOutcome | null {
     const files = queued.files ?? [];
     const mine =
-      files.find((f) => f.msId === target.msId || f.platformId === target.msId) ??
+      files.find(
+        (f) => f.msId === target.fileId || f.platformId === target.fileId,
+      ) ??
       (files.length === 1 ? files[0] : undefined);
     return mine?.outcome ?? null;
   }
@@ -122,7 +142,8 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
     serverOutcome: ServerEnrollmentOutcome | null;
   }> {
     const file = {
-      msId: target.msId,
+      provider: target.provider,
+      fileId: target.fileId,
       driveMsId: target.driveMsId,
       name: target.name,
     };
@@ -209,7 +230,7 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
             `"${target.name}" is already in Rockhopper — nothing to do. Its ` +
             'versions and history are available through `get_file_versions` ' +
             'and `get_cell_history`.',
-          detail: { fileMsId: target.msId, name: target.name },
+          detail: { fileMsId: target.fileId, name: target.name },
         });
       }
       if (known === 'restore_confirmation_required' && !confirm_restore) {
@@ -221,7 +242,7 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
             'kept. Ask the user whether they want it restored, and if they do, ' +
             'call `enroll_file` again with the same arguments plus ' +
             'confirm_restore: true. Nothing has been changed.',
-          detail: { fileMsId: target.msId, name: target.name || null },
+          detail: { fileMsId: target.fileId, name: target.name || null },
         });
       }
       const restoring = known === 'restore_confirmation_required';
@@ -258,7 +279,7 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
           outcome,
           text,
           detail: {
-            fileMsId: target.msId,
+            fileMsId: target.fileId,
             name: target.name || null,
             enrollmentId,
             shareWith: share_with,
