@@ -69,13 +69,17 @@ export const ENROLL_INPUT_SCHEMA = z.object({
 });
 
 export const ENROLL_DESCRIPTION =
-  'Add a spreadsheet to Rockhopper so it can be versioned, reviewed and ' +
+  'Add a file to Rockhopper so it can be versioned, reviewed and ' +
   "tracked. Takes the file's link (best) — SharePoint, OneDrive, Google " +
   'Sheets or Google Drive — or, for a Microsoft file, a `driveMsId` + `msId` ' +
   'pair. ' +
-  'Excel workbooks and Google Sheets are both added the same way; a Google ' +
-  'Doc, a Slides deck or another kind of Drive file is not a spreadsheet and ' +
-  'is reported as untracked. ' +
+  // ENG-5075 / ENG-4951 — this used to say a Google Doc or a Slides deck "is
+  // not a spreadsheet and is reported as untracked". ENG-4951 made both real
+  // enrolled types (`enrolled-file.entity.ts:471-477`), so the sentence told
+  // the model a capability did not exist and a model that read it never tried.
+  'Excel workbooks, Google Sheets, Word documents, PowerPoint decks, Google ' +
+  'Docs and Google Slides are all added the same way. Another kind of Drive ' +
+  'file is reported as untracked. ' +
   'You MUST ask the user who may see the file and pass their answer as ' +
   '`share_with` ("me" or "team"); calling without it returns the question ' +
   'instead of enrolling. ' +
