@@ -36,9 +36,21 @@ export function registerGetCellHistoryTool(
         'Answers CELL_HISTORY_UNAVAILABLE (isError) when Rockhopper cannot ' +
         'report this cell\'s history for this file. That is NOT an empty ' +
         'history either — retrying will not change it, and nothing about ' +
-        'whether the cell changed may be inferred from it. An empty result ' +
-        'WITHOUT one of those two answers means the cell has no recorded ' +
-        'changes.',
+        'whether the cell changed may be inferred from it. ' +
+        // ENG-5075 — the sentence that used to close this description told the
+        // model an empty result meant the cell has no recorded changes. It
+        // reads as a licence to assert the negative, and it was wrong on two
+        // counts at once: the tool addresses only cells, and a file with no
+        // cells answered `[]` with HTTP 200. State what the tool KNOWS.
+        'This tool addresses CELLS in a spreadsheet, and only cells. A file ' +
+        'whose changes are not recorded against a sheet and a cell — a Word ' +
+        'document, a PowerPoint deck — answers CELL_HISTORY_UNAVAILABLE, ' +
+        'never an empty list; that file may hold a long change history this ' +
+        'tool has no way to address. ' +
+        'An empty result WITHOUT one of those two answers is a real answer ' +
+        'about ONE CELL: no change to that cell is recorded. It says nothing ' +
+        'about the rest of the file, and it is never grounds for saying the ' +
+        'file is unchanged.',
       inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         sheetName: z.string().describe('Name of the worksheet'),

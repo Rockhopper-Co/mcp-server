@@ -104,6 +104,31 @@ describe('get_cell_history — an unavailable source is not an empty history', (
       expect(description).not.toContain(banned);
     }
   });
+
+  /**
+   * ENG-5075 — the description used to CLOSE with "An empty result WITHOUT one
+   * of those two answers means the cell has no recorded changes", and a model
+   * reading that is licensed to assert the negative. It was wrong twice over: a
+   * `.docx` and a `.pptx` reached that branch with `[]` and HTTP 200 (both
+   * address columns are NULL against an equality lookup), and even on a
+   * spreadsheet an empty result is one CELL's answer, never the file's.
+   *
+   * The backend arm is the fix; this is the half that stops the tool doc
+   * re-licensing the inference the refusal exists to deny.
+   */
+  it('never tells a model an empty result means the file has no changes', () => {
+    const description = getDescription(createMockApiClient());
+
+    // The banned sentence, by its own words. Restore it and this goes red.
+    expect(description).not.toContain(
+      'means the cell has no recorded changes',
+    );
+    // A file with no cells gets the refusal, not a zero — said before the
+    // call, because that is when the model decides whether to trust an absence.
+    expect(description).toContain('never an empty list');
+    // And the zero that IS real is scoped to the cell it was asked about.
+    expect(description).toContain('no change to that cell is recorded');
+  });
 });
 
 // The SEAM: the code is a string agreed across two repositories, and a test
