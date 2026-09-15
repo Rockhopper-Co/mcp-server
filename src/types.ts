@@ -69,17 +69,51 @@ export type EnrollmentState = 'enrolled' | 'hidden' | 'not_enrolled';
 
 /** ENG-2195 — `POST /enrolled-files/resolve-url`'s answer. */
 export interface ResolvedFileUrl {
-  /** The Graph driveItem id. */
+  /**
+   * The provider's OWN file id — a Graph driveItem id for Microsoft, a Drive
+   * file id for Google. Read {@link ResolvedFileUrl.provider} before deciding
+   * which field to send it back as.
+   */
   msId: string;
-  /** The Graph drive id containing the item. */
-  driveMsId: string;
-  /** The file name as Microsoft holds it. */
+  /** The Graph drive id containing the item. `null` for a Google file. */
+  driveMsId: string | null;
+  /** The file name as the provider holds it. */
   name: string;
   /** The SharePoint listItemUniqueId — stable across rename and move. */
   listItemUniqueId: string | null;
-  /** The canonical Graph webUrl. */
-  webUrl: string;
+  /** The canonical link the provider holds. */
+  webUrl: string | null;
+  /**
+   * ENG-4958 — which storage the link named.
+   *
+   * OPTIONAL, and not because it is decorative: this package publishes to npm
+   * on its own clock and a customer's `npx` picks up `latest` immediately, so
+   * a backend older than the Google lane is a live case. Absent means the
+   * backend said nothing, and the caller falls back to `microsoft` — which is
+   * what every such backend resolves. Same polarity as `serverOutcome`.
+   */
+  provider?: FileProvider;
   enrollmentState: EnrollmentState;
+}
+
+/** Which storage a file lives in. */
+export type FileProvider = 'microsoft' | 'google';
+
+/**
+ * ENG-4958 — one file to enroll, in whichever id space its provider uses.
+ *
+ * ONE SHAPE FOR BOTH PROVIDERS, because the two backend bodies differ in more
+ * than a flag: Microsoft sends `(driveMsId, msId)` and Google sends
+ * `platformId` — a Google row's `msId` is MINTED server-side, so sending a
+ * Drive id as `msId` writes a row nothing can find again.
+ */
+export interface EnrollmentTarget {
+  provider: FileProvider;
+  /** Graph driveItem id for Microsoft; Drive file id for Google. */
+  fileId: string;
+  /** Microsoft only. Absent for Google, which has no drive-id concept. */
+  driveMsId?: string | null;
+  name: string;
 }
 
 /**
@@ -108,9 +142,21 @@ export interface EnrollmentInfo {
  * and nothing outside it may be offered to the user.
  */
 export interface DriveSearchItem {
+  /**
+   * The provider's OWN file id — a Graph driveItem id for Microsoft, a Drive
+   * file id for Google.
+   */
   msId: string;
-  /** `null` when Graph withheld the containing drive on this hit. */
+  /**
+   * `null` when Graph withheld the containing drive on this hit, and ALWAYS
+   * null for a Google hit — Drive has no drive-id concept.
+   */
   driveMsId: string | null;
+  /**
+   * ENG-4958 — which storage this hit came from. Optional for the same reason
+   * {@link ResolvedFileUrl.provider} is; absent falls back to `microsoft`.
+   */
+  provider?: FileProvider;
   name: string;
   webUrl: string | null;
   lastModifiedAt: string | null;

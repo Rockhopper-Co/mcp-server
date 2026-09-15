@@ -167,15 +167,19 @@ Note: on files served from the change ledger (most Microsoft files), `get_cell_h
 
 ## 8. Cross-cloud differences
 
-Rockhopper supports both Microsoft Excel files (M365 / OneDrive) and Google Sheets. Tool calls work transparently across both, but the identifiers carry different meanings:
+Rockhopper supports both Microsoft files (M365 / OneDrive, SharePoint) and Google Sheets. Tool calls work across both, but the identifiers carry different meanings:
 
-| Field | Microsoft Excel | Google Sheets |
+| Field | Microsoft | Google |
 |-------|------------------|----------------|
-| `fileType` | `microsoft_xlsx` | `google_sheets` |
-| `driveMsId` | OneDrive / SharePoint drive ID | Google Drive file ID (yes, the field name is misleading for the Google case) |
+| `fileType` | `microsoft_xlsx`, `microsoft_xlsm`, `microsoft_pptx`, `microsoft_docx` | `gdrive_xlsx` (a workbook stored in Drive), `gsheet_native` (a Google Sheet) |
+| `driveMsId` | OneDrive / SharePoint drive ID | **always `null`** — Drive has no drive-ID concept |
 | `platformId` (= `fileMsId`) | Microsoft graph file ID | Google Drive file ID |
 
-If a tool description references "drive ID" or "platform ID", it works identically across both clouds. If you need to know the platform, inspect `fileType`.
+If you need to know which cloud a file is in, inspect `fileType`, or read `provider` where a tool answer carries one.
+
+**Adding a file differs by cloud, and it is the one place it matters.** A Microsoft file can be added by link or by the `driveMsId` + `msId` pair `search_drive_files` returns. A Google file is added **by link only** — there is no id pair to pass. `search_drive_files` returns the link for a confirmed Google candidate; hand it to `enroll_file` as `url`.
+
+`search_drive_files` takes a `provider` argument (`microsoft` or `google`). Each needs its own connected account. Ask the user which cloud their file is in rather than guessing: searching the wrong one returns an empty list that reads exactly like "no such file".
 
 ## 9. Error handling
 
@@ -185,6 +189,7 @@ Tool failures return structured responses with `isError: true` and a human-reada
 - **409 / "conflict"** — state-machine violation (e.g. approving an already-approved review).
 - **403 / "forbidden"** — permission error (e.g. non-reviewer calling `approve_review`).
 - **5xx** — server-side error. Retry once; if it persists, surface the error to the user — don't loop.
+- **`CELL_HISTORY_UNAVAILABLE`** — `get_cell_history` cannot report that cell's history for that file. It is NOT an empty history and NOT a failure to retry: say the history is unavailable, and never report that the cell has no changes.
 
 When a tool returns `isError: true`, do not silently retry with the same arguments. Either correct the arguments based on the error message or surface the failure.
 

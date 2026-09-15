@@ -152,6 +152,13 @@ describe('toCandidate', () => {
       parentPath: '/Finance',
       lastModifiedAt: '2026-08-01T10:00:00Z',
       enrollmentState: 'hidden',
+      // ENG-4958 — `provider` and `webUrl` join the SEALED set because the
+      // confirmed answer needs both: a Google file is handed to `enroll_file`
+      // as a `url`, and deciding that from anything the model can influence
+      // would let it turn a Microsoft pick into a Google enroll. `size` still
+      // does not survive — nothing renders it.
+      provider: 'microsoft',
+      webUrl: 'https://contoso.sharepoint.com/a.xlsx',
     });
   });
 });

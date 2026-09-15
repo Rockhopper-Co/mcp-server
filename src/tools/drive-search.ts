@@ -212,7 +212,7 @@ export function registerDriveSearchTool(
       annotations: DRIVE_SEARCH_ANNOTATIONS,
     },
     async (
-      { query, scope, limit, confirm_index, confirm_token },
+      { query, scope, limit, provider, confirm_index, confirm_token },
       ctx?: ServerContext,
     ) => {
       // A retried multi-round-trip request arrives with the user's answer
@@ -260,6 +260,10 @@ export function registerDriveSearchTool(
           q: query,
           scope,
           limit: limit ?? 10,
+          // ENG-4958: passed through, never defaulted here. The backend
+          // defaults an absent one to Microsoft, which is what every caller
+          // written before the Google lane meant.
+          provider,
         });
         items = answer.items;
       } catch (error) {
@@ -287,6 +291,7 @@ export function registerDriveSearchTool(
         {
           event: 'drive_search',
           scope: scope ?? 'search',
+          provider: provider ?? 'microsoft',
           queryLength: query?.length ?? 0,
           results: items.length,
           searches: budget.spent,

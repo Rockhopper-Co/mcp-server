@@ -29,10 +29,20 @@ export const DRIVE_SEARCH_INPUT_SCHEMA = z.object({
     .enum(['search', 'recent'])
     .optional()
     .describe(
-      '"search" (default) looks across everything the user can reach in ' +
-        'OneDrive and SharePoint. "recent" lists the workbooks they have ' +
-        'worked on lately and needs no `query` — use it when the user cannot ' +
+      '"search" (default) looks across everything the user can reach in the ' +
+        'storage `provider` names. "recent" lists the files they have worked ' +
+        'on lately and needs no `query` — use it when the user cannot ' +
         'remember the name.',
+    ),
+  provider: z
+    .enum(['microsoft', 'google'])
+    .optional()
+    .describe(
+      'Where to look: "microsoft" (default) searches the user\'s OneDrive ' +
+        'and SharePoint, "google" searches their Google Drive. ASK THE USER ' +
+        'which one their file is in rather than guessing — searching the ' +
+        'wrong one returns an empty list that reads exactly like "no such ' +
+        'file". A person may have both.',
     ),
   limit: z
     .number()
@@ -74,9 +84,10 @@ export const DRIVE_SEARCH_INPUT_SCHEMA = z.object({
 });
 
 export const DRIVE_SEARCH_DESCRIPTION =
-  "Find a Microsoft Excel workbook in the user's own OneDrive or SharePoint — " +
-  'including files Rockhopper has never seen. Each candidate comes back marked ' +
-  'as already in Rockhopper or not. ' +
+  "Find a spreadsheet in the user's own file storage — their OneDrive and " +
+  'SharePoint, or their Google Drive — including files Rockhopper has never ' +
+  'seen. Set `provider` to say which; ask the user rather than guessing. ' +
+  'Each candidate comes back marked as already in Rockhopper or not. ' +
   'USE THIS when the user names a workbook that `search_files` and ' +
   '`list_files` cannot find: those two see only files already added to ' +
   'Rockhopper, so "no match" there means "never added", not "no such file". ' +
@@ -92,8 +103,8 @@ export const DRIVE_SEARCH_DESCRIPTION =
   'and `link_supplied` means they pasted the workbook address, which goes to ' +
   '`enroll_file` as `url` on its own. ' +
   'Searching is capped per session, so search deliberately rather than ' +
-  'browsing. Requires a connected Microsoft account — if none is connected, ' +
-  'this returns the link the user must open.';
+  'browsing. Each provider needs its own connected account — if the one you ' +
+  'asked for is not connected, this returns the link the user must open.';
 
 export const DRIVE_SEARCH_ANNOTATIONS = {
   readOnlyHint: true,
@@ -291,15 +302,44 @@ export const DECLINE_CHOICE = 'none';
  * start to differ.
  */
 export function confirmedAnswer(candidate: Candidate) {
+  // ENG-4958 — a Google file is added by LINK, because Drive has no drive-id
+  // concept and the backend's Google branch takes the Drive id under a
+  // different field. Branched on the SEALED `provider`, never on
+  // `driveMsId` being absent: Graph withholds the drive on some Microsoft
+  // hits too, and those two cases need opposite answers.
+  if (candidate.provider === 'google') {
+    if (!candidate.webUrl) {
+      return toolResult({
+        outcome: 'unknown_candidate',
+        isError: true,
+        text:
+          `"${candidate.name}" cannot be added from this search result. Ask ` +
+          'the user to open it and paste the address from their browser bar, ' +
+          'then call `enroll_file` with that `url`.',
+      });
+    }
+    return toolResult({
+      outcome: 'confirmed',
+      text:
+        `The user confirmed "${candidate.name}" (${candidateNote(candidate)}). ` +
+        'Now call `enroll_file` with the `url` below. `enroll_file` will ask ' +
+        'who may see the file — put that question to the user too, and never ' +
+        'answer it yourself.',
+      detail: {
+        name: candidate.name,
+        url: candidate.webUrl,
+        enrollmentState: candidate.enrollmentState,
+      },
+    });
+  }
   if (!candidate.driveMsId) {
     return toolResult({
       outcome: 'unknown_candidate',
       isError: true,
       text:
-        `Microsoft did not say which drive "${candidate.name}" lives in, so ` +
-        'it cannot be added from the search result. Ask the user to open the ' +
-        'workbook and paste the address from their browser bar, then call ' +
-        '`enroll_file` with that `url`.',
+        `"${candidate.name}" cannot be added from this search result. Ask ` +
+        'the user to open the workbook and paste the address from their ' +
+        'browser bar, then call `enroll_file` with that `url`.',
     });
   }
   return toolResult({
@@ -436,18 +476,23 @@ export const BUDGET_EXHAUSTED_TEXT =
 
 /** Told to the model when a NAME search matched nothing. */
 export const NO_MATCHES_TEXT =
-  'Microsoft returned no spreadsheets matching that. The search ran and came ' +
-  'back empty — it did not fail. Ask the user to try a different part of the ' +
-  'name, or call again with scope="recent" to list what they have worked on ' +
-  'lately.';
+  // ENG-4958: the vendor no longer appears as the reason for our answer, and
+  // it could not stay once this tool searched two of them. The SECOND
+  // sentence is load-bearing and stays: without it a model reads an empty
+  // list as a failure, which cost real time in the ENG-2743 QA.
+  'No files matched that. The search ran and came back empty — it did not ' +
+  'fail. Ask the user to try a different part of the name, to check whether ' +
+  'the file is in their other storage (set `provider`), or call again with ' +
+  'scope="recent" to list what they have worked on lately.';
 
 /** Told to the model when `scope="recent"` came back with nothing in it. */
 export const RECENT_EMPTY_TEXT =
-  'This user has no recent spreadsheets. The list ran and came back empty — ' +
-  'it did not fail, and asking for the recent list again will return the same ' +
-  'empty list. Two routes remain: ask the user for part of the file name and ' +
-  'call again with that name and scope="search", or ask them to paste the ' +
-  "workbook's SharePoint or OneDrive link and call `enroll_file` with it.";
+  'This user has no recent spreadsheets there. The list ran and came back ' +
+  'empty — it did not fail, and asking for the recent list again will return ' +
+  'the same empty list. Three routes remain: ask the user for part of the ' +
+  'file name and call again with that name and scope="search", try their ' +
+  'other storage by setting `provider`, or ask them to paste the file\'s ' +
+  'link and call `enroll_file` with it.';
 
 /** Told to the model when the user has no delegated Microsoft grant. */
 export function connectPrompt(authorizeUrl: string, expiresAt: string): string {
