@@ -10,9 +10,8 @@ import {
 import {
   changeModelForFileType,
   documentChangesUnavailableToolResult,
-  formatDocumentChanges,
-  hasCaptureLane,
 } from '../document-changes.js';
+import { readDocumentChanges } from './document-changes-read.js';
 
 export function registerSearchTool(
   server: McpServer,
@@ -330,70 +329,6 @@ export function registerSearchTool(
       }
     },
   );
-}
-
-/**
- * ENG-5397 — the document (Word paragraph / PowerPoint shape) read.
- *
- * Every exit is either real rows or a NAMED refusal. None of them is an empty
- * list dressed as a finding, which is the defect this ticket closes.
- */
-async function readDocumentChanges(
-  api: ApiClient,
-  ctx: {
-    fileMsId: string;
-    sheetName?: string;
-    fileType: string;
-    fileName: string;
-  },
-): Promise<{ [key: string]: unknown; content: Array<{ type: 'text'; text: string }> }> {
-  const { fileMsId, fileName } = ctx;
-
-  // A worksheet filter over a file with no worksheets. Refusing beats quietly
-  // dropping it: the caller asked to narrow the read and would otherwise be
-  // handed the WHOLE file's changes believing they were one sheet's.
-  if (ctx.sheetName) {
-    return documentChangesUnavailableToolResult({
-      reason: 'sheet_filter_not_applicable',
-      fileMsId,
-      fileName,
-    });
-  }
-
-  // Google Docs and Slides have no capture lane, so their change log holds
-  // zero rows permanently — asserted backend-side in
-  // `google-document-lane.capability.spec.ts`. A structural, permanent zero
-  // rendered as "no changes" is a wrong answer that never becomes right, so it
-  // is refused BEFORE the read rather than after an honest-looking empty one.
-  if (!hasCaptureLane(ctx.fileType)) {
-    return documentChangesUnavailableToolResult({
-      reason: 'no_capture_lane',
-      fileMsId,
-      fileName,
-    });
-  }
-
-  // ENG-2824 — the same enrolment gate the spreadsheet lane applies. A file
-  // whose first read has not landed has no versions, and an empty window over
-  // it is a premature absence rather than a fact about the document.
-  assertEnrollmentComplete(fileMsId, await api.getFileVersions(fileMsId));
-
-  const response = await api.getDocumentChanges(fileMsId);
-
-  // The one field that separates a withheld window from an empty one. The
-  // backend's own DTO says a client MUST render the two differently.
-  if (response.declineReason !== null) {
-    return documentChangesUnavailableToolResult({
-      reason: 'window_withheld',
-      fileMsId,
-      fileName,
-      declineReason: response.declineReason,
-    });
-  }
-
-  return {
-    content: [{ type: 'text', text: formatDocumentChanges(response, fileName) }],
-  };
 }
 
 /**
