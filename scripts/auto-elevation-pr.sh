@@ -128,7 +128,7 @@ if [ -n "$existing" ]; then
   #
   # THE DEFECT.  A pull request tracks its head BRANCH, so every merge into
   # `dev` after the elevation opened arrives as a `synchronize` — and the three
-  # gate workflows (`ci.yml`, `coverage.yml`, `postman-drift.yml`) all carry
+  # gate workflows (`ci.yml`, `coverage.yml`, `postman-drift.yml`) used to carry
   # `github.event.action != 'synchronize' || !contains(fromJSON('["dev",
   # "staging"]'), github.head_ref)`, which is ENG-3437 refusing to re-run the
   # suite on a standing elevation.  Correct in isolation, and combined with an
@@ -136,17 +136,33 @@ if [ -n "$existing" ]; then
   # against whatever `dev` held at open time.  Measured on frontend #1658: 29
   # commits reached `staging` with every substantive check SKIPPED.
   #
-  # THE FIX, and it is deliberately not in the workflows.  A close followed by a
-  # reopen emits `reopened`, which is in all three `types:` lists and is not a
+  # THE 2026-08-27 FIX, deliberately not in the workflows.  A close followed by
+  # a reopen emits `reopened`, which is in all three `types:` lists and is not a
   # `synchronize` — so the gate fires against the branch's real tip with the
-  # ENG-3437 leg untouched, still protecting `staging` -> `main` and every
-  # feature pull request into `staging` or `main`.
+  # ENG-3437 leg untouched.
   #
-  # WHAT DAVID REJECTED: exempting `dev` -> `staging` from the synchronize leg
-  # (B — edits the leg, and re-runs on every intermediate merge), debouncing on
-  # a timer (C — machinery, and no human waits on a schedule), and accepting the
-  # hole with a note in the header (D — makes manual QA the detector, which is
-  # what ENG-3139 set out to stop).
+  # ⚠️ ENG-5367 (2026-09-16) FIXED IT IN THE WORKFLOWS AFTER ALL, so the
+  # paragraphs above are history and this refresh is no longer what makes the
+  # gate fire.  The leg now reads `github.event.action != 'synchronize' ||
+  # github.base_ref != 'dev'`: the suppression keys on the `dev` BASE, which is
+  # the feature and epic-drift case it was always written for.  An elevation's
+  # head_ref IS literally `dev`, so the old head-branch test suppressed every
+  # gated job on exactly the pull requests gate 3 exists to gate.  A `dev` ->
+  # `staging` synchronize now runs the suite by itself.
+  #
+  # The close/reopen is RETAINED, not deleted: it is harmless (a `reopened` the
+  # gates already run) and retiring it is a behaviour change nobody has asked
+  # for.  Whether it should go is open.
+  #
+  # WHAT DAVID REJECTED in ENG-3502, and what overturned it: option B was
+  # exempting `dev` -> `staging` from the synchronize leg (edits the leg, and
+  # re-runs on every intermediate merge).  ENG-5367 SUPERSEDES that rejection —
+  # the leg was suppressing the one gate that protects manual QA time, and the
+  # re-run cost is what David accepted to get it back.  Recorded so the
+  # rejection is not cited back at the ruling that overturned it.  Still
+  # rejected: debouncing on a timer (C — machinery, and no human waits on a
+  # schedule), and accepting the hole with a note in the header (D — makes
+  # manual QA the detector, which is what ENG-3139 set out to stop).
   #
   # FOUR CONDITIONS, each load-bearing:
   #   - the PAIR is `dev` -> `staging`.  `staging` -> `main` opens as a draft
@@ -266,9 +282,10 @@ App is installed on it. No code change is needed on that day — see ENG-3180.\n
 #
 # `dev` -> `staging` deliberately stays NON-draft: David merges those in ~110s
 # median (30 pull requests since 2026-08-23) and does that hop ~100x a fortnight,
-# so a draft would add a click to the busiest hop for no gain.  ENG-3437 gates
-# the suite on that leg a different way — one run at `opened`, none on
-# `synchronize`.
+# so a draft would add a click to the busiest hop for no gain.  That leg is
+# gated a different way — a run at `opened` and, since ENG-5367, on every
+# `synchronize` too, because the suppression keys on a `dev` BASE and this hop's
+# base is `staging`.
 #
 # Gated on the PAIR, not on the base alone, because `staging` -> `main` is the
 # matrix leg that exists; a hand-run `dev` -> `main` is not a configured
