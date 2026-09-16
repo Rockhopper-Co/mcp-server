@@ -375,7 +375,9 @@ ok "attack: an unanswerable duplicate check fails closed, opens nothing"
 # ENG-3437 drafts the production elevation only.  `dev` -> `staging` is merged
 # in ~110s median and happens ~100x a fortnight; a draft there would add a click
 # to the busiest hop and buy nothing, because that leg is already gated a
-# different way (one run at `opened`, none on `synchronize`).
+# different way — a run at `opened` and, since ENG-5367, on every `synchronize`
+# too, because the suppression keys on a `dev` BASE and this hop's base is
+# `staging`.
 reset
 ELEVATION_HEAD=dev ELEVATION_BASE=staging run
 [ "$rc" -eq 0 ]        || fail "16 staging hop exits clean" "$(dump)"
@@ -396,11 +398,16 @@ not_logged "--draft" || fail "17 dev->main was drafted — the gate widened to t
 ok "dev->main: not drafted — the draft gate is the head/base pair"
 
 # ---- 19. ENG-3502: a push into `dev` REFRESHES the standing elevation --------
-# The defect this whole round exists for.  The three gate workflows refuse to
-# re-run on a `synchronize` whose head is `dev` or `staging` (ENG-3437), and the
-# elevation is opened once and synchronized forever — so gate 3 only ever saw
-# whatever `dev` held at open time.  A close followed by a reopen emits
-# `reopened`, which is in all three `types:` lists and is not a `synchronize`.
+# The defect this round existed for.  The three gate workflows used to refuse a
+# `synchronize` whose HEAD is `dev` or `staging` (ENG-3437), and the elevation is
+# opened once and synchronized forever — so gate 3 only ever saw whatever `dev`
+# held at open time.  A close followed by a reopen emits `reopened`, which is in
+# all three `types:` lists and is not a `synchronize`.
+#
+# ENG-5367 (2026-09-16) removed that hole at the source: the leg now keys on a
+# `dev` BASE, so a `dev` -> `staging` synchronize runs the suite by itself.
+# This case still asserts the refresh because the script's behaviour is
+# unchanged, not because the gate depends on it.
 #
 # The ORDER is asserted, not just the presence: a reopen recorded before its
 # close would mean the pull request ends up closed.
