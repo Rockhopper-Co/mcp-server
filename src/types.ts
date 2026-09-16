@@ -510,6 +510,78 @@ export interface PaginatedUnattributedResponse {
 }
 
 /**
+ * ENG-5397 — one paragraph (Word) or shape (PowerPoint) change, mirroring the
+ * backend's `DocumentChangeRowDto`
+ * (`backend/src/resources/cell-change-events/dto/document-changes-query.dto.ts`).
+ *
+ * Mirrored rather than imported for the reason every type in this file is: the
+ * package ships to customers over npm and cannot depend on the backend tree.
+ * Only the fields this client RENDERS are typed; the rest of the row is carried
+ * through by the schema's passthrough and ignored.
+ */
+export interface DocumentChangeRow {
+  /** The ledger event id — a stable key for the CHANGE. */
+  eventId: string;
+  /** `block` for a Word paragraph, `shape` for a PowerPoint shape. */
+  kind: string;
+  /**
+   * The containing slide's OPAQUE provider id, on a shape row. Null for a
+   * paragraph, which has no container.
+   *
+   * NOT A SLIDE NUMBER, and it must never be rendered as one: it is stable
+   * across a deck edit and carries no position. The backend's own contract says
+   * so, because `containerOrdinal` is null on every row either lane writes.
+   */
+  containerProviderId: string | null;
+  /**
+   * The unit's OWN provider id — `w14:paraId` for a paragraph, the
+   * slide-namespaced shape id for a shape. Written on every row. This is the
+   * identity a caller follows across reads: `eventId` keys the CHANGE, this
+   * keys the THING that changed.
+   */
+  anchorProviderId: string | null;
+  /** A human label for the unit where one is persisted — a shape name. */
+  anchorLabel: string | null;
+  /** The ledger's own event type: `block_edit`, `shape_insert`, and so on. */
+  changeKind: string;
+  /** The editor to PRESENT — null where the evidence is not an authorship claim. */
+  editorPlatformId: string | null;
+  occurredAt: string | null;
+  firstObservedAt: string;
+  /**
+   * The text before and after. BOTH SIDES ARE STORED — David ruled it on
+   * 2026-09-09 (*"update word (all text types) and powerpoint to store the
+   * values in the ledger"*) and ENG-4511 shipped it, so a row carries the words
+   * and not merely the fact that something moved.
+   */
+  fromValue: { v?: unknown; f?: unknown } | null;
+  toValue: { v?: unknown; f?: unknown } | null;
+  /** True when THIS ROW's text was capped; the list's own cap is on the envelope. */
+  truncated: boolean;
+}
+
+/**
+ * `GET /cell-change-events/document-changes?fileMsId=…` — the document change
+ * lane, the read this client had no call for at all before ENG-5397.
+ */
+export interface DocumentChangesResponse {
+  rows: DocumentChangeRow[];
+  /** True when more servable rows exist than one page returns. No cursor exists. */
+  truncated: boolean;
+  /**
+   * Why the window was WITHHELD, or null when it was served.
+   *
+   * NON-NULL MEANS `rows` IS EMPTY BY REFUSAL, NOT BY ABSENCE, and the two must
+   * render differently — the backend's own DTO says a client MUST do this, and
+   * rendering a withheld window as "nothing changed" is the plausible zero this
+   * whole read exists to avoid.
+   */
+  declineReason: string | null;
+  /** The window's opening boundary — the last committed version's creation time. */
+  windowStart: string;
+}
+
+/**
  * KI-096: matches the backend's `?format=mcp` projection on cell-history
  * (`GET /file-versions/file/:fileMsId/cell-history?format=mcp`, added by
  * backend PR #478). `versionId` is a semver string (`"v<major>.<minor>.<patch>"`),

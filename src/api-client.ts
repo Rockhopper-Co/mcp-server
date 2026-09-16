@@ -4,6 +4,7 @@ import { getCorrelationId } from './correlation.js';
 import { log } from './logger.js';
 import type {
   CellHistoryEntry,
+  DocumentChangesResponse,
   EnrolledFile,
   FileChat,
   FileVersion,
@@ -29,6 +30,7 @@ import type {
 } from './types.js';
 import {
   CellHistoryEntryArraySchema,
+  DocumentChangesResponseSchema,
   EnrolledFileSchema,
   FileChatSchema,
   FoldStatusSchema,
@@ -941,6 +943,45 @@ export class ApiClient {
     const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
     const path = `/unattributed-changes/paginated/${fileMsId}${qs}`;
     return this.request<PaginatedUnattributedResponse>(path);
+  }
+
+  // --- Document changes ---
+
+  /**
+   * ENG-5397 — paragraph (Word) and shape (PowerPoint) changes since the last
+   * committed version.
+   *
+   * THIS CLIENT HAD NO CALL TO THIS LANE AT ALL, which is why every document
+   * question reached the SPREADSHEET reader above and came back empty. The
+   * `unattributed_change` table those two routes read requires a `sheetName`
+   * and the sheet route also filters `changeType = 'cell'`, so a `.docx` or
+   * `.pptx` returned `[]` from them by construction — never because nothing
+   * had changed.
+   *
+   * `GET /cell-change-events/document-changes` is the read that answers for a
+   * document. No write capability is needed: the route carries no
+   * `@RequiresPatCapability`, so a read-only token reaches it.
+   *
+   * THERE IS NO CURSOR ON THIS ROUTE. The backend caps the page and reports
+   * `truncated` on the envelope; a caller that wants the rest has nothing to
+   * ask for, so the tool SAYS the list was cut rather than implying it is
+   * whole.
+   *
+   * A SPREADSHEET GETS `rows: []` HERE, NOT A 404 — the backend serves the
+   * empty envelope deliberately, because this read is simply not the one that
+   * answers for a cell model. So the caller must route by change model rather
+   * than calling both lanes and merging: an empty answer from the wrong lane is
+   * exactly the defect this method exists to remove.
+   */
+  async getDocumentChanges(fileMsId: string): Promise<DocumentChangesResponse> {
+    const path = `/cell-change-events/document-changes?fileMsId=${encodeURIComponent(
+      fileMsId,
+    )}`;
+    return this.request<DocumentChangesResponse>(
+      path,
+      undefined,
+      DocumentChangesResponseSchema as unknown as ZodType<DocumentChangesResponse>,
+    );
   }
 
   // --- Version lifecycle ---
