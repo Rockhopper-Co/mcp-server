@@ -475,6 +475,38 @@ describe('MCP in-memory protocol e2e', () => {
     expect(text).not.toContain('No unattributed changes');
   });
 
+  /**
+   * ENG-5397 — a Word document over the REAL transport. This is the shape
+   * Claude Desktop and Cursor receive, and the shape that previously carried
+   * "No unattributed changes found for this file." for a `.docx`.
+   *
+   * Asserted on the paragraph's own anchor id and its stored text. An
+   * emptiness assertion would pass on the defect, since the defect IS an empty
+   * list.
+   */
+  it('serves a Word document its paragraph changes over the protocol', async () => {
+    const result = await client.callTool({
+      name: 'get_unattributed_changes',
+      arguments: { fileMsId: 'file-docx' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(text).toContain('w14-paraId-7A3B');
+    expect(text).toContain('Net 30 days');
+    expect(text).toContain('Net 60 days');
+    expect(result.isError).toBeFalsy();
+  });
+
+  it('refuses a Google Doc over the protocol instead of reporting no changes', async () => {
+    const result = await client.callTool({
+      name: 'get_unattributed_changes',
+      arguments: { fileMsId: 'file-gdoc' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBe(true);
+    expect(text).toContain('DOCUMENT_CHANGES_UNAVAILABLE');
+    expect(text).toContain('no_capture_lane');
+  });
+
   it('errors the changes resource while a fold is pending', async () => {
     await expect(
       client.readResource({

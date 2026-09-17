@@ -88,3 +88,43 @@ export const FoldStatusSchema = z
     checkedAt: z.string().optional(),
   })
   .passthrough();
+
+/** One paragraph or shape change (ENG-5397). Passthrough: the served row
+ * carries more fields than this client renders, and an added one must not
+ * fail the parse. */
+const DocumentChangeRowSchema = z
+  .object({
+    eventId: z.string(),
+    kind: z.string(),
+    containerProviderId: z.string().nullable().default(null),
+    anchorProviderId: z.string().nullable().default(null),
+    anchorLabel: z.string().nullable().default(null),
+    changeKind: z.string(),
+    editorPlatformId: z.string().nullable().default(null),
+    occurredAt: z.string().nullable().default(null),
+    firstObservedAt: z.string(),
+    fromValue: z.record(z.string(), z.unknown()).nullable().default(null),
+    toValue: z.record(z.string(), z.unknown()).nullable().default(null),
+    truncated: z.boolean().default(false),
+  })
+  .passthrough();
+
+/**
+ * Backend `GET /cell-change-events/document-changes` (ENG-5397).
+ *
+ * `declineReason` IS PARSED AND REQUIRED-OR-NULL ON PURPOSE. It is the only
+ * field that separates "the window was served and was empty" from "the window
+ * was WITHHELD", and those are opposite answers wearing one shape — an empty
+ * `rows`. A drifted or absent field would read as `undefined`, coerce falsy,
+ * and turn every withheld window into a confident "nothing changed", which is
+ * the exact failure this whole read exists to prevent. Same reasoning as
+ * `FoldStatusSchema` above, and the stakes are identical.
+ */
+export const DocumentChangesResponseSchema = z
+  .object({
+    rows: z.array(DocumentChangeRowSchema),
+    truncated: z.boolean(),
+    declineReason: z.string().nullable(),
+    windowStart: z.string(),
+  })
+  .passthrough();

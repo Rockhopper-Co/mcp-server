@@ -37,6 +37,8 @@ export interface MockApiClient {
   approveReview: Mock;
   getUnattributedChangesBySheet: Mock;
   getUnattributedChangesPaginated: Mock;
+  /** ENG-5397 — the document (Word paragraph / PowerPoint shape) change lane. */
+  getDocumentChanges: Mock;
   updateEnrolledFile: Mock;
   createVersion: Mock;
   discardChanges: Mock;
@@ -321,6 +323,15 @@ export function createMockApiClient(): MockApiClient {
       totalCount: 1,
       snapshotId: '1700000000000',
       snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+    }),
+    // ENG-5397 — the document lane. Served-and-empty by default: the fixture's
+    // default file is a workbook, which never reaches this reader, so a spec
+    // that DOES reach it is one that set a document fileType on purpose.
+    getDocumentChanges: vi.fn().mockResolvedValue({
+      rows: [],
+      truncated: false,
+      declineReason: null,
+      windowStart: '2026-01-01T00:00:00.000Z',
     }),
     updateEnrolledFile: vi.fn().mockResolvedValue({
       platformId: 'file-1',

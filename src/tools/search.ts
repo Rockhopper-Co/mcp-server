@@ -7,6 +7,11 @@ import {
   isNotReady,
   notReadyToolResult,
 } from '../not-ready.js';
+import {
+  changeModelForFileType,
+  documentChangesUnavailableToolResult,
+} from '../document-changes.js';
+import { readDocumentChanges } from './document-changes-read.js';
 
 export function registerSearchTool(
   server: McpServer,
@@ -118,17 +123,29 @@ export function registerSearchTool(
     {
       title: 'Get Unattributed Changes',
       description:
-        'Get pending cell-level changes that have not been attributed to a ' +
-        'committed version yet. Two modes: (1) provide `sheetName` to get ' +
+        'Get the changes made since the last saved version. Works on ' +
+        'workbooks, Word documents and PowerPoint decks. ' +
+        // ENG-5397 — the shape of the answer differs by file kind, and a
+        // caller that assumes cells will mis-describe a document.
+        'A workbook answers with cell changes; a Word document answers with ' +
+        'paragraph changes; a deck answers with shape changes, each naming ' +
+        'the slide it is on. ' +
+        'Two modes for a workbook: (1) provide `sheetName` to get ' +
         'every change on a single worksheet (no pagination — bounded by ' +
         'sheet size); (2) omit `sheetName` for the file-wide cursor-paginated ' +
         'view (rows are capped per response with a summary line; pass `cursor` ' +
         'returned by the previous call to fetch the next page). ' +
+        '`sheetName` and `cursor` apply to workbooks only. ' +
         // Plan 02 ruling 5 — "No unattributed changes" is a factual claim, and
         // it is only made after completeness is proven.
         'Answers CHANGE_HISTORY_NOT_READY (isError) while Rockhopper is still ' +
         "computing this file's changes. That is NOT \"no changes\" — retry " +
-        'after the stated interval instead of reporting an absence.',
+        'after the stated interval instead of reporting an absence. ' +
+        // ENG-5397 — the refusal this tool used to answer as an empty list.
+        'Answers DOCUMENT_CHANGES_UNAVAILABLE (isError) when a change list ' +
+        'cannot be produced for this file at all. That is also NOT "no ' +
+        'changes": say the list is unavailable and offer to compare two ' +
+        'versions instead. Never report a file as unchanged on either answer.',
       inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         sheetName: z
@@ -156,6 +173,33 @@ export function registerSearchTool(
     },
     async ({ fileMsId, sheetName, cursor }) => {
       try {
+        // ENG-5397 — WHICH CHANGE MODEL, before which reader. The two lanes
+        // below are spreadsheet-only: `unattributed_change` requires a
+        // `sheetName` and the sheet route also filters `changeType = 'cell'`,
+        // so a Word document or a deck returned `[]` from them by
+        // construction and the tool printed "No unattributed changes found".
+        // Routing on the file's own type is what makes an absence mean
+        // something.
+        const file = await api.getEnrolledFile(fileMsId);
+        const model = changeModelForFileType(file.fileType);
+
+        if (model === null) {
+          return documentChangesUnavailableToolResult({
+            reason: 'unknown_file_type',
+            fileMsId,
+            fileName: file.name,
+          });
+        }
+
+        if (model !== 'spreadsheet') {
+          return await readDocumentChanges(api, {
+            fileMsId,
+            sheetName,
+            fileType: file.fileType,
+            fileName: file.name,
+          });
+        }
+
         // Plan 02 ruling 5 (STRICT): gate BOTH modes. The commit-diff fold
         // retracts and rewrites the uncommitted window, so a pending fold
         // means this list is mid-rewrite in either shape.
