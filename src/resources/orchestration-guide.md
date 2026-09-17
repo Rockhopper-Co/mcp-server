@@ -100,7 +100,26 @@ Standard sequence to inspect a file:
    - File contents at a specific version → `get_cell_history(fileMsId, sheet, cellAddress)`.
    - Comments → `get_file_comments(fileMsId)`. Filters to the latest live version by default.
    - Reviews → `get_reviews(versionId)`. Pass a `versionId` from step 2.
-   - Uncommitted changes → `get_unattributed_changes(fileMsId)` (only useful if `hasUncommittedChanges === true`).
+   - Uncommitted changes → `get_unattributed_changes(fileMsId)` (only useful if `hasUncommittedChanges === true`). Answers cell changes for a workbook, paragraph changes for a Word document, and shape changes for a deck.
+
+### `DOCUMENT_CHANGES_UNAVAILABLE` — also never report it as "no changes"
+
+`get_unattributed_changes` refuses with `{"status":"unavailable", "reason": …}` and
+`isError: true` when it cannot produce a change list for a file at all. Unlike
+`CHANGE_HISTORY_NOT_READY`, **retrying will not change the answer** — the payload carries
+no `retryAfterSeconds` for that reason.
+
+The `reason` says what to do next:
+
+| `reason` | What it means | Next step |
+|---|---|---|
+| `no_capture_lane` | Rockhopper does not track a change-by-change list for this kind of file. It still has versions and comments. | Offer a version comparison instead. |
+| `sheet_filter_not_applicable` | A `sheetName` was passed for a file with no worksheets. | Call again without `sheetName`. |
+| `window_withheld` | The change list is not available for this file right now. | Offer a version comparison instead. |
+| `unknown_file_type` | This connection does not recognise the file's type. | Ask the user what the file is. |
+
+Say the change list is unavailable. Never say the file is unchanged, has no changes, or
+is clean — none of that is known on any of these answers.
 
 ### `CHANGE_HISTORY_NOT_READY` — never report it as "no changes"
 
@@ -161,17 +180,17 @@ Rules:
 Two distinct concepts. Tools work with one or the other; do not mix.
 
 - **Committed history** — version snapshots created by `create_version`. Surfaced by `get_file_versions`, `get_cell_history`. Immutable.
-- **Uncommitted changes** — cell edits the user has made since the last `create_version`. Surfaced by `get_unattributed_changes`. Mutable; consumed by the next `create_version` or `discard_changes` call.
+- **Uncommitted changes** — edits the user has made since the last `create_version`: cells in a workbook, paragraphs in a Word document, shapes in a deck. Surfaced by `get_unattributed_changes`. Mutable; consumed by the next `create_version` or `discard_changes` call.
 
 Note: on files served from the change ledger (most Microsoft files), `get_cell_history` also includes live edits not yet captured by a committed version — those entries carry the literal versionId `uncommitted`. On files still served from the legacy store, only committed values appear; use `get_unattributed_changes` for pending edits there.
 
 ## 8. Cross-cloud differences
 
-Rockhopper supports both Microsoft files (M365 / OneDrive, SharePoint) and Google Sheets. Tool calls work across both, but the identifiers carry different meanings:
+Rockhopper supports both Microsoft files (M365 / OneDrive, SharePoint) and Google Drive files. Tool calls work across both, but the identifiers carry different meanings:
 
 | Field | Microsoft | Google |
 |-------|------------------|----------------|
-| `fileType` | `microsoft_xlsx`, `microsoft_xlsm`, `microsoft_pptx`, `microsoft_docx` | `gdrive_xlsx` (a workbook stored in Drive), `gsheet_native` (a Google Sheet) |
+| `fileType` | `microsoft_xlsx`, `microsoft_xlsm`, `microsoft_pptx`, `microsoft_docx` | `gdrive_xlsx` (a workbook stored in Drive), `gsheet_native` (a Google Sheet), `google_doc`, `google_slides` |
 | `driveMsId` | OneDrive / SharePoint drive ID | **always `null`** — Drive has no drive-ID concept |
 | `platformId` (= `fileMsId`) | Microsoft graph file ID | Google Drive file ID |
 

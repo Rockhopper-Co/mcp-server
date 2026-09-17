@@ -84,11 +84,12 @@ export const DRIVE_SEARCH_INPUT_SCHEMA = z.object({
 });
 
 export const DRIVE_SEARCH_DESCRIPTION =
-  "Find a spreadsheet in the user's own file storage — their OneDrive and " +
+  "Find a file in the user's own file storage — their OneDrive and " +
   'SharePoint, or their Google Drive — including files Rockhopper has never ' +
-  'seen. Set `provider` to say which; ask the user rather than guessing. ' +
+  'seen. Workbooks, Word documents and PowerPoint decks. ' +
+  'Set `provider` to say which; ask the user rather than guessing. ' +
   'Each candidate comes back marked as already in Rockhopper or not. ' +
-  'USE THIS when the user names a workbook that `search_files` and ' +
+  'USE THIS when the user names a file that `search_files` and ' +
   '`list_files` cannot find: those two see only files already added to ' +
   'Rockhopper, so "no match" there means "never added", not "no such file". ' +
   'YOU MUST CONFIRM THE FILE WITH THE USER before enrolling it. Show them the ' +
@@ -100,7 +101,7 @@ export const DRIVE_SEARCH_DESCRIPTION =
   'Read the outcome rather than assuming: `declined` means the user saw the ' +
   'candidates and rejected them, `dismissed` means the prompt closed with no ' +
   'answer at all — put the list to them yourself and do not search again — ' +
-  'and `link_supplied` means they pasted the workbook address, which goes to ' +
+  'and `link_supplied` means they pasted the file address, which goes to ' +
   '`enroll_file` as `url` on its own. ' +
   'Searching is capped per session, so search deliberately rather than ' +
   'browsing. Each provider needs its own connected account — if the one you ' +
