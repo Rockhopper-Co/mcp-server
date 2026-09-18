@@ -101,9 +101,21 @@ on:
   # and therefore finds nothing on an elevation whose head IS `dev` — rc=0 with
   # zero tests executed. There is no such step here.
   #
+  # ENG-4573 (2026-09-08) — A FIFTH GATE: feature -> `epic/**` now runs this
+  # file too. `'epic/**'` is added to `branches` below. David reviews and
+  # merges every feature -> epic pull request himself, and the epic branch
+  # sits for days while a whole feature accumulates on it — the same "someone
+  # waits" test that gates 2-4 use, applied to a hop this topology previously
+  # left ungated. Measured on plan 39 (backend, but the gap is structural, not
+  # per-repo): a feature -> epic pull request ran NOTHING, and real defects
+  # reached the epic branch, caught only afterwards by the epic -> `dev` drift
+  # draft. NO JOB-CONDITION CHANGE WAS NEEDED: the existing first leg,
+  # `github.base_ref != 'dev' || ...`, is already true for any `epic/**` base,
+  # so the run fires unconditionally once the trigger admits it. Gates 1-4 are
+  # unchanged — see docs/conventions/ci-gate-topology.md in knowledge-base.
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
-    branches: [dev, staging, main]
+    branches: [dev, staging, main, 'epic/**']
   workflow_dispatch:
 
 # ENG-3439 — keyed on the pull request NUMBER, never on the head branch. The
@@ -133,9 +145,23 @@ jobs:
     # the `staging` -> `main` elevation now opens as one, and its
     # `github.event_name != 'pull_request'` guard is what keeps
     # `workflow_dispatch` working, where `github.event.pull_request` does not
-    # exist. Leg 3 never runs on a `synchronize` whose head is `dev` or
-    # `staging`: that is a push into a standing elevation, which is where 58%
-    # of this org's Actions minutes went in the 14 days to 2026-08-26.
+    # exist. Leg 3 never runs on a `synchronize` whose BASE is `dev`, unless its
+    # head is an `epic/**` branch: that is the feature case, where `dev` keeps
+    # moving and nobody waits on the re-run, and it is where 58% of this org's
+    # Actions minutes went in the 14 days to 2026-08-26. The `epic/**` disjunct
+    # is load-bearing — ENG-3441 (2026-08-26) deleted
+    # `push: branches: ['epic/**']`, so a `synchronize` on the epic -> `dev`
+    # pull request is an epic branch's ONLY remaining re-test, and suppressing
+    # it would silently stop gate 2 all over again.
+    #
+    # ENG-5367 (2026-09-16) keyed leg 3 on `base_ref`. It used to test the HEAD
+    # branch against `dev`/`staging` — and an elevation's head_ref IS literally
+    # `dev`, so every `synchronize` on a standing `dev` -> `staging` elevation
+    # skipped every gated job, and the elevation merged on that skipped state.
+    # The suppression was written to spare feature pull requests; elevations
+    # were caught by accident because their head branch happens to be named
+    # `dev`. Keyed on the base, `staging` and `main` bases now re-test on every
+    # push, which is the gate ENG-3139 built to protect manual QA time.
     #
     # ENG-3570 — leg 1's draft check is now scoped to the ELEVATION pull
     # requests, which is all it was ever for. As ENG-3437 wrote it, it skipped
@@ -163,7 +189,8 @@ jobs:
       || !contains(fromJSON('["dev","staging"]'), github.head_ref))
       && (github.base_ref != 'dev' || startsWith(github.head_ref, 'epic/'))
       && (github.event.action != 'synchronize'
-      || !contains(fromJSON('["dev","staging"]'), github.head_ref))
+      || github.base_ref != 'dev'
+      || startsWith(github.head_ref, 'epic/'))
     name: Typecheck, test, build
     runs-on: ubuntu-latest
     steps:

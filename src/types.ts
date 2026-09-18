@@ -69,17 +69,51 @@ export type EnrollmentState = 'enrolled' | 'hidden' | 'not_enrolled';
 
 /** ENG-2195 — `POST /enrolled-files/resolve-url`'s answer. */
 export interface ResolvedFileUrl {
-  /** The Graph driveItem id. */
+  /**
+   * The provider's OWN file id — a Graph driveItem id for Microsoft, a Drive
+   * file id for Google. Read {@link ResolvedFileUrl.provider} before deciding
+   * which field to send it back as.
+   */
   msId: string;
-  /** The Graph drive id containing the item. */
-  driveMsId: string;
-  /** The file name as Microsoft holds it. */
+  /** The Graph drive id containing the item. `null` for a Google file. */
+  driveMsId: string | null;
+  /** The file name as the provider holds it. */
   name: string;
   /** The SharePoint listItemUniqueId — stable across rename and move. */
   listItemUniqueId: string | null;
-  /** The canonical Graph webUrl. */
-  webUrl: string;
+  /** The canonical link the provider holds. */
+  webUrl: string | null;
+  /**
+   * ENG-4958 — which storage the link named.
+   *
+   * OPTIONAL, and not because it is decorative: this package publishes to npm
+   * on its own clock and a customer's `npx` picks up `latest` immediately, so
+   * a backend older than the Google lane is a live case. Absent means the
+   * backend said nothing, and the caller falls back to `microsoft` — which is
+   * what every such backend resolves. Same polarity as `serverOutcome`.
+   */
+  provider?: FileProvider;
   enrollmentState: EnrollmentState;
+}
+
+/** Which storage a file lives in. */
+export type FileProvider = 'microsoft' | 'google';
+
+/**
+ * ENG-4958 — one file to enroll, in whichever id space its provider uses.
+ *
+ * ONE SHAPE FOR BOTH PROVIDERS, because the two backend bodies differ in more
+ * than a flag: Microsoft sends `(driveMsId, msId)` and Google sends
+ * `platformId` — a Google row's `msId` is MINTED server-side, so sending a
+ * Drive id as `msId` writes a row nothing can find again.
+ */
+export interface EnrollmentTarget {
+  provider: FileProvider;
+  /** Graph driveItem id for Microsoft; Drive file id for Google. */
+  fileId: string;
+  /** Microsoft only. Absent for Google, which has no drive-id concept. */
+  driveMsId?: string | null;
+  name: string;
 }
 
 /**
@@ -108,9 +142,21 @@ export interface EnrollmentInfo {
  * and nothing outside it may be offered to the user.
  */
 export interface DriveSearchItem {
+  /**
+   * The provider's OWN file id — a Graph driveItem id for Microsoft, a Drive
+   * file id for Google.
+   */
   msId: string;
-  /** `null` when Graph withheld the containing drive on this hit. */
+  /**
+   * `null` when Graph withheld the containing drive on this hit, and ALWAYS
+   * null for a Google hit — Drive has no drive-id concept.
+   */
   driveMsId: string | null;
+  /**
+   * ENG-4958 — which storage this hit came from. Optional for the same reason
+   * {@link ResolvedFileUrl.provider} is; absent falls back to `microsoft`.
+   */
+  provider?: FileProvider;
   name: string;
   webUrl: string | null;
   lastModifiedAt: string | null;
@@ -461,6 +507,78 @@ export interface PaginatedUnattributedResponse {
   totalCount: number;
   snapshotId: string;
   snapshotCreatedAt: string;
+}
+
+/**
+ * ENG-5397 — one paragraph (Word) or shape (PowerPoint) change, mirroring the
+ * backend's `DocumentChangeRowDto`
+ * (`backend/src/resources/cell-change-events/dto/document-changes-query.dto.ts`).
+ *
+ * Mirrored rather than imported for the reason every type in this file is: the
+ * package ships to customers over npm and cannot depend on the backend tree.
+ * Only the fields this client RENDERS are typed; the rest of the row is carried
+ * through by the schema's passthrough and ignored.
+ */
+export interface DocumentChangeRow {
+  /** The ledger event id — a stable key for the CHANGE. */
+  eventId: string;
+  /** `block` for a Word paragraph, `shape` for a PowerPoint shape. */
+  kind: string;
+  /**
+   * The containing slide's OPAQUE provider id, on a shape row. Null for a
+   * paragraph, which has no container.
+   *
+   * NOT A SLIDE NUMBER, and it must never be rendered as one: it is stable
+   * across a deck edit and carries no position. The backend's own contract says
+   * so, because `containerOrdinal` is null on every row either lane writes.
+   */
+  containerProviderId: string | null;
+  /**
+   * The unit's OWN provider id — `w14:paraId` for a paragraph, the
+   * slide-namespaced shape id for a shape. Written on every row. This is the
+   * identity a caller follows across reads: `eventId` keys the CHANGE, this
+   * keys the THING that changed.
+   */
+  anchorProviderId: string | null;
+  /** A human label for the unit where one is persisted — a shape name. */
+  anchorLabel: string | null;
+  /** The ledger's own event type: `block_edit`, `shape_insert`, and so on. */
+  changeKind: string;
+  /** The editor to PRESENT — null where the evidence is not an authorship claim. */
+  editorPlatformId: string | null;
+  occurredAt: string | null;
+  firstObservedAt: string;
+  /**
+   * The text before and after. BOTH SIDES ARE STORED — David ruled it on
+   * 2026-09-09 (*"update word (all text types) and powerpoint to store the
+   * values in the ledger"*) and ENG-4511 shipped it, so a row carries the words
+   * and not merely the fact that something moved.
+   */
+  fromValue: { v?: unknown; f?: unknown } | null;
+  toValue: { v?: unknown; f?: unknown } | null;
+  /** True when THIS ROW's text was capped; the list's own cap is on the envelope. */
+  truncated: boolean;
+}
+
+/**
+ * `GET /cell-change-events/document-changes?fileMsId=…` — the document change
+ * lane, the read this client had no call for at all before ENG-5397.
+ */
+export interface DocumentChangesResponse {
+  rows: DocumentChangeRow[];
+  /** True when more servable rows exist than one page returns. No cursor exists. */
+  truncated: boolean;
+  /**
+   * Why the window was WITHHELD, or null when it was served.
+   *
+   * NON-NULL MEANS `rows` IS EMPTY BY REFUSAL, NOT BY ABSENCE, and the two must
+   * render differently — the backend's own DTO says a client MUST do this, and
+   * rendering a withheld window as "nothing changed" is the plausible zero this
+   * whole read exists to avoid.
+   */
+  declineReason: string | null;
+  /** The window's opening boundary — the last committed version's creation time. */
+  windowStart: string;
 }
 
 /**

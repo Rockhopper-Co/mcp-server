@@ -382,6 +382,53 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    // ENG-5397 — a Word document, so the document change lane is reachable
+    // over the real protocol and not only through a mocked client.
+    if (method === 'GET' && path === '/enrolled-files/file-docx') {
+      sendJson(res, 200, {
+        ...sampleFile,
+        platformId: 'file-docx',
+        name: 'Contract.docx',
+        fileType: 'microsoft_docx',
+        hasUncommittedChanges: true,
+      });
+      return;
+    }
+
+    // A native Google Doc: enrolled, versioned, and with no capture lane, so
+    // its change list is a REFUSAL rather than an empty answer.
+    if (method === 'GET' && path === '/enrolled-files/file-gdoc') {
+      sendJson(res, 200, {
+        ...sampleFile,
+        platformId: 'file-gdoc',
+        name: 'Notes',
+        fileType: 'google_doc',
+        hasUncommittedChanges: true,
+      });
+      return;
+    }
+
+    /**
+     * ENG-5397 — every OTHER enrolled-file id resolves to the sample workbook.
+     *
+     * The real backend serves any file the caller may see; this fixture served
+     * three ids by exact match, so a tool that newly reads the file row 404'd
+     * on every id no fixture had named. That failure is about the FIXTURE, not
+     * the tool, and it reads exactly like a product defect — which is worth a
+     * catch-all rather than one more hand-listed id each time.
+     */
+    if (
+      method === 'GET' &&
+      path.startsWith('/enrolled-files/') &&
+      !path.slice('/enrolled-files/'.length).includes('/')
+    ) {
+      sendJson(res, 200, {
+        ...sampleFile,
+        platformId: path.slice('/enrolled-files/'.length),
+      });
+      return;
+    }
+
     // --- File Versions ---
     if (method === 'GET' && path === '/file-versions/file/empty-file') {
       sendJson(res, 200, []);
@@ -394,6 +441,19 @@ export function handleMockRockhopperRequest(
     }
 
     if (method === 'GET' && path === '/file-versions/file/file-1') {
+      sendJson(res, 200, [sampleVersion]);
+      return;
+    }
+
+    // ENG-5397 — a document is enrolled and versioned like any other file, so
+    // the enrolment gate (ENG-2824) has a version to find. Named ids only: an
+    // id with NO fixture must keep returning the empty list that stands for
+    // "still being read", because that refusal is itself under test.
+    if (
+      method === 'GET' &&
+      (path === '/file-versions/file/file-docx' ||
+        path === '/file-versions/file/file-gdoc')
+    ) {
       sendJson(res, 200, [sampleVersion]);
       return;
     }
@@ -649,6 +709,42 @@ export function handleMockRockhopperRequest(
         totalCount: 1,
         snapshotId: '1700000000000',
         snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
+      });
+      return;
+    }
+
+    // ENG-5397 — the document change lane. One served paragraph change, so the
+    // e2e asserts on a ROW BY IDENTITY rather than on a list being non-empty.
+    if (
+      method === 'GET' &&
+      path === '/cell-change-events/document-changes'
+    ) {
+      sendJson(res, 200, {
+        rows: [
+          {
+            eventId: '48122',
+            kind: 'block',
+            locationKind: 'block',
+            containerOrdinal: null,
+            containerProviderId: null,
+            anchorOrdinal: 4,
+            anchorProviderId: 'w14-paraId-7A3B',
+            anchorLabel: null,
+            changeKind: 'block_edit',
+            actorKind: 'human',
+            actorPlatformId: 'u-1',
+            attributionConfidence: 'credential_bound',
+            editorPlatformId: 'u-1',
+            occurredAt: '2026-09-15T10:00:00.000Z',
+            firstObservedAt: '2026-09-15T10:00:01.000Z',
+            fromValue: { v: 'Net 30 days' },
+            toValue: { v: 'Net 60 days' },
+            truncated: false,
+          },
+        ],
+        truncated: false,
+        declineReason: null,
+        windowStart: '2026-09-01T00:00:00.000Z',
       });
       return;
     }

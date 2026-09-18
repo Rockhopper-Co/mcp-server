@@ -2,6 +2,10 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { formatVersion } from '../version-format.js';
+import {
+  noChangeRowsRecordedToolResult,
+  recordsChangeRows,
+} from '../no-change-rows-recorded.js';
 
 function bumpVersion(
   major: number,
@@ -53,6 +57,17 @@ export function registerWriteVersionTools(
       try {
         const file = await api.getEnrolledFile(fileMsId);
         if (!file.hasUncommittedChanges) {
+          // ENG-5410 — nested INSIDE the existing refusal on purpose, mirroring
+          // ENG-5073's permissive-only rule: a file whose flag is set still
+          // proceeds, so this can only ever change the WORDS of a refusal that
+          // was already happening, never turn a working write into a refusal.
+          if (!recordsChangeRows(file.fileType)) {
+            return noChangeRowsRecordedToolResult(
+              file.name,
+              file.fileType,
+              'commit',
+            );
+          }
           return {
             content: [
               {
@@ -139,6 +154,21 @@ export function registerWriteVersionTools(
       try {
         const file = await api.getEnrolledFile(fileMsId);
         if (!file.hasUncommittedChanges) {
+          // ENG-5410 — the create leg's twin, same predicate, same nesting.
+          // The BACKEND discard leg switches its equivalent refusal on a
+          // broader gate (`DiscardNoOpReason.NO_CHANGE_DETECTION_FOR_DOCUMENT_
+          // TYPE`, ENG-3654, which also admits a `.docx` and a `.pptx`). That
+          // gate is deliberately NOT copied here: a Microsoft document sets the
+          // flag and never reaches this branch, so widening the predicate would
+          // buy nothing and put a new negative claim one regression away from a
+          // file type ENG-4843 fixed.
+          if (!recordsChangeRows(file.fileType)) {
+            return noChangeRowsRecordedToolResult(
+              file.name,
+              file.fileType,
+              'discard',
+            );
+          }
           return {
             content: [
               {

@@ -1,7 +1,51 @@
 import { createHmac } from 'node:crypto';
-import { vi } from 'vitest';
+import { vi, type Mock } from 'vitest';
 
-export function createMockApiClient() {
+// vitest 5 infers `Mock<Procedure>` for every `vi.fn()`, and `Procedure` is NOT
+// re-exported from `vitest` — so an exported helper's inferred return type cannot
+// be named and `tsc` fails with TS2883 under `declaration: true`. Naming the shape
+// here is the fix; `Mock` is exported and carries `Procedure` as its default arg.
+export interface MockApiClient {
+  deriveStateKey: (domain: string) => Buffer;
+  getMe: Mock;
+  getTeam: Mock;
+  beginMicrosoftConnect: Mock;
+  getMicrosoftLink: Mock;
+  unlinkMicrosoft: Mock;
+  listEnrolledFiles: Mock;
+  listDriveInventory: Mock;
+  searchDriveFiles: Mock;
+  resolveEnrollmentUrl: Mock;
+  getEnrollmentInfo: Mock;
+  createEnrolledFile: Mock;
+  enrollFileSharedWith: Mock;
+  getEnrolledFile: Mock;
+  getFileVersions: Mock;
+  getFileVersion: Mock;
+  getFoldStatus: Mock;
+  getCellHistory: Mock;
+  getFileComments: Mock;
+  getComment: Mock;
+  createComment: Mock;
+  replyToComment: Mock;
+  resolveComment: Mock;
+  getReviewsForVersion: Mock;
+  getReviewsForLatestVersion: Mock;
+  getReview: Mock;
+  getReviewActivities: Mock;
+  createReviewRequest: Mock;
+  approveReview: Mock;
+  getUnattributedChangesBySheet: Mock;
+  getUnattributedChangesPaginated: Mock;
+  /** ENG-5397 — the document (Word paragraph / PowerPoint shape) change lane. */
+  getDocumentChanges: Mock;
+  updateEnrolledFile: Mock;
+  createVersion: Mock;
+  discardChanges: Mock;
+  cancelReview: Mock;
+}
+
+export function createMockApiClient(): MockApiClient {
   return {
     // ENG-2816 — a FIXED key, deliberately. Every mock client derives the same
     // one, so a spec that mints on one server and verifies on another models
@@ -280,6 +324,15 @@ export function createMockApiClient() {
       snapshotId: '1700000000000',
       snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
     }),
+    // ENG-5397 — the document lane. Served-and-empty by default: the fixture's
+    // default file is a workbook, which never reaches this reader, so a spec
+    // that DOES reach it is one that set a document fileType on purpose.
+    getDocumentChanges: vi.fn().mockResolvedValue({
+      rows: [],
+      truncated: false,
+      declineReason: null,
+      windowStart: '2026-01-01T00:00:00.000Z',
+    }),
     updateEnrolledFile: vi.fn().mockResolvedValue({
       platformId: 'file-1',
       name: 'Renamed.xlsx',
@@ -310,7 +363,13 @@ export function createMockApiClient() {
   };
 }
 
-export function createMockMcpServer() {
+export interface MockMcpServer {
+  registerTool: Mock;
+  registerResource: Mock;
+  registerPrompt: Mock;
+}
+
+export function createMockMcpServer(): MockMcpServer {
   return {
     registerTool: vi.fn(),
     registerResource: vi.fn(),

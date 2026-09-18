@@ -2,6 +2,10 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import {
+  cellHistoryUnavailableToolResult,
+  isCellHistoryUnavailable,
+} from '../cell-history-unavailable.js';
+import {
   assertChangeHistoryComplete,
   isNotReady,
   notReadyToolResult,
@@ -25,7 +29,28 @@ export function registerGetCellHistoryTool(
         'Answers CHANGE_HISTORY_NOT_READY (isError) while Rockhopper is still ' +
         'computing this history. That is NOT an empty history — nothing is ' +
         'known yet; retry after the stated interval and never report an ' +
-        'absence of changes from it.',
+        'absence of changes from it. ' +
+        // ENG-1748 — same reasoning one case over: a history this tool cannot
+        // report is a refusal, and the model must know that before it calls,
+        // because the alternative it used to get was a confident zero.
+        'Answers CELL_HISTORY_UNAVAILABLE (isError) when Rockhopper cannot ' +
+        'report this cell\'s history for this file. That is NOT an empty ' +
+        'history either — retrying will not change it, and nothing about ' +
+        'whether the cell changed may be inferred from it. ' +
+        // ENG-5075 — the sentence that used to close this description told the
+        // model an empty result meant the cell has no recorded changes. It
+        // reads as a licence to assert the negative, and it was wrong on two
+        // counts at once: the tool addresses only cells, and a file with no
+        // cells answered `[]` with HTTP 200. State what the tool KNOWS.
+        'This tool addresses CELLS in a spreadsheet, and only cells. A file ' +
+        'whose changes are not recorded against a sheet and a cell — a Word ' +
+        'document, a PowerPoint deck — answers CELL_HISTORY_UNAVAILABLE, ' +
+        'never an empty list; that file may hold a long change history this ' +
+        'tool has no way to address. ' +
+        'An empty result WITHOUT one of those two answers is a real answer ' +
+        'about ONE CELL: no change to that cell is recorded. It says nothing ' +
+        'about the rest of the file, and it is never grounds for saying the ' +
+        'file is unchanged.',
       inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         sheetName: z.string().describe('Name of the worksheet'),
@@ -119,6 +144,14 @@ export function registerGetCellHistoryTool(
         // branch below hands the model prose it may read as "the tool is
         // broken, answer from what I already have".
         if (isNotReady(error)) return notReadyToolResult(error);
+        // ENG-1748 — the backend refused because it cannot reconstruct this
+        // file's history. Rendering it through the generic branch below would
+        // hand the model prose it may read as "the tool is broken, answer from
+        // what I already have" — the same wrong turn the not-ready branch above
+        // exists to prevent.
+        if (isCellHistoryUnavailable(error)) {
+          return cellHistoryUnavailableToolResult(cell, sheetName);
+        }
         return {
           content: [
             {

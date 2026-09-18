@@ -4,6 +4,7 @@ import { getCorrelationId } from './correlation.js';
 import { log } from './logger.js';
 import type {
   CellHistoryEntry,
+  DocumentChangesResponse,
   EnrolledFile,
   FileChat,
   FileVersion,
@@ -24,9 +25,12 @@ import type {
   DriveInventoryResponse,
   DriveSearchResponse,
   DriveSearchScope,
+  EnrollmentTarget,
+  FileProvider,
 } from './types.js';
 import {
   CellHistoryEntryArraySchema,
+  DocumentChangesResponseSchema,
   EnrolledFileSchema,
   FileChatSchema,
   FoldStatusSchema,
@@ -161,6 +165,36 @@ function parseErrorField(body: string, field: 'code' | 'reason'): string | null 
 
 /** HTTP methods the decision-15 admission treats as agent writes. */
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+
+/**
+ * ENG-4958 — the request body for one enrollment, in the id space its provider
+ * actually uses.
+ *
+ * ONE PLACE, not three. `accountType: 'microsoft'` was hardcoded at three
+ * separate write sites, and the fix has to hold at all three or a Google file
+ * enrolls through one route and is refused through another.
+ */
+function enrollmentBody(file: EnrollmentTarget): Record<string, unknown> {
+  if (file.provider === 'google') {
+    // `platformId`, never `msId`: the backend's Google branch requires it, and
+    // the DTO's own note says an `@IsNotEmpty()` on `msId` would 400 every
+    // Google enroll. `fileType` is deliberately NOT sent — the backend derives
+    // it from the Drive mime type on the caller's own access probe, so a
+    // client cannot assert what a file is.
+    return {
+      platformId: file.fileId,
+      name: file.name,
+      accountType: 'google',
+    };
+  }
+  return {
+    msId: file.fileId,
+    driveMsId: file.driveMsId ?? '',
+    name: file.name,
+    accountType: 'microsoft',
+  };
+}
 
 export class ApiClient {
   private readonly baseUrl: string;
@@ -510,11 +544,14 @@ export class ApiClient {
     q?: string;
     scope?: DriveSearchScope;
     limit?: number;
+    /** ENG-4958 — which storage to search. Omitted means Microsoft. */
+    provider?: FileProvider;
   }): Promise<DriveSearchResponse> {
     const query = new URLSearchParams();
     if (params.q) query.set('q', params.q);
     if (params.scope) query.set('scope', params.scope);
     if (params.limit !== undefined) query.set('limit', String(params.limit));
+    if (params.provider) query.set('provider', params.provider);
     return this.request<DriveSearchResponse>(
       `/drive-files/search?${query.toString()}`,
     );
@@ -573,6 +610,12 @@ export class ApiClient {
   }
 
   // --- Enrollment (ENG-2200 / plan 13) ---
+  //
+  // ENG-4958 — the account type is READ OFF THE RESOLVED FILE, never
+  // hardcoded. It was `'microsoft'` at all three write sites, so a Google file
+  // that the backend was already willing to enroll could not be enrolled from
+  // here by any route.
+
 
   /**
    * ENG-2195 — turn a pasted SharePoint / OneDrive link into a file identity
@@ -617,10 +660,19 @@ export class ApiClient {
    * caller to infer visibility, and inferring it is exactly what produced
    * "already enrolled" about a file the user had deliberately removed.
    */
-  async getEnrollmentInfo(msIds: readonly string[]): Promise<EnrollmentInfo[]> {
+  async getEnrollmentInfo(
+    ids: readonly string[],
+    /**
+     * ENG-4958 — which id space `ids` is in. The backend reads a Microsoft
+     * list as `msId`s and a Google list as `platformId`s, so sending a Drive
+     * id under `microsoft` matches no row and answers `not_enrolled` for a
+     * file the tenant already tracks.
+     */
+    provider: FileProvider = 'microsoft',
+  ): Promise<EnrollmentInfo[]> {
     return this.request<EnrollmentInfo[]>('/enrolled-files/info/bulk', {
       method: 'POST',
-      body: JSON.stringify({ ids: [...msIds], accountType: 'microsoft' }),
+      body: JSON.stringify({ ids: [...ids], accountType: provider }),
     });
   }
 
@@ -651,14 +703,10 @@ export class ApiClient {
    * has to say what happens on BOTH sides of it; naming only the refusal reads
    * as complete and is half a sentence.
    */
-  async createEnrolledFile(body: {
-    msId: string;
-    driveMsId: string;
-    name: string;
-  }): Promise<QueuedEnrollment> {
+  async createEnrolledFile(file: EnrollmentTarget): Promise<QueuedEnrollment> {
     return this.request<QueuedEnrollment>('/enrolled-files', {
       method: 'POST',
-      body: JSON.stringify({ ...body, accountType: 'microsoft' }),
+      body: JSON.stringify(enrollmentBody(file)),
     });
   }
 
@@ -672,13 +720,13 @@ export class ApiClient {
    * team, and there is no transaction to undo the first half.
    */
   async enrollFileSharedWith(
-    file: { msId: string; driveMsId: string; name: string },
+    file: EnrollmentTarget,
     shareWithUserMsIds: readonly string[],
   ): Promise<QueuedEnrollment> {
     return this.request<QueuedEnrollment>('/enrolled-files/batch', {
       method: 'POST',
       body: JSON.stringify({
-        files: [{ ...file, accountType: 'microsoft' }],
+        files: [enrollmentBody(file)],
         shareWithUserMsIds: [...shareWithUserMsIds],
       }),
     });
@@ -895,6 +943,45 @@ export class ApiClient {
     const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
     const path = `/unattributed-changes/paginated/${fileMsId}${qs}`;
     return this.request<PaginatedUnattributedResponse>(path);
+  }
+
+  // --- Document changes ---
+
+  /**
+   * ENG-5397 — paragraph (Word) and shape (PowerPoint) changes since the last
+   * committed version.
+   *
+   * THIS CLIENT HAD NO CALL TO THIS LANE AT ALL, which is why every document
+   * question reached the SPREADSHEET reader above and came back empty. The
+   * `unattributed_change` table those two routes read requires a `sheetName`
+   * and the sheet route also filters `changeType = 'cell'`, so a `.docx` or
+   * `.pptx` returned `[]` from them by construction — never because nothing
+   * had changed.
+   *
+   * `GET /cell-change-events/document-changes` is the read that answers for a
+   * document. No write capability is needed: the route carries no
+   * `@RequiresPatCapability`, so a read-only token reaches it.
+   *
+   * THERE IS NO CURSOR ON THIS ROUTE. The backend caps the page and reports
+   * `truncated` on the envelope; a caller that wants the rest has nothing to
+   * ask for, so the tool SAYS the list was cut rather than implying it is
+   * whole.
+   *
+   * A SPREADSHEET GETS `rows: []` HERE, NOT A 404 — the backend serves the
+   * empty envelope deliberately, because this read is simply not the one that
+   * answers for a cell model. So the caller must route by change model rather
+   * than calling both lanes and merging: an empty answer from the wrong lane is
+   * exactly the defect this method exists to remove.
+   */
+  async getDocumentChanges(fileMsId: string): Promise<DocumentChangesResponse> {
+    const path = `/cell-change-events/document-changes?fileMsId=${encodeURIComponent(
+      fileMsId,
+    )}`;
+    return this.request<DocumentChangesResponse>(
+      path,
+      undefined,
+      DocumentChangesResponseSchema as unknown as ZodType<DocumentChangesResponse>,
+    );
   }
 
   // --- Version lifecycle ---
