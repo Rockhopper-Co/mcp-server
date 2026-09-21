@@ -19,21 +19,58 @@ updates:
     open-pull-requests-limit: 5
     groups:
       # Version-coupled family — bump together to avoid ERESOLVE peer conflicts
-      # (vitest + @vitest/coverage-v8 must match exactly). Before the catch-all
-      # group so family members are claimed here first (Dependabot = first match).
+      # (vitest + @vitest/coverage-v8 must match exactly).
+      #
+      # DECLARING THIS GROUP FIRST DOES NOT CLAIM IT. `exclude-patterns` ON THE
+      # CATCH-ALLS DOES. Dependabot does not assign a dependency to the first
+      # group that matches: it scores every group whose `contains?` is true and
+      # assigns the HIGHEST (dependabot-core,
+      # updater/lib/dependabot/updater/pattern_specificity_calculator.rb, called
+      # from dependency_group_engine.rb!should_skip_due_to_specificity?):
+      #   exact package name, no wildcard ...... 1000
+      #   group that declares NO `patterns` .....  500   <- dev-minor-patch, prod-patch
+      #   any wildcard pattern .................. 100 - 10*wildcards + max(len - 5, 0)
+      # `vitest` is a bare name, so it wins at 1000 and has always grouped.
+      # `@vitest/*` scores 94 and LOSES to dev-minor-patch — which is the split
+      # this group exists to prevent, and it is the only member it has.
+      #
+      # `update-types` does not protect a family either. dependency_group_engine
+      # never passes update_type to find_most_specific_group_name, so prod-patch
+      # WINS a minor on a production dependency and then rejects it at
+      # semver_rules_allow_grouping? WITHOUT marking it handled — it falls
+      # through to a solo, ungrouped pull request that cannot install.
+      #
+      # A dependency matched by `exclude-patterns` fails that group's `contains?`,
+      # so the catch-all stops being a scoring rival and the family keeps its
+      # members. `addin` has done this since 2026-07-13 (4b812bb9); ENG-5679
+      # shipped it to frontend (#2540) and admin (#512), ENG-5707 brings it here.
+      #
+      # MAINTENANCE: every pattern of every family group below must appear in
+      # BOTH catch-alls' exclude-patterns. A new family group without its
+      # exclusions stays split exactly as before.
       vitest:
         patterns:
           - "vitest"
           - "@vitest/*"
+      # Catch-alls. These declare no `patterns`, which scores them 500 and lets
+      # them outrank the family group above — so each family pattern is excluded
+      # here explicitly. This is the line that actually holds the family
+      # together; do not drop it.
       dev-minor-patch:
         dependency-type: "development"
         update-types:
           - "minor"
           - "patch"
+        exclude-patterns:
+          - "vitest"
+          - "@vitest/*"
       prod-patch:
         dependency-type: "production"
         update-types:
           - "patch"
+        exclude-patterns:
+          - "vitest"
+          - "@vitest/*"
     labels:
       - "dependencies"
     commit-message:
