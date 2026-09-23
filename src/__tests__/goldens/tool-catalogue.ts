@@ -14,6 +14,11 @@ import { createServer, type CreateServerOptions } from '../../server.js';
  * schema is the one the SDK derives from the Zod shape and actually sends,
  * not our reading of the Zod shape.
  *
+ * NOT COVERED: `title` and `annotations`. SP07 scopes the golden to name,
+ * description and input schema; `readOnlyHint` / `destructiveHint` are pinned
+ * for named tools by `mcp-in-memory.e2e.test.ts` ('advertises the safety
+ * annotations'), and `idempotentHint`, `openWorldHint` and `title` by nothing.
+ *
  * PUBLIC REPO: the golden holds only name, description and input schema —
  * exactly what `tools/list` already hands any client holding a token, and what
  * the published package's `dist` already contains.
@@ -48,7 +53,11 @@ export const goldenPath = (scope: string): string =>
 
 /** The fixed serialiser: tools sorted by name, two-space JSON, trailing newline. */
 export function serialiseCatalogue(entries: readonly CatalogueEntry[]): string {
-  const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+  // Code-unit order, not `localeCompare`: host ICU collation must not decide
+  // the bytes of a byte-compared golden.
+  const sorted = [...entries].sort((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+  );
   return `${JSON.stringify(sorted, null, 2)}\n`;
 }
 

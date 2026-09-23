@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import {
   PAT_CAPABILITIES,
+  registeredToolsForCapabilities,
   WRITE_TOOLS_BY_CAPABILITY,
 } from '../../capabilities.js';
 import {
@@ -18,7 +19,8 @@ import {
  * ENG-6032 — `tools/list` per token scope, byte-compared with a checked-in
  * golden. A renamed tool, a reworded description or a changed input schema
  * fails here and shows the diff; the pull request that re-records the golden
- * is where a reviewer sees what every MCP client will now be told.
+ * is where a reviewer sees the names, descriptions and input schemas every MCP
+ * client will now be told. Titles and annotations are NOT in the golden.
  *
  * Re-record locally: `npm run golden:tool-catalogue:update`. Refused under CI.
  * A missing golden FAILS — it is never written by a normal run.
@@ -58,16 +60,16 @@ describe('each golden holds the tools its scope grants, by name', () => {
   const readOnly = (): string[] => namesIn('read-only');
 
   it('read-write is the read floor plus every write family', () => {
-    const everyWrite = PAT_CAPABILITIES.flatMap(
-      (c) => WRITE_TOOLS_BY_CAPABILITY[c],
-    );
+    // Registered tools only: a name listed in a family before its registrar
+    // lands (PENDING_WRITE_TOOLS) is not on the wire and must not be expected.
+    const everyWrite = registeredToolsForCapabilities(PAT_CAPABILITIES);
     expect(namesIn('read-write')).toEqual([...readOnly(), ...everyWrite].sort());
   });
 
   it.each(PAT_CAPABILITIES)('%s is the read floor plus its own family', (c) => {
     const scope = c.replace(':', '-');
     expect(namesIn(scope)).toEqual(
-      [...readOnly(), ...WRITE_TOOLS_BY_CAPABILITY[c]].sort(),
+      [...readOnly(), ...registeredToolsForCapabilities([c])].sort(),
     );
   });
 
