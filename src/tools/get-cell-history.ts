@@ -10,6 +10,11 @@ import {
   isNotReady,
   notReadyToolResult,
 } from '../not-ready.js';
+import {
+  assertSheetExistsForFile,
+  isUnknownSheet,
+  unknownSheetToolResult,
+} from '../sheet-catalogue.js';
 import { parseCellAddress, sheetNamesAgree } from './cell-address.js';
 
 export function registerGetCellHistoryTool(
@@ -47,10 +52,20 @@ export function registerGetCellHistoryTool(
         'document, a PowerPoint deck — answers CELL_HISTORY_UNAVAILABLE, ' +
         'never an empty list; that file may hold a long change history this ' +
         'tool has no way to address. ' +
-        'An empty result WITHOUT one of those two answers is a real answer ' +
-        'about ONE CELL: no change to that cell is recorded. It says nothing ' +
-        'about the rest of the file, and it is never grounds for saying the ' +
-        'file is unchanged.',
+        // ENG-4347 — the third refusal, and the reason the sentence below can
+        // now be trusted: an empty answer used to be reachable for a sheet the
+        // workbook does not have.
+        'Answers SHEET_NOT_FOUND, SHEET_NAME_NOT_EXACT or ' +
+        'SHEET_CATALOGUE_UNAVAILABLE (each isError) when `sheetName` cannot ' +
+        'be shown to be a worksheet of this workbook, spelled the way it is ' +
+        'stored. None of those is an empty history: the first lists the real ' +
+        'sheet names, the second gives the exact spelling, and the third ' +
+        'means existence could not be checked. Re-send with a name from the ' +
+        'answer rather than reporting that the cell never changed. ' +
+        'An empty result WITHOUT one of those answers is a real answer ' +
+        'about ONE CELL on a sheet that exists: no change to that cell is ' +
+        'recorded. It says nothing about the rest of the file, and it is ' +
+        'never grounds for saying the file is unchanged.',
       inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         sheetName: z.string().describe('Name of the worksheet'),
@@ -111,6 +126,20 @@ export function registerGetCellHistoryTool(
 
         const history = await api.getCellHistory(fileMsId, sheetName, cell);
 
+        // ENG-4347 — ENG-4340 above compares the two ARGUMENTS against each
+        // other; neither was ever compared against the workbook. A caller who
+        // misspells the sheet the same way in both places passed every check
+        // and got "No history found", which this tool's own description
+        // establishes as a positive claim about the cell.
+        //
+        // Only the empty answer pays for the check: a row that came back names
+        // the sheet it is on. Two hops here rather than one, because this tool
+        // never fetches the file otherwise — still nothing on the path that
+        // was never ambiguous.
+        if (history.length === 0) {
+          await assertSheetExistsForFile(api, fileMsId, sheetName);
+        }
+
         // ENG-1638 (P3-2): a ledger-served entry carries a backend-rendered
         // `formatted` line — 'vX.Y.Z: <value> — <provenance> (driven by
         // <human>) — <ts>' — print it verbatim. The legacy normalized
@@ -144,6 +173,9 @@ export function registerGetCellHistoryTool(
         // branch below hands the model prose it may read as "the tool is
         // broken, answer from what I already have".
         if (isNotReady(error)) return notReadyToolResult(error);
+        // ENG-4347 — a sheet that cannot be shown to exist is a refusal naming
+        // the sheet, never the "No history found" branch above.
+        if (isUnknownSheet(error)) return unknownSheetToolResult(error);
         // ENG-1748 — the backend refused because it cannot reconstruct this
         // file's history. Rendering it through the generic branch below would
         // hand the model prose it may read as "the tool is broken, answer from

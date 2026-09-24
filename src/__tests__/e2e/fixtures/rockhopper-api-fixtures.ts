@@ -664,6 +664,34 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    // --- Sheet catalogue (ENG-4347) ---
+    //
+    // Keyed by the enrolled file's INTERNAL id, which is what the real route
+    // resolves on. `sampleFile.internalId` is 1, so a client that sent the
+    // `platformId` instead would miss this pattern and fall through to the 404
+    // below — the fixture is the request assertion, not just a stub.
+    if (
+      method === 'GET' &&
+      /^\/file-handler\/by-enrolled-file\/\d+\/live\/workbook-manifest$/.test(
+        path,
+      )
+    ) {
+      sendJson(res, 200, {
+        activeSheetIndex: 0,
+        sheets: [
+          { index: 0, name: 'Sheet1', rowCount: 10, colCount: 4 },
+          { index: 1, name: 'EmptySheet', rowCount: 0, colCount: 0 },
+          { index: 2, name: 'Project Accruals', rowCount: 900, colCount: 70 },
+        ],
+      });
+      return;
+    }
+
+    if (method === 'GET' && /^\/google-drive\/sheet-names\/[^/]+$/.test(path)) {
+      sendJson(res, 200, ['Sheet1', 'EmptySheet', 'Project Accruals']);
+      return;
+    }
+
     // --- Unattributed Changes ---
     if (method === 'GET' && path === '/unattributed-changes/file-1/EmptySheet') {
       sendJson(res, 200, []);
@@ -685,6 +713,18 @@ export function handleMockRockhopperRequest(
           byUserPlatformId: 'u-1',
         },
       ]);
+      return;
+    }
+
+    // ENG-4347 — the real backend takes `sheetName` as a FILTER and answers
+    // `[]` with HTTP 200 for a name that matches nothing. There is no 404 to
+    // surface, which is the whole reason a typo was indistinguishable from a
+    // real sheet with no changes. Model that, not a 404.
+    if (
+      method === 'GET' &&
+      /^\/unattributed-changes\/file-1\/[^/]+$/.test(path)
+    ) {
+      sendJson(res, 200, []);
       return;
     }
 

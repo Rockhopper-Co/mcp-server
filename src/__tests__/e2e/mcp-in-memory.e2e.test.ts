@@ -439,6 +439,43 @@ describe('MCP in-memory protocol e2e', () => {
     expect(JSON.stringify(result.content)).toContain('EmptySheet');
   });
 
+  // ENG-4347 — over the real protocol, against a fixture that models the
+  // backend's actual behaviour (a FILTER returning `[]` with HTTP 200, no
+  // 404). The unit specs mock the API client away, so this is the only place
+  // the URL the client BUILDS is checked against the URL the catalogue is
+  // served at: get the id or the path wrong and the fixture 404s instead.
+  it('get_unattributed_changes refuses a sheet the workbook does not have', async () => {
+    const result = await client.callTool({
+      name: 'get_unattributed_changes',
+      arguments: { fileMsId: 'file-1', sheetName: 'Projekt Akruals' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBe(true);
+    expect(text).toContain('SHEET_NOT_FOUND');
+    expect(text).toContain('Project Accruals');
+    expect(text).not.toContain('No unattributed changes on sheet');
+  });
+
+  it('get_cell_history refuses a sheet the workbook does not have', async () => {
+    const result = await client.callTool({
+      name: 'get_cell_history',
+      arguments: {
+        fileMsId: 'file-1',
+        sheetName: 'Projekt Akruals',
+        // ZZ999 deliberately: the fixture answers every OTHER cell with a
+        // row, and a non-empty answer never reaches the check by design. The
+        // test above pairs this same cell with a REAL sheet and still gets
+        // the plain empty answer, so the two together show the check is
+        // discriminating on the sheet and not on the cell.
+        cellAddress: 'ZZ999',
+      },
+    });
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBe(true);
+    expect(text).toContain('SHEET_NOT_FOUND');
+    expect(text).not.toContain('No history found');
+  });
+
   // KI-097: file-wide mode uses the cursor-paginated route.
   it('get_unattributed_changes returns paginated envelope when no sheetName', async () => {
     const result = await client.callTool({
