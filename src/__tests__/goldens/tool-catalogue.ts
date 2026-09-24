@@ -14,14 +14,20 @@ import { createServer, type CreateServerOptions } from '../../server.js';
  * schema is the one the SDK derives from the Zod shape and actually sends,
  * not our reading of the Zod shape.
  *
- * NOT COVERED: `title` and `annotations`. SP07 scopes the golden to name,
- * description and input schema; `readOnlyHint` / `destructiveHint` are pinned
- * for named tools by `mcp-in-memory.e2e.test.ts` ('advertises the safety
- * annotations'), and `idempotentHint`, `openWorldHint` and `title` by nothing.
+ * ENG-6069 — each entry also carries the tool's `title` and EVERY annotation
+ * the server declares (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
+ * `openWorldHint`, and any hint added later). A host decides whether to ask
+ * the user before a call from these hints, so flipping one is a behaviour
+ * change for every client and must show up as a golden diff. Annotation keys
+ * are sorted, so reordering an object literal in source is not drift; an
+ * absent title or annotation block records as `null`, never as a missing key.
  *
- * PUBLIC REPO: the golden holds only name, description and input schema —
- * exactly what `tools/list` already hands any client holding a token, and what
- * the published package's `dist` already contains.
+ * NOT COVERED: `outputSchema`, `_meta` and `icons` from `tools/list`. No tool
+ * declares any of them today; one that gains them stays green here.
+ *
+ * PUBLIC REPO: the golden holds only name, title, description, input schema
+ * and annotations — exactly what `tools/list` already hands any client
+ * holding a token, and what the published package's `dist` already contains.
  */
 
 /**
@@ -42,8 +48,21 @@ export const CATALOGUE_SCOPES: Readonly<Record<string, CreateServerOptions>> = {
 
 export interface CatalogueEntry {
   name: string;
+  title: string | null;
   description: string | null;
   inputSchema: unknown;
+  annotations: Record<string, unknown> | null;
+}
+
+/** Key-sorted copy (code-unit order), so literal order in source is not drift. */
+export function sortedAnnotations(
+  annotations: Record<string, unknown> | undefined,
+): Record<string, unknown> | null {
+  if (annotations === undefined) return null;
+  const keys = Object.keys(annotations).sort((a, b) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+  return Object.fromEntries(keys.map((key) => [key, annotations[key]]));
 }
 
 export const GOLDEN_DIR = resolve(__dirname, 'tool-catalogue');
@@ -61,7 +80,7 @@ export function serialiseCatalogue(entries: readonly CatalogueEntry[]): string {
   return `${JSON.stringify(sorted, null, 2)}\n`;
 }
 
-/** `tools/list` for one scope, reduced to the three published fields. */
+/** `tools/list` for one scope, reduced to the five published fields. */
 export async function captureCatalogue(
   options: CreateServerOptions,
 ): Promise<CatalogueEntry[]> {
@@ -90,8 +109,10 @@ export async function captureCatalogue(
     }
     return page.tools.map((tool) => ({
       name: tool.name,
+      title: tool.title ?? null,
       description: tool.description ?? null,
       inputSchema: tool.inputSchema,
+      annotations: sortedAnnotations(tool.annotations),
     }));
   } finally {
     await client.close();

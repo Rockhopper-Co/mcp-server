@@ -176,4 +176,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # ENG-6069 — `git diff` alone passed when a generated file was MISSING
+      # from the commit: the generator wrote it, it came back untracked, and
+      # `git diff` never looks at untracked files. The script now also fails on
+      # any untracked file under `postman/`, naming it.
+      # NOT covered: a committed file the generator no longer produces (an
+      # orphan) still passes.
       - run: npm run generate:postman:check
