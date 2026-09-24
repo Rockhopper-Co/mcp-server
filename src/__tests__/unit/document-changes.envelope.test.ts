@@ -19,6 +19,11 @@ import { SERVED_WINDOW_ENVELOPES } from '../goldens/served-window-envelope.js';
  * both compile errors under `npm run typecheck`. So its runtime keys ARE the
  * type's keys, and comparing them to the backend's own golden compares the
  * type to the producer by identity, not by count.
+ *
+ * `npm test` alone cannot see a TYPE regression: dropping `nextCursor` from
+ * the interface leaves this literal intact, so only `npm run typecheck`
+ * (which CI runs beside `npm test`) goes red. The runtime key test catches
+ * drift on the BACKEND side — a key the golden gains or loses.
  */
 const DECLARED_ENVELOPE_KEYS = {
   rows: true,
@@ -31,6 +36,12 @@ const DECLARED_ENVELOPE_KEYS = {
 const declaredKeys = Object.keys(DECLARED_ENVELOPE_KEYS).sort();
 
 describe('document-changes envelope (ENG-6058)', () => {
+  // The per-arm tests below are generated from the fixture, so a lost arm
+  // would silently shrink the suite. Pin the arms by name.
+  it('carries both served-window arms from the backend golden', () => {
+    expect(Object.keys(SERVED_WINDOW_ENVELOPES).sort()).toEqual(['powerpoint', 'word']);
+  });
+
   for (const [arm, envelope] of Object.entries(SERVED_WINDOW_ENVELOPES)) {
     it(`declares exactly the keys the backend serves (${arm} arm)`, () => {
       expect(declaredKeys).toEqual(Object.keys(envelope).sort());
