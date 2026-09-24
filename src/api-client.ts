@@ -1016,10 +1016,9 @@ export class ApiClient {
    * document. No write capability is needed: the route carries no
    * `@RequiresPatCapability`, so a read-only token reaches it.
    *
-   * THERE IS NO CURSOR ON THIS ROUTE. The backend caps the page and reports
-   * `truncated` on the envelope; a caller that wants the rest has nothing to
-   * ask for, so the tool SAYS the list was cut rather than implying it is
-   * whole.
+   * The backend caps the page, reports `truncated`, and offers `nextCursor`
+   * for the next page (ENG-5634). This client does not page on it yet, so the
+   * tool SAYS the list was cut rather than implying it is whole.
    *
    * A SPREADSHEET GETS `rows: []` HERE, NOT A 404 — the backend serves the
    * empty envelope deliberately, because this read is simply not the one that
