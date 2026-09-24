@@ -36,6 +36,9 @@ export interface MockApiClient {
   createReviewRequest: Mock;
   approveReview: Mock;
   getUnattributedChangesBySheet: Mock;
+  /** ENG-4347 — the workbook's sheet catalogue, read only on an empty answer. */
+  getWorkbookSheetNames: Mock;
+  getGoogleSheetNames: Mock;
   getUnattributedChangesPaginated: Mock;
   /** ENG-5397 — the document (Word paragraph / PowerPoint shape) change lane. */
   getDocumentChanges: Mock;
@@ -302,6 +305,16 @@ export function createMockApiClient(): MockApiClient {
         updatedAt: '2026-01-01T00:00:00Z',
       },
     ]),
+    // ENG-4347 — the workbook's real sheet catalogue. The default carries
+    // every sheet name the existing specs query with, so a spec asserting the
+    // GENUINE empty answer ("this sheet exists and has nothing on it") keeps
+    // passing for the right reason rather than because nothing checks.
+    getWorkbookSheetNames: vi
+      .fn()
+      .mockResolvedValue(['Sheet1', 'Project Accruals', 'Q3 Model', 'EmptySheet']),
+    getGoogleSheetNames: vi
+      .fn()
+      .mockResolvedValue(['Sheet1', 'Project Accruals', 'Q3 Model', 'EmptySheet']),
     getUnattributedChangesPaginated: vi.fn().mockResolvedValue({
       changes: [
         {

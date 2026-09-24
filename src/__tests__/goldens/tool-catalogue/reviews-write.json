@@ -1,0 +1,407 @@
+[
+  {
+    "name": "approve_review",
+    "title": "Approve Review",
+    "description": "Approve a review request. Only assigned reviewers can approve.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "reviewId": {
+          "type": "number",
+          "description": "ID of the review request to approve"
+        },
+        "notes": {
+          "description": "Optional approval notes",
+          "type": "string",
+          "maxLength": 5000
+        }
+      },
+      "required": [
+        "reviewId"
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "cancel_review",
+    "title": "Cancel Review",
+    "description": "Cancel a pending review request. Only the requester can cancel. The review must be in \"pending\" status — completed or already-cancelled reviews cannot be cancelled.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "reviewId": {
+          "type": "number",
+          "description": "ID of the review request to cancel"
+        }
+      },
+      "required": [
+        "reviewId"
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "connect_microsoft",
+    "title": "Connect Microsoft Account",
+    "description": "Start connecting the user's Microsoft account so Rockhopper can search their OneDrive and SharePoint files as them. Returns a Microsoft sign-in link the USER must open themselves. Call `microsoft_link_status` afterwards to confirm they finished. Use this when a file search reports that no Microsoft account is connected.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": true,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "create_review_request",
+    "title": "Create Review Request",
+    "description": "Request a review for a specific file version. Assigns reviewers who will be notified to approve or comment on the version. A reviewer ID is either the user's uuid (preferred) or the legacy numeric internal ID — both are accepted. Read either one from the rockhopper://teams/{teamId} resource, which lists each member's user record with both an \"id\" (uuid) and an \"internalId\" (number); use it to resolve platform IDs (msId / googleId) to a reviewer ID first. The numeric form is accepted until 2027-09-14 and removed after — send the uuid.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "versionId": {
+          "type": "number",
+          "description": "Internal ID of the file version to review"
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "Subject/title of the review request"
+        },
+        "description": {
+          "description": "Optional description of what to review",
+          "type": "string",
+          "maxLength": 5000
+        },
+        "reviewerIds": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              }
+            ]
+          },
+          "description": "User IDs of the reviewers to assign. Each entry is either the user's uuid (preferred) or the legacy numeric internal ID; the two spellings can be mixed in one array. The numeric form is accepted until 2027-09-14 and removed after."
+        }
+      },
+      "required": [
+        "versionId",
+        "subject",
+        "reviewerIds"
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "disconnect_microsoft",
+    "title": "Disconnect Microsoft Account",
+    "description": "Remove the stored Microsoft connection, deleting the credential Rockhopper holds for this user. Requires an interactive login; a personal access token cannot sever a connection it did not create.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "get_cell_history",
+    "title": "Get Cell History",
+    "description": "Get the change history for a specific cell in an enrolled file. Shows how the cell value changed across versions. Answers CHANGE_HISTORY_NOT_READY (isError) while Rockhopper is still computing this history. That is NOT an empty history — nothing is known yet; retry after the stated interval and never report an absence of changes from it. Answers CELL_HISTORY_UNAVAILABLE (isError) when Rockhopper cannot report this cell's history for this file. That is NOT an empty history either — retrying will not change it, and nothing about whether the cell changed may be inferred from it. This tool addresses CELLS in a spreadsheet, and only cells. A file whose changes are not recorded against a sheet and a cell — a Word document, a PowerPoint deck — answers CELL_HISTORY_UNAVAILABLE, never an empty list; that file may hold a long change history this tool has no way to address. Answers SHEET_NOT_FOUND, SHEET_NAME_NOT_EXACT or SHEET_CATALOGUE_UNAVAILABLE (each isError) when `sheetName` cannot be shown to be a worksheet of this workbook, spelled the way it is stored. None of those is an empty history: the first lists the real sheet names, the second gives the exact spelling, and the third means existence could not be checked. Re-send with a name from the answer rather than reporting that the cell never changed. An empty result WITHOUT one of those answers is a real answer about ONE CELL on a sheet that exists: no change to that cell is recorded. It says nothing about the rest of the file, and it is never grounds for saying the file is unchanged.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "fileMsId": {
+          "type": "string",
+          "description": "Platform ID of the enrolled file"
+        },
+        "sheetName": {
+          "type": "string",
+          "description": "Name of the worksheet"
+        },
+        "cellAddress": {
+          "type": "string",
+          "description": "Cell address, bare or sheet-qualified (e.g. \"A1\", \"B12\", \"Sheet1!C3\", \"'My Sheet'!C3\"). A sheet prefix must name the same worksheet as sheetName. One cell only — a range such as \"A1:B2\" is refused."
+        }
+      },
+      "required": [
+        "fileMsId",
+        "sheetName",
+        "cellAddress"
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "get_file_comments",
+    "title": "Get File Comments",
+    "description": "Get all comments and discussion threads on an enrolled file. Includes cell references, resolution status, and threaded replies.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "fileMsId": {
+          "type": "string",
+          "description": "Platform ID of the enrolled file"
+        }
+      },
+      "required": [
+        "fileMsId"
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "get_file_versions",
+    "title": "Get File Versions",
+    "description": "Get the version history for a specific enrolled file. Returns all version snapshots with semver numbering, timestamps, and attribution. Answers CHANGE_HISTORY_NOT_READY (isError) while Rockhopper is still reading a newly enrolled workbook. That is NOT \"no versions\" — retry after the stated interval instead of reporting an absence.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "fileMsId": {
+          "type": "string",
+          "description": "Platform ID of the enrolled file"
+        }
+      },
+      "required": [
+        "fileMsId"
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "get_reviews",
+    "title": "Get Reviews",
+    "description": "Get all review requests for a specific file version, or for the latest version of a file. Provide EXACTLY ONE of versionId or fileMsId (for latest version reviews) — sending both is refused, because they can name different files.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "versionId": {
+          "description": "Internal ID of the file version. Mutually exclusive with `fileMsId` — never send both.",
+          "type": "number"
+        },
+        "fileMsId": {
+          "description": "Platform ID of the enrolled file (returns reviews for latest version). Mutually exclusive with `versionId` — never send both.",
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "get_unattributed_changes",
+    "title": "Get Unattributed Changes",
+    "description": "Get the changes made since the last saved version. Works on workbooks, Word documents and PowerPoint decks. A workbook answers with cell changes; a Word document answers with paragraph changes; a deck answers with shape changes, each naming the slide it is on. Two modes for a workbook: (1) provide `sheetName` to get every change on a single worksheet (no pagination — bounded by sheet size); (2) omit `sheetName` for the file-wide cursor-paginated view (rows are capped per response with a summary line; pass `cursor` returned by the previous call to fetch the next page). `sheetName` and `cursor` apply to workbooks only. Answers CHANGE_HISTORY_NOT_READY (isError) while Rockhopper is still computing this file's changes. That is NOT \"no changes\" — retry after the stated interval instead of reporting an absence. Answers DOCUMENT_CHANGES_UNAVAILABLE (isError) when a change list cannot be produced for this file at all. That is also NOT \"no changes\": say the list is unavailable and offer to compare two versions instead. Never report a file as unchanged on either answer. Answers SHEET_NOT_FOUND, SHEET_NAME_NOT_EXACT or SHEET_CATALOGUE_UNAVAILABLE (each isError) when `sheetName` cannot be shown to be a worksheet of this workbook, spelled the way it is stored. None of those is \"no changes\" either: the first lists the real sheet names, the second gives the exact spelling, and the third means existence could not be checked. Re-send with a name from the answer rather than reporting an absence.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "fileMsId": {
+          "type": "string",
+          "description": "Platform ID of the enrolled file"
+        },
+        "sheetName": {
+          "description": "Filter to a specific worksheet. When set, ignores `cursor` and returns the unpaginated sheet view.",
+          "type": "string"
+        },
+        "cursor": {
+          "description": "Opaque cursor from a previous response's pagination hint. Only valid with no `sheetName` (file-wide paginated mode). Snapshot expires 30 minutes after the first request — older cursors return an SNAPSHOT_EXPIRED error and the caller must restart from the first page.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fileMsId"
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "list_files",
+    "title": "List Enrolled Files",
+    "description": "List the files the user tracks in Rockhopper — Excel workbooks and Google Sheets alike. Optionally filter by search term matching file names. This list is scoped to this ONE person and is not everything the team tracks: files this person has archived are excluded from it, and so are files nobody has added to Rockhopper yet. An archived file is still enrolled, still tracked, and still visible to teammates — archive only hides it from this person's own list, and it is restored from the archived list in the Rockhopper web app. There is no archive or restore tool here. Never report a file as missing, deleted or un-enrolled on the strength of its absence from this list.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "search": {
+          "description": "Search term to filter file names",
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "list_unenrolled_files",
+    "title": "List Workbooks Not Yet in Rockhopper",
+    "description": "List the spreadsheets Rockhopper has seen for this user that are NOT enrolled — the answer to \"what could I add?\". Use this for browsing, when the user cannot name a specific file; use `search_drive_files` when they can. Read-only: it enrolls nothing and asks nothing. The answer comes from stored records rather than a live Microsoft read, so it is dated — pass a listed file's `msId` and `driveMsId` to `enroll_file` to add it. MICROSOFT ONLY — it lists OneDrive and SharePoint workbooks and covers no other storage. An account with no Microsoft link gets nothing from it, which is not a statement about what that user has. For a Google file, call `search_drive_files` with provider=\"google\" instead. Every file here can be enrolled by hand with `enroll_file` — an organisation's automatic-enrollment rules only narrow what its own background sweep picks up on its own, never what you can add. PAGINATED: a response ending with a cursor has MORE files past it, even when this page came back empty or shorter than `limit` — the filter and the server's scan budget both cut pages short. Keep calling with the cursor until no cursor is returned before saying anything about what the user does or does not have. A cursor stops working 30 minutes after the first page; if one is refused as SNAPSHOT_EXPIRED, RESTART from the first page instead of retrying it.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "description": "How many files to return per page, most recently modified first. Defaults to the server's page size. NOT a total — the cursor is what reaches the rest.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "cursor": {
+          "description": "Opaque cursor from a previous response. Never construct or edit one. The snapshot expires 30 minutes after the first page; an older cursor returns a SNAPSHOT_EXPIRED error and the caller must RESTART from the first page rather than retry.",
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "microsoft_link_status",
+    "title": "Microsoft Connection Status",
+    "description": "Check whether the user has connected a Microsoft account, which account it is, and what access was granted. Never returns any token.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "search_drive_files",
+    "title": "Find a File in the User's Microsoft Drive",
+    "description": "Find a file in the user's own file storage — their OneDrive and SharePoint, or their Google Drive — including files Rockhopper has never seen. Workbooks, Word documents and PowerPoint decks. Set `provider` to say which; ask the user rather than guessing. Each candidate comes back marked as already in Rockhopper or not. USE THIS when the user names a file that `search_files` and `list_files` cannot find: those two see only files already added to Rockhopper, so \"no match\" there means \"never added\", not \"no such file\". YOU MUST CONFIRM THE FILE WITH THE USER before enrolling it. Show them the candidates, ask which one they mean, then call this tool again with their pick as `confirm_index` plus the `confirm_token`; the answer carries the identifiers to hand to `enroll_file`. Never enroll a file the user has not named, and never claim a file is already in Rockhopper because one search result looked similar. Read the outcome rather than assuming: `declined` means the user saw the candidates and rejected them, `dismissed` means the prompt closed with no answer at all — put the list to them yourself and do not search again — and `link_supplied` means they pasted the file address, which goes to `enroll_file` as `url` on its own. Searching is capped per session, so search deliberately rather than browsing. Each provider needs its own connected account — if the one you asked for is not connected, this returns the link the user must open.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "description": "Part of the file name to look for, in the user's own words — \"Q3 forecast\", \"Becklar model\". Required unless `scope` is \"recent\".",
+          "type": "string"
+        },
+        "scope": {
+          "description": "\"search\" (default) looks across everything the user can reach in the storage `provider` names. \"recent\" lists the files they have worked on lately and needs no `query` — use it when the user cannot remember the name.",
+          "type": "string",
+          "enum": [
+            "search",
+            "recent"
+          ]
+        },
+        "provider": {
+          "description": "Where to look: \"microsoft\" (default) searches the user's OneDrive and SharePoint, \"google\" searches their Google Drive. ASK THE USER which one their file is in rather than guessing — searching the wrong one returns an empty list that reads exactly like \"no such file\". A person may have both.",
+          "type": "string",
+          "enum": [
+            "microsoft",
+            "google"
+          ]
+        },
+        "limit": {
+          "description": "How many candidates to return. Default 10, maximum 50.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "confirm_index": {
+          "description": "The number of the candidate the USER picked from a previous `search_drive_files` answer, after you asked them which file they meant. Send it together with `confirm_token` from that same answer. Send 0 if they said none of them is the right file. Never guess it and never pick on the user's behalf.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "confirm_token": {
+          "description": "The `confirm_token` from the answer whose list the user picked from. Pass it back exactly as it was given.",
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": true,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "search_files",
+    "title": "Search Files",
+    "description": "Search enrolled files by name (default), comment text, version descriptions, or all of the above. Returns matching files with their metadata including uncommitted change status. Only files ALREADY added to Rockhopper are searched, and matching is by name substring — so a file that does not appear here is very likely one that has never been added, not one that does not exist. When nothing matches, or when the match does not look like the file the user described, call `search_drive_files` — it looks across the user's whole OneDrive and SharePoint, including files Rockhopper has never seen. Confirm the pick with the user there, then `enroll_file`. A file this person ARCHIVED is also absent from these results: archive is a per-person hide, the file is still enrolled and still visible to teammates, and it is restored from the archived list in the Rockhopper web app. No tool here archives or restores.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        },
+        "matchIn": {
+          "description": "Where to search: \"name\" (default — file-name substring), \"comments\" (comment text on the file), \"versions\" (committed version descriptions), or \"all\" (any of the above).",
+          "type": "string",
+          "enum": [
+            "name",
+            "comments",
+            "versions",
+            "all"
+          ]
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  }
+]

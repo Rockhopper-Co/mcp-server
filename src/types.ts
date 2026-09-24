@@ -566,7 +566,7 @@ export interface DocumentChangeRow {
  */
 export interface DocumentChangesResponse {
   rows: DocumentChangeRow[];
-  /** True when more servable rows exist than one page returns. No cursor exists. */
+  /** True when more servable rows exist than one page returns; see `nextCursor`. */
   truncated: boolean;
   /**
    * Why the window was WITHHELD, or null when it was served.
@@ -579,6 +579,14 @@ export interface DocumentChangesResponse {
   declineReason: string | null;
   /** The window's opening boundary — the last committed version's creation time. */
   windowStart: string;
+  /**
+   * ENG-5634 (backend) — opaque cursor for the next page, passed back as
+   * `cursor` with the same filters. Non-null exactly when `truncated` is true;
+   * null on the last page and on a withheld window. The tool does not page on
+   * it yet (ENG-6058 only declares it). A backend predating ENG-5634 omits it,
+   * which is why `DocumentChangesResponseSchema` does not require it.
+   */
+  nextCursor: string | null;
 }
 
 /**

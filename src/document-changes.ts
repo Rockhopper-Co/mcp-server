@@ -269,8 +269,8 @@ export function formatDocumentChanges(
   ];
   if (response.truncated) {
     lines.push('');
-    // No cursor exists on this read, so say the list was cut rather than
-    // offering a next page that cannot be asked for.
+    // The backend offers `nextCursor` here (ENG-5634), but this tool does not
+    // page on it, so say the list was cut rather than implying it is whole.
     lines.push(
       'More changes exist than are shown here. Ask the user to save a ' +
         'version to start a smaller list, or open the file in Rockhopper to ' +
