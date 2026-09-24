@@ -22,6 +22,9 @@ import { createServer, type CreateServerOptions } from '../../server.js';
  * are sorted, so reordering an object literal in source is not drift; an
  * absent title or annotation block records as `null`, never as a missing key.
  *
+ * NOT COVERED: `outputSchema`, `_meta` and `icons` from `tools/list`. No tool
+ * declares any of them today; one that gains them stays green here.
+ *
  * PUBLIC REPO: the golden holds only name, title, description, input schema
  * and annotations — exactly what `tools/list` already hands any client
  * holding a token, and what the published package's `dist` already contains.
