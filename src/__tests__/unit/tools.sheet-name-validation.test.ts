@@ -249,6 +249,14 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
       // A 403 has answered the question. Telling the caller to retry in 15
       // seconds sends an assistant into a loop against a wall — the same rule
       // `assertChangeHistoryComplete` applies to its own probe.
+      //
+      // PIN THE POSITIVE, not only the absences. Written with the two `not`
+      // lines alone this test passed under a planted `throw` that never
+      // reached the branch it exists for: any failure at all satisfies "did
+      // not say CATALOGUE_UNAVAILABLE". Asserting WHICH answer came back is
+      // what makes it discriminate.
+      expect(textOf(result)).toContain('Failed to get changes');
+      expect(textOf(result)).toContain('403');
       expect(textOf(result)).not.toContain('SHEET_CATALOGUE_UNAVAILABLE');
       expect(textOf(result)).not.toContain('No unattributed changes on sheet');
     });

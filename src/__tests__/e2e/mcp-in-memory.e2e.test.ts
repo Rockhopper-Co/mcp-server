@@ -462,7 +462,12 @@ describe('MCP in-memory protocol e2e', () => {
       arguments: {
         fileMsId: 'file-1',
         sheetName: 'Projekt Akruals',
-        cellAddress: 'BS11',
+        // ZZ999 deliberately: the fixture answers every OTHER cell with a
+        // row, and a non-empty answer never reaches the check by design. The
+        // test above pairs this same cell with a REAL sheet and still gets
+        // the plain empty answer, so the two together show the check is
+        // discriminating on the sheet and not on the cell.
+        cellAddress: 'ZZ999',
       },
     });
     const text = JSON.stringify(result.content);
