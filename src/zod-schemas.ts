@@ -128,3 +128,37 @@ export const DocumentChangesResponseSchema = z
     windowStart: z.string(),
   })
   .passthrough();
+
+/**
+ * ENG-4347 — `GET /file-handler/by-enrolled-file/:id/live/workbook-manifest`,
+ * the workbook's sheet CATALOGUE (names and indices, zero cell bytes).
+ *
+ * Parsed rather than trusted because this route passes the parser's manifest
+ * through opaquely — `backend` `file-handler.controller.ts` says so in the
+ * comment above the per-sheet routes, and `WorkbookManifestResponseDto` is
+ * documentation for Swagger rather than a runtime contract. A drifted or
+ * absent `sheets` must fail LOUDLY here: silently `undefined` would make the
+ * existence check answer "not a sheet in this workbook" for every sheet of
+ * every workbook, which is the false negative this ticket exists to remove
+ * pointed in the opposite direction.
+ */
+export const WorkbookManifestSchema = z
+  .object({
+    sheets: z.array(
+      z
+        .object({
+          name: z.string(),
+          index: z.number().int().optional(),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
+/**
+ * ENG-4347 — `GET /google-drive/sheet-names/:fileId` answers with a bare array
+ * of tab names (`google-drive.controller.ts!getSheetNames` returns
+ * `Promise<string[]>`). Native Google Sheets only; an `.xlsx` sitting in Drive
+ * is a workbook the Sheets API will not open, and takes the manifest route.
+ */
+export const GoogleSheetNamesSchema = z.array(z.string());

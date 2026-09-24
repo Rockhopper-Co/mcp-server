@@ -11,6 +11,11 @@ import {
   changeModelForFileType,
   documentChangesUnavailableToolResult,
 } from '../document-changes.js';
+import {
+  assertSheetExists,
+  isUnknownSheet,
+  unknownSheetToolResult,
+} from '../sheet-catalogue.js';
 import { readDocumentChanges } from './document-changes-read.js';
 
 export function registerSearchTool(
@@ -145,7 +150,17 @@ export function registerSearchTool(
         'Answers DOCUMENT_CHANGES_UNAVAILABLE (isError) when a change list ' +
         'cannot be produced for this file at all. That is also NOT "no ' +
         'changes": say the list is unavailable and offer to compare two ' +
-        'versions instead. Never report a file as unchanged on either answer.',
+        'versions instead. Never report a file as unchanged on either answer. ' +
+        // ENG-4347 — the contract belongs in the description, not only in the
+        // payload: a model deciding "nothing changed on that sheet" reads the
+        // tool doc, not the error envelope.
+        'Answers SHEET_NOT_FOUND, SHEET_NAME_NOT_EXACT or ' +
+        'SHEET_CATALOGUE_UNAVAILABLE (each isError) when `sheetName` cannot ' +
+        'be shown to be a worksheet of this workbook, spelled the way it is ' +
+        'stored. None of those is "no changes" either: the first lists the ' +
+        'real sheet names, the second gives the exact spelling, and the third ' +
+        'means existence could not be checked. Re-send with a name from the ' +
+        'answer rather than reporting an absence.',
       inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         sheetName: z
@@ -224,6 +239,13 @@ export function registerSearchTool(
               fileMsId,
               await api.getFileVersions(fileMsId),
             );
+            // ENG-4347 — and the same trade one ambiguity over: only an empty
+            // answer asserts something this tool has not checked. A row that
+            // came back names its own sheet, so a non-empty answer has already
+            // proved what this goes and asks. Enrolment is settled FIRST above
+            // because a file whose initial read has not landed has no
+            // catalogue either, and "still reading" is the truer answer.
+            await assertSheetExists(api, file, sheetName);
           }
           const body = formatChangeRows(changes);
           return {
@@ -317,6 +339,10 @@ export function registerSearchTool(
         };
       } catch (error) {
         if (isNotReady(error)) return notReadyToolResult(error);
+        // ENG-4347 — a sheet that cannot be shown to exist is a refusal naming
+        // the sheet, never the empty answer the generic branch below would
+        // dress it as.
+        if (isUnknownSheet(error)) return unknownSheetToolResult(error);
         return {
           content: [
             {
