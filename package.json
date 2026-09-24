@@ -34,7 +34,7 @@
     "test:cov": "vitest run --coverage",
     "test:watch": "vitest",
     "generate:postman": "tsx scripts/generate-postman-collection.ts && tsx scripts/generate-postman-environments.ts",
-    "generate:postman:check": "npm run generate:postman && git diff --exit-code -- postman/",
+    "generate:postman:check": "npm run generate:postman && git diff --exit-code -- postman/ && git status --porcelain --untracked-files=all -- postman/ | awk '!seen[$2]++ {print \"generated file is not committed: \" $2; bad=1} END {exit bad}'",
     "golden:tool-catalogue:update": "UPDATE_GOLDEN=1 vitest run src/__tests__/unit/tool-catalogue.golden.test.ts",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build"
