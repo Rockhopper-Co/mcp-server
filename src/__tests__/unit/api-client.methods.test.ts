@@ -550,3 +550,67 @@ describe('listDriveInventory query construction (ENG-2814)', () => {
     vi.unstubAllGlobals();
   });
 });
+
+// ENG-4347 — the sheet catalogue. Two routes, two platforms, two id KINDS,
+// and getting the id kind wrong is the failure that a mock ignoring its
+// argument cannot catch: the manifest route resolves on the enrolled file's
+// INTERNAL id and would 403 for every real call handed a platformId.
+describe('ApiClient sheet catalogue (ENG-4347)', () => {
+  it('reads the workbook manifest by internal id, and extracts the names', async () => {
+    const fetchSpy = mockFetch({
+      activeSheetIndex: 0,
+      sheets: [
+        { index: 0, name: 'Sheet1' },
+        { index: 1, name: 'Project Accruals' },
+      ],
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    const api = new ApiClient({
+      baseUrl: 'https://api.rockhopper.co',
+      token: 'rh_pat_test',
+    });
+
+    const names = await api.getWorkbookSheetNames(11);
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/file-handler/by-enrolled-file/11/live/workbook-manifest',
+      expect.anything(),
+    );
+    expect(names).toEqual(['Sheet1', 'Project Accruals']);
+    vi.unstubAllGlobals();
+  });
+
+  it('fails LOUDLY when the manifest arrives without `sheets`', async () => {
+    // The route passes the parser's manifest through opaquely, so the DTO is
+    // documentation rather than a contract. An absent `sheets` must throw: as
+    // `undefined` it would make the existence check answer "not a sheet in
+    // this workbook" for every sheet of every workbook.
+    const fetchSpy = mockFetch({ activeSheetIndex: 0 });
+    vi.stubGlobal('fetch', fetchSpy);
+    const api = new ApiClient({
+      baseUrl: 'https://api.rockhopper.co',
+      token: 'rh_pat_test',
+    });
+
+    await expect(api.getWorkbookSheetNames(11)).rejects.toThrow();
+    vi.unstubAllGlobals();
+  });
+
+  it('reads native Google tab names by platformId, encoding it once', async () => {
+    const fetchSpy = mockFetch(['Tab A', 'Tab B']);
+    vi.stubGlobal('fetch', fetchSpy);
+    const api = new ApiClient({
+      baseUrl: 'https://api.rockhopper.co',
+      token: 'rh_pat_test',
+    });
+
+    const names = await api.getGoogleSheetNames('1a/b+c');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.rockhopper.co/google-drive/sheet-names/1a%2Fb%2Bc',
+      expect.anything(),
+    );
+    expect(names).toEqual(['Tab A', 'Tab B']);
+    vi.unstubAllGlobals();
+  });
+});

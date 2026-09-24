@@ -34,6 +34,8 @@ import {
   EnrolledFileSchema,
   FileChatSchema,
   FoldStatusSchema,
+  GoogleSheetNamesSchema,
+  WorkbookManifestSchema,
 } from './zod-schemas.js';
 import {
   ChangeHistoryNotReadyError,
@@ -517,6 +519,58 @@ export class ApiClient {
 
   async getEnrolledFile(fileMsId: string): Promise<EnrolledFile> {
     return this.request<EnrolledFile>(`/enrolled-files/${fileMsId}`);
+  }
+
+  // --- Sheet catalogue (ENG-4347) ---
+
+  /**
+   * The workbook's sheet names, for a Microsoft workbook or an `.xlsx` in
+   * Google Drive.
+   *
+   * Keyed by the enrolled file's INTERNAL id, not its `platformId` — the route
+   * resolves on `enrolledFile.internalId`
+   * (`backend` `file-handler.controller.ts!resolveLiveFileVersion`), which is
+   * why a caller holding only a `platformId` pays a `getEnrolledFile` hop
+   * first. `get_unattributed_changes` already makes that call unconditionally
+   * (ENG-5397, to route on file type), so only this read is marginal there.
+   *
+   * The LIVE variant deliberately: the caller is asking about the uncommitted
+   * window, and a sheet added since the last saved version is a real sheet
+   * whose changes they are entitled to. Reading the committed manifest would
+   * refuse it.
+   *
+   * Schema-parsed because the route passes the parser's manifest through
+   * opaquely, and a missing `sheets` must fail loudly rather than arrive as
+   * `undefined` — see {@link WorkbookManifestSchema}.
+   */
+  async getWorkbookSheetNames(
+    enrolledFileInternalId: number,
+  ): Promise<string[]> {
+    const manifest = await this.request(
+      `/file-handler/by-enrolled-file/${encodeURIComponent(
+        String(enrolledFileInternalId),
+      )}/live/workbook-manifest`,
+      undefined,
+      WorkbookManifestSchema,
+    );
+    return manifest.sheets.map((sheet) => sheet.name);
+  }
+
+  /**
+   * The tab names of a NATIVE Google Sheet, keyed by its Google file id —
+   * which is the `platformId` this server already carries.
+   *
+   * A separate route from the manifest above because the two platforms answer
+   * from different places: `google-drive.controller.ts!getSheetNames` reads the
+   * Sheets API as the calling user, so the trim is Google's own and this server
+   * applies none of its own.
+   */
+  async getGoogleSheetNames(platformId: string): Promise<string[]> {
+    return this.request(
+      `/google-drive/sheet-names/${encodeURIComponent(platformId)}`,
+      undefined,
+      GoogleSheetNamesSchema,
+    );
   }
 
   // --- Drive discovery (ENG-2203 / plan 13) ---
