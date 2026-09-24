@@ -233,6 +233,31 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
       expect(textOf(result)).not.toContain('SHEET_NOT_FOUND');
     });
 
+    it('refuses rather than asking for /by-enrolled-file/undefined when the id is absent', async () => {
+      // Nothing in this package read `EnrolledFile.internalId` before ENG-4347,
+      // so its presence is measured from the backend's source and not from a
+      // live response. Absent, the URL would carry `undefined`, the backend
+      // would answer 400, and every empty-path Microsoft call would hard-fail.
+      const api = withCatalogue(createMockApiClient());
+      api.getEnrolledFile.mockResolvedValue({
+        platformId: 'file-1',
+        fileType: 'microsoft_xlsx',
+        driveMsId: 'drive-1',
+        name: 'Budget.xlsx',
+        hasUncommittedChanges: true,
+      });
+      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+
+      const result = await getHandler(api, 'get_unattributed_changes')({
+        fileMsId: 'file-1',
+        sheetName: 'Summary',
+      });
+
+      expect(textOf(result)).toContain('SHEET_CATALOGUE_UNAVAILABLE');
+      expect(api.getWorkbookSheetNames).not.toHaveBeenCalled();
+      expect(textOf(result)).not.toContain('No unattributed changes on sheet');
+    });
+
     it('a definitive rejection is not dressed as a retryable "could not check"', async () => {
       const api = createMockApiClient();
       api.getUnattributedChangesBySheet.mockResolvedValue([]);

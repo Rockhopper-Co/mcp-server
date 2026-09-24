@@ -290,6 +290,25 @@ export async function assertSheetExists(
   if (route === null) return;
 
   const fileName = file.name ?? null;
+
+  // `internalId` is typed as required and IS served — it is a
+  // `@PrimaryGeneratedColumn()` with no `@Exclude`, spread into the response by
+  // `enrolled-files.controller.ts!findOne`, whose own comment says the route
+  // carries "the internal id the guard authorised on". But nothing in this
+  // package read it before now, so that is measured from the backend's source
+  // and not from a live response. If it ever arrives absent, the URL would be
+  // `/by-enrolled-file/undefined/...`, the backend would answer 400, and every
+  // empty-path Microsoft call would hard-fail. Refuse honestly instead of
+  // asking a question that cannot be asked.
+  const needsInternalId = route === 'workbook_manifest';
+  if (needsInternalId && !Number.isInteger(file.internalId)) {
+    throw new UnknownSheetError({
+      reason: 'sheet_catalogue_unavailable',
+      sheetName,
+      fileName,
+    });
+  }
+
   let sheets: readonly string[];
   try {
     sheets =
