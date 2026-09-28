@@ -339,6 +339,66 @@ describe('search_drive_files — no connected Microsoft account', () => {
 });
 
 /**
+ * ENG-6412 — a Google caller with no stored grant gets the GOOGLE remedy.
+ *
+ * The backend refuses both providers with the same coarse
+ * `NO_DELEGATED_TOKEN`, and the tool used to answer every one with a
+ * Microsoft sign-in link and `microsoft_link_status` — neither of which can
+ * connect a Google account.
+ */
+describe('search_drive_files — no connected Google account', () => {
+  const GOOGLE_REMEDY =
+    'Rockhopper has no connection to this Google account. Connect ' +
+    'Google Drive in Settings to search it.';
+  const googleRefusal = () =>
+    new RockhopperApiError(
+      403,
+      `Rockhopper API 403: Forbidden — ${JSON.stringify({ message: GOOGLE_REMEDY })}`,
+      'NO_DELEGATED_TOKEN',
+      null,
+      GOOGLE_REMEDY,
+    );
+
+  it('answers google_not_connected with the backend remedy and no Microsoft link', async () => {
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockRejectedValue(googleRefusal());
+    const result = await handlerFor(api)({ query: 'Becklar', provider: 'google' });
+    const text = result.content[0].text;
+
+    expect(outcomeOf(result)).toBe('google_not_connected');
+    expect(api.beginMicrosoftConnect).not.toHaveBeenCalled();
+    expect(text).toContain(GOOGLE_REMEDY);
+    expect(text).not.toContain('login.microsoftonline.com');
+    expect(text).not.toContain('microsoft_link_status');
+    expect(text).not.toContain('connect_microsoft');
+  });
+
+  it('still names the Google remedy when the backend sent no message', async () => {
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockRejectedValue(
+      new RockhopperApiError(403, 'no token', 'NO_DELEGATED_TOKEN'),
+    );
+    const result = await handlerFor(api)({ query: 'Becklar', provider: 'google' });
+
+    expect(outcomeOf(result)).toBe('google_not_connected');
+    expect(api.beginMicrosoftConnect).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain('Google Drive');
+    expect(result.content[0].text).not.toContain('login.microsoftonline.com');
+  });
+
+  it('leaves an explicit provider="microsoft" on the Microsoft connect link', async () => {
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockRejectedValue(
+      new RockhopperApiError(403, 'connect first', 'NO_DELEGATED_TOKEN'),
+    );
+    const result = await handlerFor(api)({ query: 'Becklar', provider: 'microsoft' });
+
+    expect(outcomeOf(result)).toBe('microsoft_not_connected');
+    expect(api.beginMicrosoftConnect).toHaveBeenCalled();
+  });
+});
+
+/**
  * ENG-2614 — the three tenant states, from the assistant's side.
  *
  * All three arrive as HTTP 403 with the same coarse `NO_DELEGATED_TOKEN`
