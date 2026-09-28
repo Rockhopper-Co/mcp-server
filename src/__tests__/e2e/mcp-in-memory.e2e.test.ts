@@ -1317,6 +1317,17 @@ describe('ENG-1647 replayed: find, confirm, enroll (ENG-2204)', () => {
     expect(text).toContain('Do not compose a sign-in link yourself');
   });
 
+  it('hands a Google caller the Google remedy, not a Microsoft link (ENG-6412)', async () => {
+    const text = await call('search_drive_files', {
+      query: 'unlinked',
+      provider: 'google',
+    });
+    expect(text).toContain('"outcome":"google_not_connected"');
+    expect(text).toContain('Connect Google Drive in Settings');
+    expect(text).not.toContain('login.microsoftonline.com');
+    expect(text).not.toContain('microsoft_link_status');
+  });
+
   it('says an empty drive search is empty, not broken', async () => {
     expect(await call('search_drive_files', { query: 'nothing here' })).toContain(
       '"outcome":"no_matches"',

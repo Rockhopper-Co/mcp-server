@@ -134,17 +134,25 @@ export class RockhopperApiError extends Error {
    * cannot possibly work, and clicking it returns them here: a loop.
    */
   readonly reason: string | null;
+  /**
+   * ENG-6412 — the backend's own `message` for the refusal, when the body
+   * carried a string one. The Google drive-search lane has no `reason` to
+   * branch on, so its remedy text is the only place its next step lives.
+   */
+  readonly serverMessage: string | null;
   constructor(
     status: number,
     message: string,
     code?: string | null,
     reason?: string | null,
+    serverMessage?: string | null,
   ) {
     super(message);
     this.name = 'RockhopperApiError';
     this.status = status;
     this.code = code ?? null;
     this.reason = reason ?? null;
+    this.serverMessage = serverMessage ?? null;
   }
 }
 
@@ -154,7 +162,10 @@ export class RockhopperApiError extends Error {
  * that is not a string all answer `null` — the caller then falls back to the
  * status, which is the answer it had before this existed.
  */
-function parseErrorField(body: string, field: 'code' | 'reason'): string | null {
+function parseErrorField(
+  body: string,
+  field: 'code' | 'reason' | 'message',
+): string | null {
   try {
     const parsed: unknown = JSON.parse(body);
     if (parsed === null || typeof parsed !== 'object') return null;
@@ -414,6 +425,7 @@ export class ApiClient {
         `Rockhopper API ${response.status}: ${response.statusText} — ${body}`,
         parseErrorField(body, 'code'),
         parseErrorField(body, 'reason'),
+        parseErrorField(body, 'message'),
       );
     }
 

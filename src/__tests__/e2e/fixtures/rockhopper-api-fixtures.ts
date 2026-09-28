@@ -225,6 +225,19 @@ export function handleMockRockhopperRequest(
     if (method === 'GET' && path === '/drive-files/search') {
       const q = new URLSearchParams(queryString).get('q') ?? '';
       if (q.includes('unlinked')) {
+        // ENG-6412 — the Google lane refuses with the same coarse code, no
+        // `reason`, and its own remedy (google-drive-search.service.ts).
+        if (new URLSearchParams(queryString).get('provider') === 'google') {
+          sendJson(res, 403, {
+            statusCode: 403,
+            message:
+              'Rockhopper has no connection to this Google account. Connect ' +
+              'Google Drive in Settings to search it.',
+            code: 'NO_DELEGATED_TOKEN',
+            reason: null,
+          });
+          return;
+        }
         sendJson(res, 403, {
           statusCode: 403,
           message: 'Connect a Microsoft account to search your files',

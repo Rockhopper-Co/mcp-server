@@ -6,6 +6,7 @@ import {
   type ServerContext,
 } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
+import type { FileProvider } from '../types.js';
 import {
   SearchBudget,
   candidateAt,
@@ -14,6 +15,7 @@ import {
   ADMIN_CONSENT_TEXT,
   isAdminConsentRequired,
   isNoDelegatedToken,
+  googleNotConnectedText,
   toCandidate,
   type Candidate,
 } from '../drive-search.js';
@@ -278,7 +280,9 @@ export function registerDriveSearchTool(
             isError: true,
           });
         }
-        if (isNoDelegatedToken(error)) return connectAnswer(api);
+        if (isNoDelegatedToken(error)) {
+          return connectAnswer(api, provider, error);
+        }
         const { outcome, message } = classifyDriveSearchFailure(error);
         return toolResult({ outcome, text: message, isError: true });
       }
@@ -326,7 +330,20 @@ export function registerDriveSearchTool(
  * screen the whole way while approving somebody else's application. Same
  * reasoning as `connect_microsoft`, which is where this link comes from.
  */
-async function connectAnswer(api: ApiClient) {
+async function connectAnswer(
+  api: ApiClient,
+  provider: FileProvider | undefined,
+  error: unknown,
+) {
+  // ENG-6412 — a Google refusal gets Google's remedy. A Microsoft link and
+  // `microsoft_link_status` cannot connect a Google account.
+  if (provider === 'google') {
+    return toolResult({
+      outcome: 'google_not_connected',
+      isError: true,
+      text: googleNotConnectedText(error),
+    });
+  }
   try {
     const handoff = await api.beginMicrosoftConnect();
     return toolResult({
