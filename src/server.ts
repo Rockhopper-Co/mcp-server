@@ -174,6 +174,11 @@ export function createServer(
   );
 
   installCorrelationScope(server, options?.telemetry);
+  // ENG-2883 (plan 23 SP04) — tell the API client where to find the APP that
+  // connected. A PROVIDER, not a value: `clientInfo` arrives with the client's
+  // `initialize` and does not exist yet at this line, so reading it here would
+  // record nothing forever.
+  apiClient.setClientToolProvider(() => server.server.getClientVersion());
   registerResources(server, apiClient);
   registerTools(server, apiClient, options);
   registerPrompts(server, apiClient);
