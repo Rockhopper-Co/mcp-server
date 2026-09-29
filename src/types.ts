@@ -610,6 +610,27 @@ export interface DocumentChangesResponse {
 }
 
 /**
+ * ENG-6433 — the history of ONE paragraph or shape, mirroring the backend's
+ * `DocumentAnchorHistoryResponse` (ENG-6432). Rows are the change log's own
+ * rows, so the list renderer is shared; `boundVersionId` is null while a row
+ * is still uncommitted.
+ */
+export interface DocumentAnchorHistory {
+  documentType: string;
+  anchorId: string;
+  /**
+   * Which capture lane's key space the anchor lives in. A PowerPoint shape has
+   * one anchor per lane with no mapping between them, so a deck answer covers
+   * ONE lane (`task_pane` or `file_bytes`); a paragraph answer covers `both`.
+   */
+  anchorLane: 'task_pane' | 'file_bytes' | 'both';
+  /** `positional`: matched by position, so the history is of a SLOT. */
+  anchorIdentity: 'provider_id' | 'positional' | null;
+  history: Array<DocumentChangeRow & { boundVersionId: number | null }>;
+  truncated: boolean;
+}
+
+/**
  * KI-096: matches the backend's `?format=mcp` projection on cell-history
  * (`GET /file-versions/file/:fileMsId/cell-history?format=mcp`, added by
  * backend PR #478). `versionId` is a semver string (`"v<major>.<minor>.<patch>"`),

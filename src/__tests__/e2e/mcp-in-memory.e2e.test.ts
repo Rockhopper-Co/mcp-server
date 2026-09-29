@@ -380,6 +380,48 @@ describe('MCP in-memory protocol e2e', () => {
     expect(JSON.stringify(result.content)).toContain('No history found');
   });
 
+  // ENG-6433 — one Word paragraph's history over the real transport, asserted
+  // by the paragraph's own id and each row's stored text: an emptiness check
+  // would pass on the defect, which was a refusal before any read.
+  it('get_cell_history follows one docx paragraph by anchorId', async () => {
+    const result = await client.callTool({
+      name: 'get_cell_history',
+      arguments: { fileMsId: 'file-docx', anchorId: 'w14-paraId-7A3B' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBeFalsy();
+    expect(text).toContain('Element \\"w14-paraId-7A3B\\" — 2 change(s)');
+    expect(text).toContain('\\"Net 15 days\\" → \\"Net 30 days\\"');
+    expect(text).toContain('\\"Net 30 days\\" → \\"Net 60 days\\"');
+    expect(text).toContain('[saved in version id 101]');
+    expect(text).toContain('[not yet saved in a version]');
+  });
+
+  it('get_cell_history refuses a cell address on a docx by code', async () => {
+    const result = await client.callTool({
+      name: 'get_cell_history',
+      arguments: { fileMsId: 'file-docx', sheetName: 'Sheet1', cellAddress: 'A1' },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain(
+      '\\"code\\":\\"CELL_HISTORY_UNAVAILABLE\\"',
+    );
+  });
+
+  it('get_cell_history refuses an anchorId sent with a cell address', async () => {
+    const result = await client.callTool({
+      name: 'get_cell_history',
+      arguments: {
+        fileMsId: 'file-docx',
+        sheetName: 'Sheet1',
+        cellAddress: 'A1',
+        anchorId: 'w14-paraId-7A3B',
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('Send anchorId alone');
+  });
+
   it('get_cell_history surfaces API errors', async () => {
     const result = await client.callTool({
       name: 'get_cell_history',

@@ -4,6 +4,7 @@ import { getCorrelationId } from './correlation.js';
 import { log } from './logger.js';
 import type {
   CellHistoryEntry,
+  DocumentAnchorHistory,
   DocumentChangesResponse,
   EnrolledFile,
   FileChat,
@@ -30,6 +31,7 @@ import type {
 } from './types.js';
 import {
   CellHistoryEntryArraySchema,
+  DocumentAnchorHistorySchema,
   DocumentChangesResponseSchema,
   EnrolledFileSchema,
   FileChatSchema,
@@ -915,6 +917,23 @@ export class ApiClient {
       `/file-versions/file/${fileMsId}/cell-history?${query}`,
       undefined,
       CellHistoryEntryArraySchema as unknown as ZodType<CellHistoryEntry[]>,
+    );
+  }
+
+  /**
+   * ENG-6433 — one paragraph's or shape's history, from the SAME route as a
+   * cell's (backend ENG-6432 added the `anchorId` arm). No `cell` or
+   * `sheetName`: the backend refuses a request carrying both address forms.
+   */
+  async getAnchorHistory(
+    fileMsId: string,
+    anchorId: string,
+  ): Promise<DocumentAnchorHistory> {
+    const query = new URLSearchParams({ anchorId, format: 'mcp' });
+    return this.request<DocumentAnchorHistory>(
+      `/file-versions/file/${fileMsId}/cell-history?${query}`,
+      undefined,
+      DocumentAnchorHistorySchema as unknown as ZodType<DocumentAnchorHistory>,
     );
   }
 

@@ -24,6 +24,8 @@ export interface MockApiClient {
   getFileVersion: Mock;
   getFoldStatus: Mock;
   getCellHistory: Mock;
+  /** ENG-6433 — one document element's history, by anchorId. */
+  getAnchorHistory: Mock;
   getFileComments: Mock;
   getComment: Mock;
   createComment: Mock;
@@ -243,6 +245,14 @@ export function createMockApiClient(): MockApiClient {
         changedAt: '2026-01-01T00:00:00Z',
       },
     ]),
+    getAnchorHistory: vi.fn().mockResolvedValue({
+      documentType: 'text',
+      anchorId: 'w14-paraId-7A3B',
+      anchorLane: 'both',
+      anchorIdentity: 'provider_id',
+      history: [],
+      truncated: false,
+    }),
     getFileComments: vi.fn().mockResolvedValue([
       {
         internalId: 201,
