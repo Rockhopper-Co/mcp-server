@@ -71,6 +71,17 @@ function googleDoc(api: ReturnType<typeof createMockApiClient>) {
   });
 }
 
+function googleSlides(api: ReturnType<typeof createMockApiClient>) {
+  api.getEnrolledFile.mockResolvedValue({
+    internalId: 16,
+    platformId: 'file-gslides',
+    fileType: 'google_slides',
+    driveMsId: 'drive-1',
+    name: 'Pitch',
+    hasUncommittedChanges: true,
+  });
+}
+
 /** One served paragraph change, shaped as the backend's row contract. */
 const PARAGRAPH_ROW = {
   eventId: '48122',
@@ -112,6 +123,24 @@ const SHAPE_ROW = {
   fromValue: { v: 'Q3 Results' },
   toValue: { v: 'Q4 Results' },
   truncated: false,
+};
+
+/** Google rows carry their own anchors, so a test cannot pass on a Word row. */
+const GOOGLE_PARAGRAPH_ROW = {
+  ...PARAGRAPH_ROW,
+  eventId: '48140',
+  anchorProviderId: 'kix.gdoc-para-1',
+  fromValue: { v: 'Draft terms' },
+  toValue: { v: 'Final terms' },
+};
+
+const GOOGLE_SHAPE_ROW = {
+  ...SHAPE_ROW,
+  eventId: '48141',
+  containerProviderId: 'g-slide-3',
+  anchorProviderId: 'g-slide-3::p4',
+  fromValue: { v: 'Old headline' },
+  toValue: { v: 'New headline' },
 };
 
 function served(rows: unknown[], declineReason: string | null = null) {
@@ -182,17 +211,37 @@ describe('get_unattributed_changes on a document', () => {
     expect(result.isError).toBe(true);
   });
 
-  it('REFUSES a Google Doc, which has no capture lane at all', async () => {
+  // ENG-6428 — Google Docs and Slides take the SAME document read `.docx` and
+  // `.pptx` take. The backend serves their rows since ENG-5404; the client-side
+  // `no_capture_lane` refusal was answering before the backend was asked.
+  it('returns the paragraph rows a Google Doc actually has', async () => {
     const api = createMockApiClient();
     googleDoc(api);
-    api.getDocumentChanges.mockResolvedValue(served([]));
+    api.getDocumentChanges.mockResolvedValue(served([GOOGLE_PARAGRAPH_ROW]));
 
     const result = await changesHandler(api)({ fileMsId: 'file-gdoc' });
     const text = result.content[0].text as string;
 
-    expect(text).toContain('DOCUMENT_CHANGES_UNAVAILABLE');
-    expect(text).toContain('no_capture_lane');
-    expect(result.isError).toBe(true);
+    expect(api.getDocumentChanges).toHaveBeenCalledWith('file-gdoc');
+    expect(text).toContain('kix.gdoc-para-1');
+    expect(text).toContain('Draft terms');
+    expect(text).toContain('Final terms');
+    expect(result.isError).toBeFalsy();
+  });
+
+  it('returns the shape rows a Google Slides deck actually has', async () => {
+    const api = createMockApiClient();
+    googleSlides(api);
+    api.getDocumentChanges.mockResolvedValue(served([GOOGLE_SHAPE_ROW]));
+
+    const result = await changesHandler(api)({ fileMsId: 'file-gslides' });
+    const text = result.content[0].text as string;
+
+    expect(api.getDocumentChanges).toHaveBeenCalledWith('file-gslides');
+    expect(text).toContain('g-slide-3');
+    expect(text).toContain('Old headline');
+    expect(text).toContain('New headline');
+    expect(result.isError).toBeFalsy();
   });
 
   it('REFUSES a file type it does not recognise instead of guessing', async () => {

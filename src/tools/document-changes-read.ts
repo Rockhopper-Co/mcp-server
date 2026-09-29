@@ -3,7 +3,6 @@ import { assertEnrollmentComplete } from '../not-ready.js';
 import {
   documentChangesUnavailableToolResult,
   formatDocumentChanges,
-  hasCaptureLane,
 } from '../document-changes.js';
 
 /**
@@ -41,19 +40,6 @@ export async function readDocumentChanges(
   if (ctx.sheetName) {
     return documentChangesUnavailableToolResult({
       reason: 'sheet_filter_not_applicable',
-      fileMsId,
-      fileName,
-    });
-  }
-
-  // Google Docs and Slides have no capture lane, so their change log holds
-  // zero rows permanently — asserted backend-side in
-  // `google-document-lane.capability.spec.ts`. A structural, permanent zero
-  // rendered as "no changes" is a wrong answer that never becomes right, so it
-  // is refused BEFORE the read rather than after an honest-looking empty one.
-  if (!hasCaptureLane(ctx.fileType)) {
-    return documentChangesUnavailableToolResult({
-      reason: 'no_capture_lane',
       fileMsId,
       fileName,
     });

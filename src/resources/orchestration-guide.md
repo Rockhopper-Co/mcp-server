@@ -113,7 +113,6 @@ The `reason` says what to do next:
 
 | `reason` | What it means | Next step |
 |---|---|---|
-| `no_capture_lane` | Rockhopper does not track a change-by-change list for this kind of file. It still has versions and comments. | Offer a version comparison instead. |
 | `sheet_filter_not_applicable` | A `sheetName` was passed for a file with no worksheets. | Call again without `sheetName`. |
 | `window_withheld` | The change list is not available for this file right now. | Offer a version comparison instead. |
 | `unknown_file_type` | This connection does not recognise the file's type. | Ask the user what the file is. |

@@ -533,15 +533,32 @@ describe('MCP in-memory protocol e2e', () => {
     expect(result.isError).toBeFalsy();
   });
 
-  it('refuses a Google Doc over the protocol instead of reporting no changes', async () => {
+  // ENG-6428 — Google documents take the same document read. The rows below
+  // are served by the fixture ONLY for these fileMsIds on
+  // `/cell-change-events/document-changes`, so seeing them proves that request
+  // was made for that file.
+  it('serves a Google Doc its paragraph changes over the protocol', async () => {
     const result = await client.callTool({
       name: 'get_unattributed_changes',
       arguments: { fileMsId: 'file-gdoc' },
     });
     const text = JSON.stringify(result.content);
-    expect(result.isError).toBe(true);
-    expect(text).toContain('DOCUMENT_CHANGES_UNAVAILABLE');
-    expect(text).toContain('no_capture_lane');
+    expect(text).toContain('kix.gdoc-para-1');
+    expect(text).toContain('Draft terms');
+    expect(text).toContain('Final terms');
+    expect(result.isError).toBeFalsy();
+  });
+
+  it('serves a Google Slides deck its shape changes over the protocol', async () => {
+    const result = await client.callTool({
+      name: 'get_unattributed_changes',
+      arguments: { fileMsId: 'file-gslides' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(text).toContain('g-slide-3');
+    expect(text).toContain('Old headline');
+    expect(text).toContain('New headline');
+    expect(result.isError).toBeFalsy();
   });
 
   it('errors the changes resource while a fold is pending', async () => {

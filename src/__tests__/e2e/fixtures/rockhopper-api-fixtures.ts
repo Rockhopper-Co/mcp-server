@@ -119,6 +119,50 @@ const ALL_WRITE_CAPABILITIES = [
   'files:write',
 ];
 
+/** ENG-6428 — one row per Google document, each with its own anchor. */
+const GOOGLE_DOCUMENT_ROWS: Record<string, Record<string, unknown>> = {
+  'file-gdoc': {
+    eventId: '48140',
+    kind: 'block',
+    locationKind: 'block',
+    containerOrdinal: null,
+    containerProviderId: null,
+    anchorOrdinal: 1,
+    anchorProviderId: 'kix.gdoc-para-1',
+    anchorLabel: null,
+    changeKind: 'block_edit',
+    actorKind: 'human',
+    actorPlatformId: 'u-1',
+    attributionConfidence: 'credential_bound',
+    editorPlatformId: 'u-1',
+    occurredAt: '2026-09-15T10:00:00.000Z',
+    firstObservedAt: '2026-09-15T10:00:01.000Z',
+    fromValue: { v: 'Draft terms' },
+    toValue: { v: 'Final terms' },
+    truncated: false,
+  },
+  'file-gslides': {
+    eventId: '48141',
+    kind: 'shape',
+    locationKind: 'shape',
+    containerOrdinal: null,
+    containerProviderId: 'g-slide-3',
+    anchorOrdinal: 2,
+    anchorProviderId: 'g-slide-3::p4',
+    anchorLabel: 'Title 1',
+    changeKind: 'shape_edit',
+    actorKind: 'human',
+    actorPlatformId: 'u-1',
+    attributionConfidence: 'credential_bound',
+    editorPlatformId: 'u-1',
+    occurredAt: '2026-09-15T11:00:00.000Z',
+    firstObservedAt: '2026-09-15T11:00:01.000Z',
+    fromValue: { v: 'Old headline' },
+    toValue: { v: 'New headline' },
+    truncated: false,
+  },
+};
+
 export function handleMockRockhopperRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -408,14 +452,25 @@ export function handleMockRockhopperRequest(
       return;
     }
 
-    // A native Google Doc: enrolled, versioned, and with no capture lane, so
-    // its change list is a REFUSAL rather than an empty answer.
+    // ENG-6428 — a native Google Doc and a Google Slides deck: enrolled,
+    // versioned, and read through the same document lane as `.docx`/`.pptx`.
     if (method === 'GET' && path === '/enrolled-files/file-gdoc') {
       sendJson(res, 200, {
         ...sampleFile,
         platformId: 'file-gdoc',
         name: 'Notes',
         fileType: 'google_doc',
+        hasUncommittedChanges: true,
+      });
+      return;
+    }
+
+    if (method === 'GET' && path === '/enrolled-files/file-gslides') {
+      sendJson(res, 200, {
+        ...sampleFile,
+        platformId: 'file-gslides',
+        name: 'Pitch',
+        fileType: 'google_slides',
         hasUncommittedChanges: true,
       });
       return;
@@ -465,7 +520,8 @@ export function handleMockRockhopperRequest(
     if (
       method === 'GET' &&
       (path === '/file-versions/file/file-docx' ||
-        path === '/file-versions/file/file-gdoc')
+        path === '/file-versions/file/file-gdoc' ||
+        path === '/file-versions/file/file-gslides')
     ) {
       sendJson(res, 200, [sampleVersion]);
       return;
@@ -764,6 +820,27 @@ export function handleMockRockhopperRequest(
         snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
       });
       return;
+    }
+
+    // ENG-6428 — the Google files get rows of their OWN, keyed on the
+    // `fileMsId` the client sent, so a test asserting on them proves the
+    // request reached `/cell-change-events/document-changes` for that file.
+    if (
+      method === 'GET' &&
+      path === '/cell-change-events/document-changes'
+    ) {
+      const googleRow = GOOGLE_DOCUMENT_ROWS[
+        new URLSearchParams(queryString).get('fileMsId') ?? ''
+      ];
+      if (googleRow) {
+        sendJson(res, 200, {
+          rows: [googleRow],
+          truncated: false,
+          declineReason: null,
+          windowStart: '2026-09-01T00:00:00.000Z',
+        });
+        return;
+      }
     }
 
     // ENG-5397 — the document change lane. One served paragraph change, so the
