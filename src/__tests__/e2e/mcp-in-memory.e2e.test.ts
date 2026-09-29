@@ -561,6 +561,19 @@ describe('MCP in-memory protocol e2e', () => {
     expect(result.isError).toBeFalsy();
   });
 
+  // ENG-6431 — the resource read the spreadsheet-only lane for every file and
+  // served `totalCount: 0` for a `.docx`. Asserted on the paragraph's own
+  // anchor id and stored text, never on a count.
+  it('serves a Word document its paragraph changes on the changes resource', async () => {
+    const result = await client.readResource({
+      uri: 'rockhopper://files/file-docx/changes',
+    });
+    const served = JSON.parse(String((result.contents[0] as { text: string }).text));
+    expect(served.rows[0].anchorProviderId).toBe('w14-paraId-7A3B');
+    expect(served.rows[0].fromValue).toEqual({ v: 'Net 30 days' });
+    expect(served.declineReason).toBeNull();
+  });
+
   it('errors the changes resource while a fold is pending', async () => {
     await expect(
       client.readResource({
