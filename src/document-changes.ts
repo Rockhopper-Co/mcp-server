@@ -20,7 +20,7 @@
  *
  * That vocabulary is "come back later", and every field of its payload
  * (`retryAfterSeconds`) is wrong for most of what is refused here. Retrying
- * cannot give a Google Doc a capture lane. Where a retry IS the right advice —
+ * cannot make an unknown file type known. Where a retry IS the right advice —
  * an enrolment still landing — `not-ready.ts` is still what answers, and this
  * module never shadows it.
  */
@@ -96,35 +96,10 @@ export function changeModelForFileType(fileType: string): ChangeModel | null {
   return unmapped;
 }
 
-/**
- * File types that have NO capture lane, so their change log holds zero rows
- * permanently.
- *
- * There is no Apps Script add-on for Google Docs or Google Slides, so neither
- * has a capture route, and a document's ledger rows come only from capture.
- * The backend asserts this mechanically rather than describing it —
- * `backend/src/resources/enrolled-files/google-document-lane.capability.spec.ts`,
- * ENG-4951: *"Their change log holds zero rows, permanently. That is not a bug
- * and it is not a gap waiting on a ticket."*
- *
- * WHICH IS EXACTLY WHY IT MUST BE A REFUSAL HERE. A permanent, structural zero
- * rendered as "no changes found" is the same wrong answer as the spreadsheet
- * reader's — worse, because it will never stop being wrong.
- */
-const FILE_TYPES_WITHOUT_CAPTURE_LANE: ReadonlySet<string> = new Set<
-  KnownFileType
->(['google_doc', 'google_slides']);
-
-export function hasCaptureLane(fileType: string): boolean {
-  return !FILE_TYPES_WITHOUT_CAPTURE_LANE.has(fileType);
-}
-
 /** Why a document-change answer is being refused. */
 export type DocumentChangesUnavailableReason =
   /** The file type is not one this build knows, so its change model is unknown. */
   | 'unknown_file_type'
-  /** Google Docs and Slides: no capture lane exists, so no row can ever exist. */
-  | 'no_capture_lane'
   /** A worksheet filter was passed for a file that has no worksheets. */
   | 'sheet_filter_not_applicable'
   /** The backend withheld the window rather than serving it. */
@@ -152,11 +127,6 @@ const NEXT_STEP: Record<DocumentChangesUnavailableReason, string> = {
     'Ask the user what kind of file this is. Rockhopper tracks changes for ' +
     'workbooks, Word documents and PowerPoint decks; this file is none of ' +
     'those as far as this connection can tell.',
-  no_capture_lane:
-    'Rockhopper tracks versions and comments for this file, and can compare ' +
-    'two of its versions. Offer the user a version comparison instead, or ' +
-    'ask them to keep the file in Word or PowerPoint if they need a ' +
-    'change-by-change log.',
   sheet_filter_not_applicable:
     'Call this tool again without `sheetName` to get the whole file.',
   window_withheld:
