@@ -193,7 +193,7 @@ function facetText(facet: { v?: unknown; f?: unknown } | null): string {
  * as "Slide N": it carries no position, and `containerOrdinal` is null on every
  * row either lane writes, so a slide NUMBER is not a fact this server holds.
  */
-function formatDocumentRow(row: DocumentChangeRow): string {
+export function formatDocumentRow(row: DocumentChangeRow): string {
   const unit = row.anchorLabel
     ? `${row.anchorLabel} (${row.anchorProviderId ?? 'unidentified'})`
     : (row.anchorProviderId ?? 'unidentified');

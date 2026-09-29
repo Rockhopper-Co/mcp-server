@@ -546,6 +546,62 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    // ENG-6433 — the document arm of the same route (backend ENG-6432). A
+    // docx answers an `anchorId` with its own envelope, echoing the anchor and
+    // carrying that anchor's rows only; a cell address on it is refused by
+    // code, exactly as the backend's `assertCellAddressableFileType` does.
+    if (
+      method === 'GET' &&
+      path === '/file-versions/file/file-docx/cell-history'
+    ) {
+      const params = new URLSearchParams(queryString);
+      const anchorId = params.get('anchorId');
+      if (anchorId === null) {
+        sendJson(res, 422, {
+          statusCode: 422,
+          code: 'CELL_HISTORY_UNAVAILABLE',
+          message: 'Cell history is unavailable for this file',
+        });
+        return;
+      }
+      const rows =
+        anchorId === 'w14-paraId-7A3B'
+          ? [
+              ['48101', 'Net 15 days', 'Net 30 days', 101],
+              ['48122', 'Net 30 days', 'Net 60 days', null],
+            ].map(([eventId, from, to, bound]) => ({
+              eventId,
+              kind: 'block',
+              locationKind: 'block',
+              containerOrdinal: null,
+              containerProviderId: null,
+              anchorOrdinal: 4,
+              anchorProviderId: anchorId,
+              anchorLabel: null,
+              changeKind: 'block_edit',
+              actorKind: 'human',
+              actorPlatformId: 'u-1',
+              attributionConfidence: 'credential_bound',
+              editorPlatformId: 'u-1',
+              occurredAt: '2026-09-15T10:00:00.000Z',
+              firstObservedAt: '2026-09-15T10:00:01.000Z',
+              fromValue: { v: from },
+              toValue: { v: to },
+              truncated: false,
+              boundVersionId: bound,
+            }))
+          : [];
+      sendJson(res, 200, {
+        documentType: 'text',
+        anchorId,
+        anchorLane: 'both',
+        anchorIdentity: rows.length ? 'provider_id' : null,
+        history: rows,
+        truncated: false,
+      });
+      return;
+    }
+
     if (
       method === 'GET' &&
       path === '/file-versions/file/file-1/cell-history'

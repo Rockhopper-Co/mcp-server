@@ -102,7 +102,7 @@
   {
     "name": "get_cell_history",
     "title": "Get Cell History",
-    "description": "Get the change history for a specific cell in an enrolled file. Shows how the cell value changed across versions. Answers CHANGE_HISTORY_NOT_READY (isError) while Rockhopper is still computing this history. That is NOT an empty history — nothing is known yet; retry after the stated interval and never report an absence of changes from it. Answers CELL_HISTORY_UNAVAILABLE (isError) when Rockhopper cannot report this cell's history for this file. That is NOT an empty history either — retrying will not change it, and nothing about whether the cell changed may be inferred from it. This tool addresses CELLS in a spreadsheet, and only cells. A file whose changes are not recorded against a sheet and a cell — a Word document, a PowerPoint deck — answers CELL_HISTORY_UNAVAILABLE, never an empty list; that file may hold a long change history this tool has no way to address. Answers SHEET_NOT_FOUND, SHEET_NAME_NOT_EXACT or SHEET_CATALOGUE_UNAVAILABLE (each isError) when `sheetName` cannot be shown to be a worksheet of this workbook, spelled the way it is stored. None of those is an empty history: the first lists the real sheet names, the second gives the exact spelling, and the third means existence could not be checked. Re-send with a name from the answer rather than reporting that the cell never changed. An empty result WITHOUT one of those answers is a real answer about ONE CELL on a sheet that exists: no change to that cell is recorded. It says nothing about the rest of the file, and it is never grounds for saying the file is unchanged.",
+    "description": "Get the change history for a specific cell, paragraph or shape in an enrolled file. Shows how its value changed across versions. Answers CHANGE_HISTORY_NOT_READY (isError) while Rockhopper is still computing this history. That is NOT an empty history — nothing is known yet; retry after the stated interval and never report an absence of changes from it. Answers CELL_HISTORY_UNAVAILABLE (isError) when Rockhopper cannot report this cell's history for this file. That is NOT an empty history either — retrying will not change it, and nothing about whether the cell changed may be inferred from it. Send EXACTLY ONE address: `sheetName` + `cellAddress` for a cell in a spreadsheet, OR `anchorId` for one paragraph or shape in a text document or slide deck (a Word document, a PowerPoint deck). The anchorId is the `anchorProviderId` a document change carries in get_unattributed_changes (shown in parentheses after each change). A cell address on a document, or an anchorId on a spreadsheet, answers CELL_HISTORY_UNAVAILABLE, never an empty list. For a deck, the answer covers the changes recorded under that one id and says so when it is not the whole history of the shape. Answers SHEET_NOT_FOUND, SHEET_NAME_NOT_EXACT or SHEET_CATALOGUE_UNAVAILABLE (each isError) when `sheetName` cannot be shown to be a worksheet of this workbook, spelled the way it is stored. None of those is an empty history: the first lists the real sheet names, the second gives the exact spelling, and the third means existence could not be checked. Re-send with a name from the answer rather than reporting that the cell never changed. An empty result WITHOUT one of those answers is a real answer about ONE CELL on a sheet that exists: no change to that cell is recorded. It says nothing about the rest of the file, and it is never grounds for saying the file is unchanged.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -111,18 +111,22 @@
           "description": "Platform ID of the enrolled file"
         },
         "sheetName": {
-          "type": "string",
-          "description": "Name of the worksheet"
+          "description": "Name of the worksheet. Send with cellAddress, never with anchorId.",
+          "type": "string"
         },
         "cellAddress": {
+          "description": "Cell address, bare or sheet-qualified (e.g. \"A1\", \"B12\", \"Sheet1!C3\", \"'My Sheet'!C3\"). A sheet prefix must name the same worksheet as sheetName. One cell only — a range such as \"A1:B2\" is refused. Send with sheetName, never with anchorId.",
+          "type": "string"
+        },
+        "anchorId": {
+          "description": "One paragraph or shape in a document: the `anchorProviderId` from get_unattributed_changes. Send alone, without sheetName or cellAddress.",
           "type": "string",
-          "description": "Cell address, bare or sheet-qualified (e.g. \"A1\", \"B12\", \"Sheet1!C3\", \"'My Sheet'!C3\"). A sheet prefix must name the same worksheet as sheetName. One cell only — a range such as \"A1:B2\" is refused."
+          "minLength": 1,
+          "maxLength": 512
         }
       },
       "required": [
-        "fileMsId",
-        "sheetName",
-        "cellAddress"
+        "fileMsId"
       ],
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },

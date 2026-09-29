@@ -92,7 +92,7 @@ export const FoldStatusSchema = z
 /** One paragraph or shape change (ENG-5397). Passthrough: the served row
  * carries more fields than this client renders, and an added one must not
  * fail the parse. */
-const DocumentChangeRowSchema = z
+export const DocumentChangeRowSchema = z
   .object({
     eventId: z.string(),
     kind: z.string(),
@@ -162,3 +162,29 @@ export const WorkbookManifestSchema = z
  * is a workbook the Sheets API will not open, and takes the manifest route.
  */
 export const GoogleSheetNamesSchema = z.array(z.string());
+
+/**
+ * ENG-6433 — `GET /file-versions/file/:fileMsId/cell-history?anchorId=…`, the
+ * history of ONE paragraph or shape (backend ENG-6432,
+ * `document-anchor-history.service.ts!DocumentAnchorHistoryResponse`). Same
+ * route as a cell's history; the anchor arm answers with this envelope, in
+ * either `format`.
+ *
+ * `anchorLane` is REQUIRED: a deck answer covers one capture lane's key space,
+ * and a drifted field would let one lane's rows read as the shape's whole
+ * history.
+ */
+export const DocumentAnchorHistorySchema = z
+  .object({
+    documentType: z.string(),
+    anchorId: z.string(),
+    anchorLane: z.enum(['task_pane', 'file_bytes', 'both']),
+    anchorIdentity: z.enum(['provider_id', 'positional']).nullable(),
+    history: z.array(
+      DocumentChangeRowSchema.extend({
+        boundVersionId: z.number().int().nullable().default(null),
+      }),
+    ),
+    truncated: z.boolean(),
+  })
+  .passthrough();

@@ -15,7 +15,57 @@ import {
   isUnknownSheet,
   unknownSheetToolResult,
 } from '../sheet-catalogue.js';
+import { readAnchorHistory } from './anchor-history-read.js';
 import { parseCellAddress, sheetNamesAgree } from './cell-address.js';
+
+/**
+ * ENG-6433 — EXACTLY ONE address: a sheet + cell, or an anchorId.
+ *
+ * A flat object with a refinement rather than a top-level union: the refinement
+ * enforces the same rule at call time, and the advertised JSON Schema stays a
+ * plain `type: object` with properties, which every MCP host renders — a
+ * root-level `anyOf` is refused by some function-calling hosts.
+ */
+export const getCellHistoryInputSchema = z
+  .object({
+    fileMsId: z.string().describe('Platform ID of the enrolled file'),
+    sheetName: z
+      .string()
+      .optional()
+      .describe('Name of the worksheet. Send with cellAddress, never with anchorId.'),
+    cellAddress: z
+      .string()
+      .optional()
+      .describe(
+        'Cell address, bare or sheet-qualified (e.g. "A1", "B12", ' +
+          '"Sheet1!C3", "\'My Sheet\'!C3"). A sheet prefix must name the ' +
+          'same worksheet as sheetName. One cell only — a range such as ' +
+          '"A1:B2" is refused. Send with sheetName, never with anchorId.',
+      ),
+    anchorId: z
+      .string()
+      .min(1)
+      .max(512)
+      .optional()
+      .describe(
+        'One paragraph or shape in a document: the `anchorProviderId` from ' +
+          'get_unattributed_changes. Send alone, without sheetName or ' +
+          'cellAddress.',
+      ),
+  })
+  .superRefine((args, ctx) => {
+    const cellParts = [args.sheetName, args.cellAddress].filter(
+      (v) => v !== undefined,
+    ).length;
+    const byAnchor = args.anchorId !== undefined;
+    if (byAnchor ? cellParts === 0 : cellParts === 2) return;
+    ctx.addIssue({
+      code: 'custom',
+      message: byAnchor
+        ? 'Send anchorId alone, without sheetName or cellAddress.'
+        : 'Send sheetName and cellAddress together, or anchorId alone.',
+    });
+  });
 
 export function registerGetCellHistoryTool(
   server: McpServer,
@@ -26,8 +76,8 @@ export function registerGetCellHistoryTool(
     {
       title: 'Get Cell History',
       description:
-        'Get the change history for a specific cell in an enrolled file. ' +
-        'Shows how the cell value changed across versions. ' +
+        'Get the change history for a specific cell, paragraph or shape in ' +
+        'an enrolled file. Shows how its value changed across versions. ' +
         // Plan 02 ruling 5 — the contract belongs in the description, not only
         // in the payload: a model deciding "nothing changed" reads the tool
         // doc, not the error envelope.
@@ -47,11 +97,16 @@ export function registerGetCellHistoryTool(
         // reads as a licence to assert the negative, and it was wrong on two
         // counts at once: the tool addresses only cells, and a file with no
         // cells answered `[]` with HTTP 200. State what the tool KNOWS.
-        'This tool addresses CELLS in a spreadsheet, and only cells. A file ' +
-        'whose changes are not recorded against a sheet and a cell — a Word ' +
-        'document, a PowerPoint deck — answers CELL_HISTORY_UNAVAILABLE, ' +
-        'never an empty list; that file may hold a long change history this ' +
-        'tool has no way to address. ' +
+        // ENG-6433 — documents are now addressable, by the element's id.
+        'Send EXACTLY ONE address: `sheetName` + `cellAddress` for a cell in ' +
+        'a spreadsheet, OR `anchorId` for one paragraph or shape in a text ' +
+        'document or slide deck (a Word document, a PowerPoint deck). The ' +
+        'anchorId is the `anchorProviderId` a document change carries in ' +
+        'get_unattributed_changes (shown in parentheses after each change). ' +
+        'A cell address on a document, or an anchorId on a spreadsheet, ' +
+        'answers CELL_HISTORY_UNAVAILABLE, never an empty list. For a deck, ' +
+        'the answer covers the changes recorded under that one id and says ' +
+        'so when it is not the whole history of the shape. ' +
         // ENG-4347 — the third refusal, and the reason the sentence below can
         // now be trusted: an empty answer used to be reachable for a sheet the
         // workbook does not have.
@@ -66,24 +121,22 @@ export function registerGetCellHistoryTool(
         'about ONE CELL on a sheet that exists: no change to that cell is ' +
         'recorded. It says nothing about the rest of the file, and it is ' +
         'never grounds for saying the file is unchanged.',
-      inputSchema: z.object({
-        fileMsId: z.string().describe('Platform ID of the enrolled file'),
-        sheetName: z.string().describe('Name of the worksheet'),
-        cellAddress: z
-          .string()
-          .describe(
-            'Cell address, bare or sheet-qualified (e.g. "A1", "B12", ' +
-              '"Sheet1!C3", "\'My Sheet\'!C3"). A sheet prefix must name the ' +
-              'same worksheet as sheetName. One cell only — a range such as ' +
-              '"A1:B2" is refused.',
-          ),
-      }),
+      inputSchema: getCellHistoryInputSchema,
       annotations: {
         readOnlyHint: true,
         openWorldHint: false,
       },
     },
-    async ({ fileMsId, sheetName, cellAddress }) => {
+    async ({ fileMsId, sheetName, cellAddress, anchorId }) => {
+      // ENG-6433 — the document arm. The schema admits exactly one address
+      // form, so an anchorId here arrives with no sheet and no cell.
+      if (anchorId !== undefined) {
+        return readAnchorHistory(api, fileMsId, anchorId);
+      }
+      if (sheetName === undefined || cellAddress === undefined) {
+        // Unreachable behind the schema's refinement; never guess an address.
+        throw new Error('get_cell_history needs sheetName + cellAddress or anchorId');
+      }
       // ENG-4340 — parse BEFORE any API call. A malformed or contradictory
       // address is a refusal naming the address; it must never reach the
       // "No history found" branch, which asserts the cell has no recorded

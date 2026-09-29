@@ -55,6 +55,18 @@ describe('MCP stdio protocol e2e', () => {
         expect(listFilesResult.error).toBeUndefined();
         expect(JSON.stringify(listFilesResult.result)).toContain('Budget.xlsx');
 
+        // ENG-6433 — one docx paragraph's history over stdio, by anchor id.
+        const anchorResult = await client.callTool('get_cell_history', {
+          fileMsId: 'file-docx',
+          anchorId: 'w14-paraId-7A3B',
+        });
+        expect(anchorResult.error).toBeUndefined();
+        const anchorText = JSON.stringify(anchorResult.result);
+        expect(anchorText).toContain('w14-paraId-7A3B');
+        expect(anchorText).toContain('2 change(s)');
+        expect(anchorText).toContain('Net 15 days');
+        expect(anchorText).toContain('Net 60 days');
+
         const addCommentResult = await client.callTool('add_comment', {
           fileMsId: 'file-1',
           message: 'hello from e2e',
