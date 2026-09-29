@@ -192,8 +192,16 @@ export interface DriveSearchResponse {
  * return names in bulk at all.
  */
 export interface DriveInventoryItem {
+  /** The provider's own file id — a Graph driveItem id or a Drive file id. */
   msId: string;
-  driveMsId: string;
+  /** The Graph drive id; `null` for a Google row, which has none (ENG-6409). */
+  driveMsId: string | null;
+  /**
+   * ENG-6410 — which provider disclosed the file. Optional because a backend
+   * that predates the Google lane sends none, and it only ever held Microsoft
+   * rows, so absent means Microsoft there and nowhere else.
+   */
+  provider?: FileProvider;
   name: string;
   webUrl: string | null;
   /** Containing folder, when the observation carried one. */
@@ -250,6 +258,18 @@ export interface DriveInventoryFreshness {
    * `list-unenrolled-files.ts`.
    */
   inapplicableReason?: string | null;
+  /**
+   * ENG-6410 — each provider lane on its own (ENG-6409). The top-level fields
+   * above describe only the lanes that SERVE the caller, combined. Absent on a
+   * backend that predates the Google lane, which served Microsoft alone.
+   */
+  providers?: DriveInventoryLaneFreshness[];
+}
+
+/** One provider lane's freshness, as `freshness.providers` reports it. */
+export interface DriveInventoryLaneFreshness
+  extends Omit<DriveInventoryFreshness, 'providers'> {
+  provider: FileProvider;
 }
 
 /** Which slice of the inventory was asked for. */
