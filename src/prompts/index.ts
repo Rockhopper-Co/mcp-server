@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { assertChangeHistoryComplete } from '../not-ready.js';
 import { renderMentions } from '../mentions.js';
+import { commentLocation } from '../comment-location.js';
 import { formatVersion } from '../version-format.js';
 import { displayUserName } from '../user-display-name.js';
 
@@ -143,7 +144,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
         ? unresolved
             .map((c) => {
               const author = c.authorName || c.authorEmail || 'Unknown';
-              const cell = c.cellReference ? ` [${c.cellReference}]` : '';
+              const cell = commentLocation(c);
               const replyCount = c.replies?.length || 0;
               return (
                 `- **${author}**${cell}: "${renderMentions(c.message)}" (${c.createdAt})` +

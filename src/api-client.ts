@@ -6,6 +6,7 @@ import type {
   CellHistoryEntry,
   DocumentChangesResponse,
   EnrolledFile,
+  CommentAnchorInput,
   FileChat,
   FileVersion,
   FoldStatus,
@@ -933,6 +934,9 @@ export class ApiClient {
     message: string;
     cellReference?: string;
     versionInternalId: number;
+    /** ENG-6435 — omitted keys drop out of JSON.stringify, so a request
+     * without an anchor is byte-identical to the one sent before. */
+    anchor?: CommentAnchorInput;
   }): Promise<FileChat> {
     return this.request<FileChat>('/file-chat', {
       method: 'POST',

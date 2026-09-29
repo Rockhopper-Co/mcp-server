@@ -25,6 +25,41 @@
         "cellReference": {
           "description": "Cell reference (e.g. \"Sheet1!A1\")",
           "type": "string"
+        },
+        "anchor": {
+          "description": "Pins the comment to a paragraph, slide or shape of a Word or PowerPoint file. Spreadsheets use cellReference instead.",
+          "type": "object",
+          "properties": {
+            "anchorKind": {
+              "type": "string",
+              "enum": [
+                "block",
+                "run",
+                "section",
+                "table",
+                "image",
+                "document",
+                "slide",
+                "shape"
+              ],
+              "description": "block for a Word paragraph; slide or shape for PowerPoint. Use the row kind get_unattributed_changes returned."
+            },
+            "providerAnchorId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The anchorProviderId from a get_unattributed_changes row, echoed verbatim. Never build or edit one."
+            },
+            "observedVersionInternalId": {
+              "description": "Internal ID of the committed file version you read this paragraph, slide or shape in. Recorded once and never changed, so send it whenever you know it.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "anchorKind",
+            "providerAnchorId"
+          ]
         }
       },
       "required": [
