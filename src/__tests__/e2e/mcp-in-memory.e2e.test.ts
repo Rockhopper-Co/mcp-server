@@ -67,9 +67,11 @@ describe('MCP in-memory protocol e2e', () => {
         'add_comment',
         'approve_review',
         'cancel_review',
+        'connect_google',
         'connect_microsoft',
         'create_review_request',
         'create_version',
+        'disconnect_google',
         'disconnect_microsoft',
         'discard_changes',
         'enroll_file',
@@ -78,6 +80,7 @@ describe('MCP in-memory protocol e2e', () => {
         'get_file_versions',
         'get_reviews',
         'get_unattributed_changes',
+        'google_link_status',
         'list_files',
         'list_unenrolled_files',
         'microsoft_link_status',
@@ -146,11 +149,14 @@ describe('MCP in-memory protocol e2e', () => {
     };
 
     // Every tool a read-only token is given claims to change nothing — with
-    // ONE exception, and it is deliberate: `disconnect_microsoft` rides the
+    // ONE exception per provider, and it is deliberate: `disconnect_microsoft` (and
+    // `disconnect_google`) rides the
     // read floor because it is an account action, and it is destructive.
     for (const name of [
       'connect_microsoft',
       'microsoft_link_status',
+      'connect_google',
+      'google_link_status',
       'get_cell_history',
       'get_file_comments',
       'get_file_versions',
@@ -170,6 +176,7 @@ describe('MCP in-memory protocol e2e', () => {
       'discard_changes',
       'cancel_review',
       'disconnect_microsoft',
+      'disconnect_google',
     ]) {
       expect(annotationsFor(name).destructiveHint, name).toBe(true);
       expect(annotationsFor(name).readOnlyHint, name).toBe(false);
@@ -1069,6 +1076,9 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     'connect_microsoft',
     'disconnect_microsoft',
     'microsoft_link_status',
+    'connect_google',
+    'disconnect_google',
+    'google_link_status',
     'get_cell_history',
     'get_file_comments',
     'get_file_versions',
@@ -1109,21 +1119,21 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     }
   }
 
-  it('shows 22 tools to a read-write token', async () => {
+  it('shows 25 tools to a read-write token', async () => {
     const names = await toolNamesForScope('read-write');
-    expect(names).toHaveLength(22);
+    expect(names).toHaveLength(25);
     expect(names).toContain('add_comment');
   });
 
-  it('shows 12 tools to a read-only token', async () => {
+  it('shows 15 tools to a read-only token', async () => {
     expect(await toolNamesForScope('read-only')).toEqual(READ_TOOLS);
   });
 
-  it('shows 12 tools for an unrecognised scope', async () => {
+  it('shows 15 tools for an unrecognised scope', async () => {
     expect(await toolNamesForScope('some-future-scope')).toEqual(READ_TOOLS);
   });
 
-  it('shows 12 tools when the scope is unknown', async () => {
+  it('shows 15 tools when the scope is unknown', async () => {
     expect(await toolNamesForScope()).toEqual(READ_TOOLS);
   });
 });
@@ -1334,13 +1344,14 @@ describe('ENG-1647 replayed: find, confirm, enroll (ENG-2204)', () => {
     expect(text).toContain('Do not compose a sign-in link yourself');
   });
 
-  it('hands a Google caller the Google remedy, not a Microsoft link (ENG-6412)', async () => {
+  it('hands a Google caller the Google connect link, not a Microsoft one (ENG-6412, ENG-6414)', async () => {
     const text = await call('search_drive_files', {
       query: 'unlinked',
       provider: 'google',
     });
     expect(text).toContain('"outcome":"google_not_connected"');
-    expect(text).toContain('Connect Google Drive in Settings');
+    expect(text).toContain('accounts.google.com');
+    expect(text).toContain('google_link_status');
     expect(text).not.toContain('login.microsoftonline.com');
     expect(text).not.toContain('microsoft_link_status');
   });

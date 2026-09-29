@@ -1,5 +1,19 @@
 [
   {
+    "name": "connect_google",
+    "title": "Connect Google Account",
+    "description": "Start connecting the user's Google account so Rockhopper can search and read their Google Drive files as them. Returns a Google sign-in link the USER must open themselves. Call `google_link_status` afterwards to confirm they finished. Use this when a file search reports that no Google account is connected.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": true,
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "connect_microsoft",
     "title": "Connect Microsoft Account",
     "description": "Start connecting the user's Microsoft account so Rockhopper can search their OneDrive and SharePoint files as them. Returns a Microsoft sign-in link the USER must open themselves. Call `microsoft_link_status` afterwards to confirm they finished. Use this when a file search reports that no Microsoft account is connected.",
@@ -80,6 +94,22 @@
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "disconnect_google",
+    "title": "Disconnect Google Account",
+    "description": "Remove the stored Google connection, deleting the credential Rockhopper holds for this user. Requires an interactive login; a personal access token cannot sever a connection it did not create.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
       "readOnlyHint": false
     }
   },
@@ -221,6 +251,20 @@
       "required": [
         "fileMsId"
       ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "google_link_status",
+    "title": "Google Connection Status",
+    "description": "Check whether the user has connected a Google account for Google Drive, and which account it is. Never returns any token.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {

@@ -320,19 +320,19 @@ export function isNoDelegatedToken(error: unknown): boolean {
 }
 
 /**
- * ENG-6412 — the Google lane's "not connected" answer: the BACKEND's remedy
- * when it sent one, a fallback naming the same step when it did not. Never a
- * link — the tool does not compose sign-in links for either provider.
+ * ENG-6412 / ENG-6414 — the Google lane's "not connected" answer when no
+ * sign-in link could be minted: the BACKEND's remedy when it sent one, a
+ * fallback when it did not, then `connect_google` as the step to take. Never
+ * a link — the tool does not compose sign-in links for either provider.
  */
 export function googleNotConnectedText(error: unknown): string {
   const remedy =
     error instanceof RockhopperApiError && error.serverMessage
       ? error.serverMessage
-      : 'Rockhopper has no connection to this user\'s Google account. ' +
-        'Connect Google Drive in Rockhopper Settings to search it.';
+      : "Rockhopper has no connection to this user's Google account.";
   return (
-    `${remedy} Ask the user to do that, then search again. ` +
-    'Do not compose a sign-in link yourself.'
+    `${remedy} Ask the user to run \`connect_google\` to connect Google ` +
+    'Drive, then search again. Do not compose a sign-in link yourself.'
   );
 }
 

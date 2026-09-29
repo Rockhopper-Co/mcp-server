@@ -56,6 +56,18 @@ export interface MicrosoftConnectHandoff {
   expiresAt: string;
 }
 
+/** ENG-6414 — the same handoff, named for either provider. */
+export type AccountConnectHandoff = MicrosoftConnectHandoff;
+
+/**
+ * ENG-6414 — `GET /auth/google/link`. `linked` means a grant is ON FILE; the
+ * backend returns no token material and no scope list.
+ */
+export interface GoogleLinkStatus {
+  linked: boolean;
+  googleAccountLabel: string | null;
+}
+
 /**
  * ENG-2541 — THREE states, never a boolean.
  *

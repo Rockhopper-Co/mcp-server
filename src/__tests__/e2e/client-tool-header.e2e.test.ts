@@ -49,6 +49,7 @@ const WRITE_TOOL_ARGS: Record<string, Record<string, unknown>> = {
     share_with: 'me',
   },
   disconnect_microsoft: {},
+  disconnect_google: {},
 };
 
 interface SeenRequest {
