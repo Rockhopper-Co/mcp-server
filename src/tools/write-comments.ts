@@ -2,6 +2,60 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { renderMentions } from '../mentions.js';
+import {
+  commentLocation,
+  isTaskPanePresentationId,
+} from '../comment-location.js';
+
+/**
+ * ENG-6435 — the kinds backend `comment-anchor.ts!COMMENT_ANCHOR_KINDS`
+ * admits for a comment: Word's text units, then PowerPoint's slide and shape.
+ * A spreadsheet admits none and keeps `cellReference`.
+ */
+const COMMENT_ANCHOR_KINDS = [
+  'block',
+  'run',
+  'section',
+  'table',
+  'image',
+  'document',
+  'slide',
+  'shape',
+] as const;
+
+// ENG-5892: `.min(1)`, never `.positive()` — the latter renders a numeric
+// exclusiveMinimum, which Copilot Studio crashes on.
+const commentAnchorSchema = z
+  .object({
+    anchorKind: z
+      .enum(COMMENT_ANCHOR_KINDS)
+      .describe(
+        'block for a Word paragraph; slide or shape for PowerPoint. ' +
+          'Use the row kind get_unattributed_changes returned.',
+      ),
+    providerAnchorId: z
+      .string()
+      .min(1)
+      .describe(
+        'The anchorProviderId from a get_unattributed_changes row, echoed ' +
+          'verbatim. Never build or edit one.',
+      ),
+    observedVersionInternalId: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe(
+        'Internal ID of the committed file version you read this paragraph, ' +
+          'slide or shape in. Recorded once and never changed, so send it ' +
+          'whenever you know it.',
+      ),
+  })
+  .optional()
+  .describe(
+    'Pins the comment to a paragraph, slide or shape of a Word or PowerPoint ' +
+      'file. Spreadsheets use cellReference instead.',
+  );
 
 export function registerWriteCommentTools(
   server: McpServer,
@@ -30,6 +84,7 @@ export function registerWriteCommentTools(
           .string()
           .optional()
           .describe('Cell reference (e.g. "Sheet1!A1")'),
+        anchor: commentAnchorSchema,
       }),
       annotations: {
         readOnlyHint: false,
@@ -37,13 +92,28 @@ export function registerWriteCommentTools(
         idempotentHint: false,
       },
     },
-    async ({ fileMsId, message, cellReference, versionInternalId }) => {
+    async ({ fileMsId, message, cellReference, versionInternalId, anchor }) => {
+      if (anchor && isTaskPanePresentationId(anchor.providerAnchorId)) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text:
+                `Failed to add comment: "${anchor.providerAnchorId}" is not a ` +
+                'slide or shape id a comment can be pinned to. Add the comment ' +
+                'without an anchor instead.',
+            },
+          ],
+          isError: true,
+        };
+      }
       try {
         const comment = await api.createComment({
           fileMsId,
           message,
           cellReference,
           versionInternalId,
+          ...(anchor ? { anchor } : {}),
         });
 
         return {
@@ -55,7 +125,7 @@ export function registerWriteCommentTools(
                 `"${renderMentions(comment.message)}"` +
                 (comment.cellReference
                   ? ` at ${comment.cellReference}`
-                  : ''),
+                  : commentLocation(comment)),
             },
           ],
         };

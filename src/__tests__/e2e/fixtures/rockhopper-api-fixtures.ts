@@ -1,4 +1,8 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
+import {
+  handleAnchoredCommentGet,
+  handleAnchoredCommentPost,
+} from './anchored-comments-fixture.js';
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -636,6 +640,8 @@ export function handleMockRockhopperRequest(
     }
 
     // --- File Chat (Comments) ---
+    if (method === 'GET' && handleAnchoredCommentGet(res, path)) return;
+
     if (method === 'GET' && path === '/file-chat/empty-file') {
       sendJson(res, 200, []);
       return;
@@ -658,6 +664,7 @@ export function handleMockRockhopperRequest(
         message?: string;
         cellReference?: string;
       };
+      if (handleAnchoredCommentPost(res, parsed)) return;
       if (parsed.fileMsId === 'fail-file') {
         sendJson(res, 500, { message: 'boom' });
         return;

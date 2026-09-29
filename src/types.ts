@@ -478,6 +478,36 @@ export interface FileChat {
   editedOn: string | null;
   replies?: FileChat[];
   byUser?: UserSummary | null;
+  /**
+   * ENG-6435 — where a paragraph, slide or shape comment is pinned. Absent on
+   * spreadsheet comments, which keep `cellReference`. Mirrors backend
+   * `get-file-chat.dto.ts!ResolvedCommentAnchorDto`.
+   */
+  anchor?: ResolvedCommentAnchor | null;
+}
+
+/** ENG-6435 — backend `ResolvedCommentAnchorDto`, as GET /file-chat returns it. */
+export interface ResolvedCommentAnchor {
+  anchorStableId: string;
+  locationKind: string | null;
+  anchorKind: string;
+  providerAnchorId: string | null;
+  containerStableId: string | null;
+  subLocator: Record<string, unknown> | null;
+  observedVersionInternalId: number | null;
+  presentInLatestCommitted: boolean | null;
+  latestCommittedVersionId: number | null;
+}
+
+/**
+ * ENG-6435 — backend `comment-anchor.dto.ts!CommentAnchorDto`, the anchor a
+ * client sends on POST /file-chat. Same field set the web app's
+ * `CommentOnParagraphButton` sends.
+ */
+export interface CommentAnchorInput {
+  anchorKind: string;
+  providerAnchorId: string;
+  observedVersionInternalId?: number;
 }
 
 export interface ReviewRequest {
