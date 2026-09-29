@@ -262,6 +262,16 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    // --- Google Drive link (ENG-6414) --- same rule: server-built URL, no body.
+    if (method === 'POST' && path === '/auth/google/connect') {
+      sendJson(res, 201, {
+        authorizeUrl:
+          'https://accounts.google.com/o/oauth2/v2/auth?client_id=real-google-client',
+        expiresAt: '2026-09-28T21:00:00.000Z',
+      });
+      return;
+    }
+
     // --- Drive discovery (ENG-2203 / ENG-2204) ---
     // Keyed on the search terms, so one mock covers every outcome and the e2e
     // spec reads as the conversation it is testing. `unlinked` selects the

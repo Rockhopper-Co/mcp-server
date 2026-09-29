@@ -12,6 +12,11 @@
 import type { ElicitRequestFormParams } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import {
+  MICROSOFT_LINK,
+  statusToolName,
+  type AccountLinkProvider,
+} from '../account-link-providers.js';
+import {
   DRIVE_SEARCH_SESSION_BUDGET,
   type Candidate,
   type DriveSearchOutcome,
@@ -495,14 +500,25 @@ export const RECENT_EMPTY_TEXT =
   'other storage by setting `provider`, or ask them to paste the file\'s ' +
   'link and call `enroll_file` with it.';
 
-/** Told to the model when the user has no delegated Microsoft grant. */
-export function connectPrompt(authorizeUrl: string, expiresAt: string): string {
+/**
+ * Told to the model when the user has no delegated grant for `link`'s
+ * provider (Microsoft unless named — ENG-6414 added Google). The Microsoft
+ * wording is unchanged.
+ */
+export function connectPrompt(
+  authorizeUrl: string,
+  expiresAt: string,
+  link: AccountLinkProvider = MICROSOFT_LINK,
+): string {
   return (
-    'Rockhopper cannot look at this user\'s Microsoft files until they ' +
-    'connect their Microsoft account. Give them this link to open ' +
+    `Rockhopper cannot look at this user's ${link.label} files until they ` +
+    `connect their ${link.label} account. Give them this link to open ` +
     `themselves — it expires at ${expiresAt}:\n\n${authorizeUrl}\n\n` +
-    'Rockhopper asks only to READ their files. Once they have approved, call ' +
-    '`microsoft_link_status` to confirm, then search again. Do not compose a ' +
-    'sign-in link yourself; this one is the only valid one.'
+    (link.readOnlyConsent
+      ? 'Rockhopper asks only to READ their files. '
+      : '') +
+    `Once they have approved, call \`${statusToolName(link)}\` to confirm, ` +
+    'then search again. Do not compose a sign-in link yourself; this one is ' +
+    'the only valid one.'
   );
 }

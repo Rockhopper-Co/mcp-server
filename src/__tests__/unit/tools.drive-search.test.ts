@@ -359,30 +359,53 @@ describe('search_drive_files — no connected Google account', () => {
       GOOGLE_REMEDY,
     );
 
-  it('answers google_not_connected with the backend remedy and no Microsoft link', async () => {
+  // ENG-6414 — the remedy is now `connect_google`'s link, built by the backend,
+  // exactly as the Microsoft lane hands back `connect_microsoft`'s.
+  it('answers google_not_connected with the backend-built Google link', async () => {
     const api = createMockApiClient();
     api.searchDriveFiles.mockRejectedValue(googleRefusal());
     const result = await handlerFor(api)({ query: 'Becklar', provider: 'google' });
     const text = result.content[0].text;
 
     expect(outcomeOf(result)).toBe('google_not_connected');
+    expect(api.beginGoogleConnect).toHaveBeenCalledTimes(1);
     expect(api.beginMicrosoftConnect).not.toHaveBeenCalled();
-    expect(text).toContain(GOOGLE_REMEDY);
+    expect(text).toContain(
+      'https://accounts.google.com/o/oauth2/v2/auth?client_id=real-google-client',
+    );
+    expect(text).toContain('`google_link_status`');
+    expect(text).toContain('Do not compose a sign-in link yourself');
+    expect(text).not.toContain('Settings');
     expect(text).not.toContain('login.microsoftonline.com');
     expect(text).not.toContain('microsoft_link_status');
+    expect(text).not.toContain('Microsoft');
+  });
+
+  it('names connect_google, with the backend remedy, when no link can be minted', async () => {
+    const api = createMockApiClient();
+    api.searchDriveFiles.mockRejectedValue(googleRefusal());
+    api.beginGoogleConnect.mockRejectedValue(new Error('down'));
+    const result = await handlerFor(api)({ query: 'Becklar', provider: 'google' });
+    const text = result.content[0].text;
+
+    expect(outcomeOf(result)).toBe('google_not_connected');
+    expect(result.isError).toBe(true);
+    expect(text).toContain(GOOGLE_REMEDY);
+    expect(text).toContain('`connect_google`');
     expect(text).not.toContain('connect_microsoft');
   });
 
-  it('still names the Google remedy when the backend sent no message', async () => {
+  it('still names connect_google when the backend sent no message', async () => {
     const api = createMockApiClient();
     api.searchDriveFiles.mockRejectedValue(
       new RockhopperApiError(403, 'no token', 'NO_DELEGATED_TOKEN'),
     );
+    api.beginGoogleConnect.mockRejectedValue(new Error('down'));
     const result = await handlerFor(api)({ query: 'Becklar', provider: 'google' });
 
     expect(outcomeOf(result)).toBe('google_not_connected');
     expect(api.beginMicrosoftConnect).not.toHaveBeenCalled();
-    expect(result.content[0].text).toContain('Google Drive');
+    expect(result.content[0].text).toContain('`connect_google`');
     expect(result.content[0].text).not.toContain('login.microsoftonline.com');
   });
 

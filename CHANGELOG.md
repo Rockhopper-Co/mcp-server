@@ -6,6 +6,16 @@ All notable changes to this project are documented here. Follows
 
 ## [Unreleased]
 
+### Added
+
+- **`connect_google`, `google_link_status` and `disconnect_google`** (ENG-6414).
+  The Google Drive counterparts of the three Microsoft account-link tools,
+  registered by the same code on the same read floor. `connect_google` relays
+  the sign-in link the backend builds (`POST /auth/google/connect`) and takes no
+  input. A Google `search_drive_files` caller with no connected account now gets
+  that link instead of being sent to Settings. `disconnect_microsoft` and
+  `disconnect_google` now say plainly when a personal access token is refused.
+
 ### Changed
 
 - **Patch numbers are now assigned by the release pipeline, not by hand.** A

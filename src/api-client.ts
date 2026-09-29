@@ -19,6 +19,8 @@ import type {
   UserSummary,
   MicrosoftConnectHandoff,
   MicrosoftLinkStatus,
+  GoogleLinkStatus,
+  AccountConnectHandoff,
   EnrollmentInfo,
   QueuedEnrollment,
   ResolvedFileUrl,
@@ -561,6 +563,29 @@ export class ApiClient {
   async unlinkMicrosoft(): Promise<{ linked: boolean; removed: boolean }> {
     return this.request<{ linked: boolean; removed: boolean }>(
       '/auth/microsoft/link',
+      { method: 'DELETE' },
+    );
+  }
+
+  // --- Google Drive link (ENG-6414) ---
+  // Same shape as the Microsoft three above, and the same rule: the backend
+  // builds the sign-in URL (`POST /auth/google/connect`, ENG-6411); this
+  // client can send nothing that shapes it.
+
+  async beginGoogleConnect(): Promise<AccountConnectHandoff> {
+    return this.request<AccountConnectHandoff>('/auth/google/connect', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async getGoogleLink(): Promise<GoogleLinkStatus> {
+    return this.request<GoogleLinkStatus>('/auth/google/link');
+  }
+
+  async unlinkGoogle(): Promise<{ linked: boolean; removed: boolean }> {
+    return this.request<{ linked: boolean; removed: boolean }>(
+      '/auth/google/link',
       { method: 'DELETE' },
     );
   }
