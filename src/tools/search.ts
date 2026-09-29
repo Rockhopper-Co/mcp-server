@@ -1,22 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
-import {
-  assertChangeHistoryComplete,
-  assertEnrollmentComplete,
-  isNotReady,
-  notReadyToolResult,
-} from '../not-ready.js';
-import {
-  changeModelForFileType,
-  documentChangesUnavailableToolResult,
-} from '../document-changes.js';
-import {
-  assertSheetExists,
-  isUnknownSheet,
-  unknownSheetToolResult,
-} from '../sheet-catalogue.js';
-import { readDocumentChanges } from './document-changes-read.js';
+import { isNotReady, notReadyToolResult } from '../not-ready.js';
+import { formatDocumentChanges } from '../document-changes.js';
+import { fileChangesUnavailableText, readFileChanges } from '../file-changes.js';
+import { isUnknownSheet, unknownSheetToolResult } from '../sheet-catalogue.js';
 
 export function registerSearchTool(
   server: McpServer,
@@ -188,65 +176,34 @@ export function registerSearchTool(
     },
     async ({ fileMsId, sheetName, cursor }) => {
       try {
-        // ENG-5397 — WHICH CHANGE MODEL, before which reader. The two lanes
-        // below are spreadsheet-only: `unattributed_change` requires a
-        // `sheetName` and the sheet route also filters `changeType = 'cell'`,
-        // so a Word document or a deck returned `[]` from them by
-        // construction and the tool printed "No unattributed changes found".
-        // Routing on the file's own type is what makes an absence mean
-        // something.
-        const file = await api.getEnrolledFile(fileMsId);
-        const model = changeModelForFileType(file.fileType);
+        // ENG-5397 — WHICH CHANGE MODEL, before which reader: the spreadsheet
+        // lanes cannot hold a document row, so a `.docx` read `[]` from them by
+        // construction. ENG-6431 — that dispatch (plus the fold, enrolment and
+        // sheet-existence gates) lives in `readFileChanges`, shared with the
+        // `…/changes` resource and the prompts; this tool only formats.
+        const read = await readFileChanges(api, fileMsId, { sheetName, cursor });
 
-        if (model === null) {
-          return documentChangesUnavailableToolResult({
-            reason: 'unknown_file_type',
-            fileMsId,
-            fileName: file.name,
-          });
+        if (read.kind === 'unavailable') {
+          return {
+            content: [{ type: 'text', text: fileChangesUnavailableText(read) }],
+            isError: true,
+          };
         }
 
-        if (model !== 'spreadsheet') {
-          return await readDocumentChanges(api, {
-            fileMsId,
-            sheetName,
-            fileType: file.fileType,
-            fileName: file.name,
-          });
+        if (read.kind === 'document') {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: formatDocumentChanges(read.response, read.file.name),
+              },
+            ],
+          };
         }
 
-        // Plan 02 ruling 5 (STRICT): gate BOTH modes. The commit-diff fold
-        // retracts and rewrites the uncommitted window, so a pending fold
-        // means this list is mid-rewrite in either shape.
-        await assertChangeHistoryComplete(api, fileMsId);
-
-        if (sheetName) {
+        if (read.kind === 'spreadsheet_sheet') {
           // Sheet-filtered mode: bounded by sheet size, no pagination needed.
-          // Audit (2026-05-23) measured: `Summary` sheet on a 12 MB file
-          // returned 9 rows clean. This is the practical workaround when the
-          // caller already knows which sheet to drill into.
-          const changes = await api.getUnattributedChangesBySheet(
-            fileMsId,
-            sheetName,
-          );
-          // ENG-2824: an empty answer is the only ambiguous one, so it is the
-          // only one that pays for the version read. A file still being read
-          // for the first time has no versions and no parsed cells, and the
-          // fold probe above cannot see that state — enrolment enqueues no
-          // fold. See `assertEnrollmentComplete`.
-          if (changes.length === 0) {
-            assertEnrollmentComplete(
-              fileMsId,
-              await api.getFileVersions(fileMsId),
-            );
-            // ENG-4347 — and the same trade one ambiguity over: only an empty
-            // answer asserts something this tool has not checked. A row that
-            // came back names its own sheet, so a non-empty answer has already
-            // proved what this goes and asks. Enrolment is settled FIRST above
-            // because a file whose initial read has not landed has no
-            // catalogue either, and "still reading" is the truer answer.
-            await assertSheetExists(api, file, sheetName);
-          }
+          const { changes } = read;
           const body = formatChangeRows(changes);
           return {
             content: [
@@ -265,21 +222,9 @@ export function registerSearchTool(
         // 25k-token client limit (audit measured one file at 12.5 MB / 28k
         // rows on the unpaginated route — KI-097).
         const MAX_DISPLAYED = 200;
-        const page = await api.getUnattributedChangesPaginated(
-          fileMsId,
-          cursor,
-        );
+        const { page } = read;
 
         if (page.changes.length === 0) {
-          // ENG-2824 — same rule as the sheet mode above. `totalCount === 0`
-          // over a file whose initial read has not landed is a premature
-          // absence, not a fact about the workbook.
-          if (page.totalCount === 0) {
-            assertEnrollmentComplete(
-              fileMsId,
-              await api.getFileVersions(fileMsId),
-            );
-          }
           return {
             content: [
               {
