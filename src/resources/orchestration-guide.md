@@ -197,7 +197,7 @@ If you need to know which cloud a file is in, inspect `fileType`, or read `provi
 
 **Adding a file differs by cloud, and it is the one place it matters.** A Microsoft file can be added by link or by the `driveMsId` + `msId` pair `search_drive_files` returns. A Google file is added **by link only** — there is no id pair to pass. `search_drive_files` returns the link for a confirmed Google candidate; hand it to `enroll_file` as `url`.
 
-`search_drive_files` takes a `provider` argument (`microsoft` or `google`). Each needs its own connected account. Ask the user which cloud their file is in rather than guessing: searching the wrong one returns an empty list that reads exactly like "no such file".
+`search_drive_files` takes a `provider` argument (`microsoft` or `google`). Each needs its own connected account: `connect_microsoft` / `microsoft_link_status` / `disconnect_microsoft` for Microsoft, `connect_google` / `google_link_status` / `disconnect_google` for Google Drive. Ask the user which cloud their file is in rather than guessing: searching the wrong one returns an empty list that reads exactly like "no such file".
 
 ## 9. Error handling
 

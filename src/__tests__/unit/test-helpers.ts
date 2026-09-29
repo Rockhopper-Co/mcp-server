@@ -12,6 +12,9 @@ export interface MockApiClient {
   beginMicrosoftConnect: Mock;
   getMicrosoftLink: Mock;
   unlinkMicrosoft: Mock;
+  beginGoogleConnect: Mock;
+  getGoogleLink: Mock;
+  unlinkGoogle: Mock;
   listEnrolledFiles: Mock;
   listDriveInventory: Mock;
   searchDriveFiles: Mock;
@@ -24,6 +27,8 @@ export interface MockApiClient {
   getFileVersion: Mock;
   getFoldStatus: Mock;
   getCellHistory: Mock;
+  /** ENG-6433 — one document element's history, by anchorId. */
+  getAnchorHistory: Mock;
   getFileComments: Mock;
   getComment: Mock;
   createComment: Mock;
@@ -89,6 +94,16 @@ export function createMockApiClient(): MockApiClient {
       lastUsedAt: null,
     }),
     unlinkMicrosoft: vi.fn().mockResolvedValue({ linked: false, removed: true }),
+    // ENG-6414 — the Google Drive link, same three calls.
+    beginGoogleConnect: vi.fn().mockResolvedValue({
+      authorizeUrl:
+        'https://accounts.google.com/o/oauth2/v2/auth?client_id=real-google-client',
+      expiresAt: '2026-09-28T21:00:00.000Z',
+    }),
+    getGoogleLink: vi
+      .fn()
+      .mockResolvedValue({ linked: false, googleAccountLabel: null }),
+    unlinkGoogle: vi.fn().mockResolvedValue({ linked: false, removed: true }),
     listEnrolledFiles: vi.fn().mockResolvedValue([
       {
         internalId: 11,
@@ -243,6 +258,14 @@ export function createMockApiClient(): MockApiClient {
         changedAt: '2026-01-01T00:00:00Z',
       },
     ]),
+    getAnchorHistory: vi.fn().mockResolvedValue({
+      documentType: 'text',
+      anchorId: 'w14-paraId-7A3B',
+      anchorLane: 'both',
+      anchorIdentity: 'provider_id',
+      history: [],
+      truncated: false,
+    }),
     getFileComments: vi.fn().mockResolvedValue([
       {
         internalId: 201,

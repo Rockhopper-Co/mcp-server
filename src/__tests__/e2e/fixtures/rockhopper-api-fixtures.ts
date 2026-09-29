@@ -1,4 +1,8 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
+import {
+  handleAnchoredCommentGet,
+  handleAnchoredCommentPost,
+} from './anchored-comments-fixture.js';
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -258,6 +262,16 @@ export function handleMockRockhopperRequest(
         authorizeUrl:
           'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=real-client',
         expiresAt: '2026-08-15T21:00:00.000Z',
+      });
+      return;
+    }
+
+    // --- Google Drive link (ENG-6414) --- same rule: server-built URL, no body.
+    if (method === 'POST' && path === '/auth/google/connect') {
+      sendJson(res, 201, {
+        authorizeUrl:
+          'https://accounts.google.com/o/oauth2/v2/auth?client_id=real-google-client',
+        expiresAt: '2026-09-28T21:00:00.000Z',
       });
       return;
     }
@@ -546,6 +560,62 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    // ENG-6433 — the document arm of the same route (backend ENG-6432). A
+    // docx answers an `anchorId` with its own envelope, echoing the anchor and
+    // carrying that anchor's rows only; a cell address on it is refused by
+    // code, exactly as the backend's `assertCellAddressableFileType` does.
+    if (
+      method === 'GET' &&
+      path === '/file-versions/file/file-docx/cell-history'
+    ) {
+      const params = new URLSearchParams(queryString);
+      const anchorId = params.get('anchorId');
+      if (anchorId === null) {
+        sendJson(res, 422, {
+          statusCode: 422,
+          code: 'CELL_HISTORY_UNAVAILABLE',
+          message: 'Cell history is unavailable for this file',
+        });
+        return;
+      }
+      const rows =
+        anchorId === 'w14-paraId-7A3B'
+          ? [
+              ['48101', 'Net 15 days', 'Net 30 days', 101],
+              ['48122', 'Net 30 days', 'Net 60 days', null],
+            ].map(([eventId, from, to, bound]) => ({
+              eventId,
+              kind: 'block',
+              locationKind: 'block',
+              containerOrdinal: null,
+              containerProviderId: null,
+              anchorOrdinal: 4,
+              anchorProviderId: anchorId,
+              anchorLabel: null,
+              changeKind: 'block_edit',
+              actorKind: 'human',
+              actorPlatformId: 'u-1',
+              attributionConfidence: 'credential_bound',
+              editorPlatformId: 'u-1',
+              occurredAt: '2026-09-15T10:00:00.000Z',
+              firstObservedAt: '2026-09-15T10:00:01.000Z',
+              fromValue: { v: from },
+              toValue: { v: to },
+              truncated: false,
+              boundVersionId: bound,
+            }))
+          : [];
+      sendJson(res, 200, {
+        documentType: 'text',
+        anchorId,
+        anchorLane: 'both',
+        anchorIdentity: rows.length ? 'provider_id' : null,
+        history: rows,
+        truncated: false,
+      });
+      return;
+    }
+
     if (
       method === 'GET' &&
       path === '/file-versions/file/file-1/cell-history'
@@ -570,6 +640,8 @@ export function handleMockRockhopperRequest(
     }
 
     // --- File Chat (Comments) ---
+    if (method === 'GET' && handleAnchoredCommentGet(res, path)) return;
+
     if (method === 'GET' && path === '/file-chat/empty-file') {
       sendJson(res, 200, []);
       return;
@@ -592,6 +664,7 @@ export function handleMockRockhopperRequest(
         message?: string;
         cellReference?: string;
       };
+      if (handleAnchoredCommentPost(res, parsed)) return;
       if (parsed.fileMsId === 'fail-file') {
         sendJson(res, 500, { message: 'boom' });
         return;

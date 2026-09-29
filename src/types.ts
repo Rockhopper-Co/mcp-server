@@ -56,6 +56,18 @@ export interface MicrosoftConnectHandoff {
   expiresAt: string;
 }
 
+/** ENG-6414 — the same handoff, named for either provider. */
+export type AccountConnectHandoff = MicrosoftConnectHandoff;
+
+/**
+ * ENG-6414 — `GET /auth/google/link`. `linked` means a grant is ON FILE; the
+ * backend returns no token material and no scope list.
+ */
+export interface GoogleLinkStatus {
+  linked: boolean;
+  googleAccountLabel: string | null;
+}
+
 /**
  * ENG-2541 — THREE states, never a boolean.
  *
@@ -192,8 +204,16 @@ export interface DriveSearchResponse {
  * return names in bulk at all.
  */
 export interface DriveInventoryItem {
+  /** The provider's own file id — a Graph driveItem id or a Drive file id. */
   msId: string;
-  driveMsId: string;
+  /** The Graph drive id; `null` for a Google row, which has none (ENG-6409). */
+  driveMsId: string | null;
+  /**
+   * ENG-6410 — which provider disclosed the file. Optional because a backend
+   * that predates the Google lane sends none, and it only ever held Microsoft
+   * rows, so absent means Microsoft there and nowhere else.
+   */
+  provider?: FileProvider;
   name: string;
   webUrl: string | null;
   /** Containing folder, when the observation carried one. */
@@ -250,6 +270,18 @@ export interface DriveInventoryFreshness {
    * `list-unenrolled-files.ts`.
    */
   inapplicableReason?: string | null;
+  /**
+   * ENG-6410 — each provider lane on its own (ENG-6409). The top-level fields
+   * above describe only the lanes that SERVE the caller, combined. Absent on a
+   * backend that predates the Google lane, which served Microsoft alone.
+   */
+  providers?: DriveInventoryLaneFreshness[];
+}
+
+/** One provider lane's freshness, as `freshness.providers` reports it. */
+export interface DriveInventoryLaneFreshness
+  extends Omit<DriveInventoryFreshness, 'providers'> {
+  provider: FileProvider;
 }
 
 /** Which slice of the inventory was asked for. */
@@ -446,6 +478,36 @@ export interface FileChat {
   editedOn: string | null;
   replies?: FileChat[];
   byUser?: UserSummary | null;
+  /**
+   * ENG-6435 — where a paragraph, slide or shape comment is pinned. Absent on
+   * spreadsheet comments, which keep `cellReference`. Mirrors backend
+   * `get-file-chat.dto.ts!ResolvedCommentAnchorDto`.
+   */
+  anchor?: ResolvedCommentAnchor | null;
+}
+
+/** ENG-6435 — backend `ResolvedCommentAnchorDto`, as GET /file-chat returns it. */
+export interface ResolvedCommentAnchor {
+  anchorStableId: string;
+  locationKind: string | null;
+  anchorKind: string;
+  providerAnchorId: string | null;
+  containerStableId: string | null;
+  subLocator: Record<string, unknown> | null;
+  observedVersionInternalId: number | null;
+  presentInLatestCommitted: boolean | null;
+  latestCommittedVersionId: number | null;
+}
+
+/**
+ * ENG-6435 — backend `comment-anchor.dto.ts!CommentAnchorDto`, the anchor a
+ * client sends on POST /file-chat. Same field set the web app's
+ * `CommentOnParagraphButton` sends.
+ */
+export interface CommentAnchorInput {
+  anchorKind: string;
+  providerAnchorId: string;
+  observedVersionInternalId?: number;
 }
 
 export interface ReviewRequest {
@@ -587,6 +649,27 @@ export interface DocumentChangesResponse {
    * which is why `DocumentChangesResponseSchema` does not require it.
    */
   nextCursor: string | null;
+}
+
+/**
+ * ENG-6433 — the history of ONE paragraph or shape, mirroring the backend's
+ * `DocumentAnchorHistoryResponse` (ENG-6432). Rows are the change log's own
+ * rows, so the list renderer is shared; `boundVersionId` is null while a row
+ * is still uncommitted.
+ */
+export interface DocumentAnchorHistory {
+  documentType: string;
+  anchorId: string;
+  /**
+   * Which capture lane's key space the anchor lives in. A PowerPoint shape has
+   * one anchor per lane with no mapping between them, so a deck answer covers
+   * ONE lane (`task_pane` or `file_bytes`); a paragraph answer covers `both`.
+   */
+  anchorLane: 'task_pane' | 'file_bytes' | 'both';
+  /** `positional`: matched by position, so the history is of a SLOT. */
+  anchorIdentity: 'provider_id' | 'positional' | null;
+  history: Array<DocumentChangeRow & { boundVersionId: number | null }>;
+  truncated: boolean;
 }
 
 /**

@@ -1,8 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
-import { assertChangeHistoryComplete } from '../not-ready.js';
+import { readFileChanges } from '../file-changes.js';
+import { changeCountLine, changeSummarySection } from './change-sections.js';
 import { renderMentions } from '../mentions.js';
+import { commentLocation } from '../comment-location.js';
 import { formatVersion } from '../version-format.js';
 import { displayUserName } from '../user-display-name.js';
 
@@ -19,21 +21,13 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
     },
     async ({ fileMsId }) => {
       // Plan 02 ruling 5 (STRICT) — a prompt is the highest-risk surface: its
-      // whole product is a model narrating these rows as fact. Refuse before
-      // assembling anything; a prompt has no error channel but its own throw.
-      await assertChangeHistoryComplete(api, fileMsId);
-
-      const [file, versions, changesPage] = await Promise.all([
-        api.getEnrolledFile(fileMsId),
-        api.getFileVersions(fileMsId),
-        // KI-097: switched to cursor-paginated route. Top-of-prompt summary
-        // uses `totalCount` for the full file count; the per-cell preview
-        // uses up to 20 rows from this first page (sufficient for a recap).
-        // ENG-4346 - `totalCount` counts rows remaining from the cursor
-        // onward, so it is a FILE total only on this unscoped read. Passing a
-        // cursor here would make the "total" label below false.
-        api.getUnattributedChangesPaginated(fileMsId),
-      ]);
+      // whole product is a model narrating these rows as fact. The shared read
+      // refuses (throws) before anything is assembled; a prompt has no error
+      // channel but its own throw. ENG-6431 — it also routes a document to the
+      // document lane instead of the spreadsheet-only one that read 0.
+      const changes = await readFileChanges(api, fileMsId);
+      const file = changes.file;
+      const versions = await api.getFileVersions(fileMsId);
 
       const recentVersions = versions.slice(0, 5);
       const versionSummary = recentVersions
@@ -42,16 +36,6 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
             `- ${formatVersion(v)}: ${v.description || 'No description'} (${v.createdAt})`,
         )
         .join('\n');
-
-      const changeSummary = changesPage.changes.length
-        ? changesPage.changes
-            .slice(0, 20)
-            .map(
-              (c) =>
-                `- ${c.sheetName}!${c.cellAddress}: ${JSON.stringify(c.oldValue)} → ${JSON.stringify(c.newValue)}`,
-            )
-            .join('\n')
-        : 'None';
 
       return {
         messages: [
@@ -62,7 +46,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
               text:
                 `Summarize the recent activity on the file "${file.name}".\n\n` +
                 `## Recent Versions (last ${recentVersions.length} of ${versions.length})\n${versionSummary}\n\n` +
-                `## Unattributed Changes (${changesPage.totalCount} total)\n${changeSummary}\n\n` +
+                `${changeSummarySection(changes)}\n\n` +
                 `Provide a concise summary of what has changed recently, who made changes, and any notable patterns.`,
             },
           },
@@ -143,7 +127,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
         ? unresolved
             .map((c) => {
               const author = c.authorName || c.authorEmail || 'Unknown';
-              const cell = c.cellReference ? ` [${c.cellReference}]` : '';
+              const cell = commentLocation(c);
               const replyCount = c.replies?.length || 0;
               return (
                 `- **${author}**${cell}: "${renderMentions(c.message)}" (${c.createdAt})` +
@@ -182,19 +166,13 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
     },
     async ({ fileMsId }) => {
       // Plan 02 ruling 5 (STRICT) — this prompt reports a change COUNT, which
-      // is the same factual claim in one number instead of many rows.
-      await assertChangeHistoryComplete(api, fileMsId);
-
-      const [file, versions, comments, changesPage] = await Promise.all([
-        api.getEnrolledFile(fileMsId),
+      // is the same factual claim in one number instead of many rows, so the
+      // shared read refuses first. ENG-6431 — and routes by file type.
+      const changes = await readFileChanges(api, fileMsId);
+      const file = changes.file;
+      const [versions, comments] = await Promise.all([
         api.getFileVersions(fileMsId),
         api.getFileComments(fileMsId),
-        // KI-097: switched to cursor-paginated route. The file-overview
-        // prompt only displays a total count, so we use `totalCount` from
-        // the first page — no need to fetch every row. ENG-4346 - that is
-        // sound only because no cursor is passed: `totalCount` counts rows
-        // remaining from the cursor onward, not rows in the file.
-        api.getUnattributedChangesPaginated(fileMsId),
       ]);
 
       const latestVersion = versions[0];
@@ -233,7 +211,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
                   : 'No versions yet.\n') +
                 `\n## Comments: ${comments.length} total, ${unresolvedComments.length} unresolved\n` +
                 `## Reviews: ${reviews.length} total, ${pendingReviews.length} pending\n` +
-                `## Unattributed Changes: ${changesPage.totalCount}\n\n` +
+                `${changeCountLine(changes)}\n\n` +
                 `Provide a status report highlighting anything that needs attention.`,
             },
           },

@@ -4,8 +4,10 @@ import { getCorrelationId } from './correlation.js';
 import { log } from './logger.js';
 import type {
   CellHistoryEntry,
+  DocumentAnchorHistory,
   DocumentChangesResponse,
   EnrolledFile,
+  CommentAnchorInput,
   FileChat,
   FileVersion,
   FoldStatus,
@@ -18,6 +20,8 @@ import type {
   UserSummary,
   MicrosoftConnectHandoff,
   MicrosoftLinkStatus,
+  GoogleLinkStatus,
+  AccountConnectHandoff,
   EnrollmentInfo,
   QueuedEnrollment,
   ResolvedFileUrl,
@@ -30,6 +34,7 @@ import type {
 } from './types.js';
 import {
   CellHistoryEntryArraySchema,
+  DocumentAnchorHistorySchema,
   DocumentChangesResponseSchema,
   EnrolledFileSchema,
   FileChatSchema,
@@ -563,6 +568,29 @@ export class ApiClient {
     );
   }
 
+  // --- Google Drive link (ENG-6414) ---
+  // Same shape as the Microsoft three above, and the same rule: the backend
+  // builds the sign-in URL (`POST /auth/google/connect`, ENG-6411); this
+  // client can send nothing that shapes it.
+
+  async beginGoogleConnect(): Promise<AccountConnectHandoff> {
+    return this.request<AccountConnectHandoff>('/auth/google/connect', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async getGoogleLink(): Promise<GoogleLinkStatus> {
+    return this.request<GoogleLinkStatus>('/auth/google/link');
+  }
+
+  async unlinkGoogle(): Promise<{ linked: boolean; removed: boolean }> {
+    return this.request<{ linked: boolean; removed: boolean }>(
+      '/auth/google/link',
+      { method: 'DELETE' },
+    );
+  }
+
   // --- Teams ---
 
   /**
@@ -918,6 +946,23 @@ export class ApiClient {
     );
   }
 
+  /**
+   * ENG-6433 — one paragraph's or shape's history, from the SAME route as a
+   * cell's (backend ENG-6432 added the `anchorId` arm). No `cell` or
+   * `sheetName`: the backend refuses a request carrying both address forms.
+   */
+  async getAnchorHistory(
+    fileMsId: string,
+    anchorId: string,
+  ): Promise<DocumentAnchorHistory> {
+    const query = new URLSearchParams({ anchorId, format: 'mcp' });
+    return this.request<DocumentAnchorHistory>(
+      `/file-versions/file/${fileMsId}/cell-history?${query}`,
+      undefined,
+      DocumentAnchorHistorySchema as unknown as ZodType<DocumentAnchorHistory>,
+    );
+  }
+
   // --- File Chat (Comments) ---
 
   async getFileComments(fileMsId: string): Promise<FileChat[]> {
@@ -933,6 +978,9 @@ export class ApiClient {
     message: string;
     cellReference?: string;
     versionInternalId: number;
+    /** ENG-6435 — omitted keys drop out of JSON.stringify, so a request
+     * without an anchor is byte-identical to the one sent before. */
+    anchor?: CommentAnchorInput;
   }): Promise<FileChat> {
     return this.request<FileChat>('/file-chat', {
       method: 'POST',
