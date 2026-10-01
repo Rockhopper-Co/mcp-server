@@ -25,6 +25,11 @@
  * module never shadows it.
  */
 
+import {
+  documentChangeLabel,
+  documentChangeWord,
+  documentSide,
+} from './change-row-vocabulary.js';
 import type { DocumentChangeRow, DocumentChangesResponse } from './types.js';
 
 /** The three change models Rockhopper tracks, mirroring the backend's
@@ -175,13 +180,15 @@ export function documentChangesUnavailableToolResult(ctx: {
   };
 }
 
-/** The readable side of a stored facet. Both sides are stored (ENG-4511). */
-function facetText(facet: { v?: unknown; f?: unknown } | null): string {
-  if (!facet) return '(not recorded)';
-  const value = facet.v ?? facet.f;
-  return value === undefined || value === null
-    ? '(empty)'
-    : JSON.stringify(value);
+/**
+ * The value part of a row, as the change log draws it: an added unit shows its
+ * after side only, a removed one its before side only, any other change both.
+ * Both sides are stored (ENG-4511).
+ */
+function rowSides(row: DocumentChangeRow, word: string | undefined): string {
+  if (word === 'added') return documentSide(row.toValue);
+  if (word === 'removed') return documentSide(row.fromValue);
+  return `${documentSide(row.fromValue)} → ${documentSide(row.toValue)}`;
 }
 
 /**
@@ -192,6 +199,9 @@ function facetText(facet: { v?: unknown; f?: unknown } | null): string {
  * `containerProviderId`, which is an OPAQUE id and is deliberately NOT rendered
  * as "Slide N": it carries no position, and `containerOrdinal` is null on every
  * row either lane writes, so a slide NUMBER is not a fact this server holds.
+ *
+ * ENG-6608 — the kind reads in the change log's word, never the ledger's
+ * event type; a kind this build cannot read prints no word at all.
  */
 export function formatDocumentRow(row: DocumentChangeRow): string {
   const unit = row.anchorLabel
@@ -204,9 +214,10 @@ export function formatDocumentRow(row: DocumentChangeRow): string {
   const editor = row.editorPlatformId ? ` — by ${row.editorPlatformId}` : '';
   const when = row.occurredAt ?? row.firstObservedAt;
   const capped = row.truncated ? ' [text shortened]' : '';
+  const label = documentChangeLabel(row.changeKind, row.anchorProviderId);
   return (
-    `- **${where}** (${row.changeKind}): ` +
-    `${facetText(row.fromValue)} → ${facetText(row.toValue)}` +
+    `- **${where}**${label ? ` (${label})` : ''}: ` +
+    `${rowSides(row, documentChangeWord(row.changeKind))}` +
     `${editor} — ${when}${capped}`
   );
 }
