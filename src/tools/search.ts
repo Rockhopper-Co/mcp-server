@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { isNotReady, notReadyToolResult } from '../not-ready.js';
 import { formatDocumentChanges } from '../document-changes.js';
+import { formatSpreadsheetChangeRows } from '../change-row-vocabulary.js';
 import { fileChangesUnavailableText, readFileChanges } from '../file-changes.js';
 import { isUnknownSheet, unknownSheetToolResult } from '../sheet-catalogue.js';
 
@@ -204,7 +205,7 @@ export function registerSearchTool(
         if (read.kind === 'spreadsheet_sheet') {
           // Sheet-filtered mode: bounded by sheet size, no pagination needed.
           const { changes } = read;
-          const body = formatChangeRows(changes);
+          const body = formatSpreadsheetChangeRows(changes);
           return {
             content: [
               {
@@ -238,7 +239,7 @@ export function registerSearchTool(
         }
 
         const displayed = page.changes.slice(0, MAX_DISPLAYED);
-        const body = formatChangeRows(displayed);
+        const body = formatSpreadsheetChangeRows(displayed);
         const summary = summarizeBySheet(page.changes);
         const hidden = page.changes.length - displayed.length;
         const lines: string[] = [];
@@ -326,33 +327,6 @@ function describeRemainingCount(totalCount: number, cursor?: string): string {
   return cursor
     ? `${totalCount} remaining from this page onward`
     : `${totalCount} in this file`;
-}
-
-function formatChangeRows(
-  changes: ReadonlyArray<{
-    sheetName: string;
-    cellAddress: string;
-    changeType: string;
-    oldValue: unknown;
-    newValue: unknown;
-    byUserPlatformId: string | null;
-    /** ENG-2603 — resolved display name; absent on an older backend. */
-    byUserName?: string | null;
-    createdAt: string;
-  }>,
-): string {
-  return changes
-    .map(
-      (c) =>
-        `- **${c.sheetName}!${c.cellAddress}** (${c.changeType}): ` +
-        `${JSON.stringify(c.oldValue)} → ${JSON.stringify(c.newValue)}` +
-        // ENG-2603 — see get-versions: name first, platform id as fallback.
-        (c.byUserName ?? c.byUserPlatformId
-          ? ` — by ${c.byUserName ?? c.byUserPlatformId}`
-          : '') +
-        ` — ${c.createdAt}`,
-    )
-    .join('\n');
 }
 
 function summarizeBySheet(
