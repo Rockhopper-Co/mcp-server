@@ -534,6 +534,13 @@ export interface ReviewRecord {
 export interface UnattributedChange {
   id: number;
   changeType: string;
+  /**
+   * ENG-6608 — the server's facet classification of a cell edit (`value`,
+   * `format`, `formula`, `formula_recalc`, `value_and_format`); the row's word
+   * comes from it. Optional because an older backend may not serve it, and
+   * then the row prints no word rather than guessing one.
+   */
+  editType?: string | null;
   sheetName: string;
   cellAddress: string;
   oldValue: unknown;

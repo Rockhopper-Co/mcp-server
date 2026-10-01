@@ -32,6 +32,14 @@ All notable changes to this project are documented here. Follows
   on `2.1.0`, so every `npm install @rockhopper-co/mcp-server` kept receiving the
   older package and nothing reported a problem. A merge now publishes on its own.
 
+- **Change rows use the change log's words** (ENG-6608). A row now names its
+  kind the way the change log does (`text`, `formatting`, `split`, `merged`,
+  `moved`, `design`, `added`, `removed`; `value`, `formula, same result` and so
+  on for a cell) instead of printing an internal type such as `block_edit` or
+  `cell`. A side with no stored value reads `Not recorded`, an emptied side reads
+  `—`; `(not recorded)`, `(empty)`, `null` and `undefined` are gone. An added
+  paragraph or shape shows only its new text, a removed one only its old text.
+
 ## [2.0.0] — 2026-08-16
 
 Cuts everything that had accumulated under `[Unreleased]` below. Published by
