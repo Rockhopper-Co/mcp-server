@@ -92,7 +92,7 @@ export const FoldStatusSchema = z
 /** One paragraph or shape change (ENG-5397). Passthrough: the served row
  * carries more fields than this client renders, and an added one must not
  * fail the parse. */
-const DocumentChangeRowSchema = z
+export const DocumentChangeRowSchema = z
   .object({
     eventId: z.string(),
     kind: z.string(),
@@ -126,5 +126,65 @@ export const DocumentChangesResponseSchema = z
     truncated: z.boolean(),
     declineReason: z.string().nullable(),
     windowStart: z.string(),
+  })
+  .passthrough();
+
+/**
+ * ENG-4347 — `GET /file-handler/by-enrolled-file/:id/live/workbook-manifest`,
+ * the workbook's sheet CATALOGUE (names and indices, zero cell bytes).
+ *
+ * Parsed rather than trusted because this route passes the parser's manifest
+ * through opaquely — `backend` `file-handler.controller.ts` says so in the
+ * comment above the per-sheet routes, and `WorkbookManifestResponseDto` is
+ * documentation for Swagger rather than a runtime contract. A drifted or
+ * absent `sheets` must fail LOUDLY here: silently `undefined` would make the
+ * existence check answer "not a sheet in this workbook" for every sheet of
+ * every workbook, which is the false negative this ticket exists to remove
+ * pointed in the opposite direction.
+ */
+export const WorkbookManifestSchema = z
+  .object({
+    sheets: z.array(
+      z
+        .object({
+          name: z.string(),
+          index: z.number().int().optional(),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
+/**
+ * ENG-4347 — `GET /google-drive/sheet-names/:fileId` answers with a bare array
+ * of tab names (`google-drive.controller.ts!getSheetNames` returns
+ * `Promise<string[]>`). Native Google Sheets only; an `.xlsx` sitting in Drive
+ * is a workbook the Sheets API will not open, and takes the manifest route.
+ */
+export const GoogleSheetNamesSchema = z.array(z.string());
+
+/**
+ * ENG-6433 — `GET /file-versions/file/:fileMsId/cell-history?anchorId=…`, the
+ * history of ONE paragraph or shape (backend ENG-6432,
+ * `document-anchor-history.service.ts!DocumentAnchorHistoryResponse`). Same
+ * route as a cell's history; the anchor arm answers with this envelope, in
+ * either `format`.
+ *
+ * `anchorLane` is REQUIRED: a deck answer covers one capture lane's key space,
+ * and a drifted field would let one lane's rows read as the shape's whole
+ * history.
+ */
+export const DocumentAnchorHistorySchema = z
+  .object({
+    documentType: z.string(),
+    anchorId: z.string(),
+    anchorLane: z.enum(['task_pane', 'file_bytes', 'both']),
+    anchorIdentity: z.enum(['provider_id', 'positional']).nullable(),
+    history: z.array(
+      DocumentChangeRowSchema.extend({
+        boundVersionId: z.number().int().nullable().default(null),
+      }),
+    ),
+    truncated: z.boolean(),
   })
   .passthrough();

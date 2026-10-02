@@ -13,7 +13,7 @@ import { registerGetCellHistoryTool } from './get-cell-history.js';
 import { registerSearchTool } from './search.js';
 import { registerDriveSearchTool } from './drive-search.js';
 import { registerListUnenrolledFilesTool } from './list-unenrolled-files.js';
-import { registerConnectMicrosoftTool } from './connect-microsoft.js';
+import { registerAccountLinkTools } from './account-link.js';
 import { registerWriteCommentTools } from './write-comments.js';
 import { registerWriteReviewTools } from './write-reviews.js';
 import { registerWriteVersionTools } from './write-versions.js';
@@ -128,11 +128,12 @@ export function registerTools(
   // not in Rockhopper. Read floor for the same reason as the two above, and one
   // more: it reads stored rows only, so it neither writes nor reaches Microsoft.
   registerListUnenrolledFilesTool(server, api);
-  // ENG-2198 — connecting a Microsoft account is an account action, not a
-  // write to Rockhopper data, so it rides with the read floor: a read-only
+  // ENG-2198 / ENG-6414 — connecting a Microsoft or Google account is an
+  // account action, not a write to Rockhopper data, so it rides with the read
+  // floor: a read-only
   // token can still connect, check and disconnect. The backend requires an
   // interactive login for the disconnect itself.
-  registerConnectMicrosoftTool(server, api);
+  registerAccountLinkTools(server, api);
 
   // Write tools — one registrar per granted family, so a token holding
   // `comments:write` alone cannot reach `discard_changes`.

@@ -87,6 +87,11 @@ export type DriveSearchOutcome =
   /** No delegated Microsoft grant — the connect link is in the result. */
   | 'microsoft_not_connected'
   /**
+   * ENG-6412 — no stored Google grant. Its own outcome because the remedy is
+   * Google's: no Microsoft link, and `microsoft_link_status` cannot see it.
+   */
+  | 'google_not_connected'
+  /**
    * The tenant has not approved Rockhopper and only an administrator can.
    * Its OWN outcome and not a flavour of `microsoft_not_connected`, because
    * the two name opposite actions: one is the user's to take and this one
@@ -311,6 +316,23 @@ export function classifyDriveSearchFailure(
 export function isNoDelegatedToken(error: unknown): boolean {
   return (
     error instanceof RockhopperApiError && error.code === 'NO_DELEGATED_TOKEN'
+  );
+}
+
+/**
+ * ENG-6412 / ENG-6414 — the Google lane's "not connected" answer when no
+ * sign-in link could be minted: the BACKEND's remedy when it sent one, a
+ * fallback when it did not, then `connect_google` as the step to take. Never
+ * a link — the tool does not compose sign-in links for either provider.
+ */
+export function googleNotConnectedText(error: unknown): string {
+  const remedy =
+    error instanceof RockhopperApiError && error.serverMessage
+      ? error.serverMessage
+      : "Rockhopper has no connection to this user's Google account.";
+  return (
+    `${remedy} Ask the user to run \`connect_google\` to connect Google ` +
+    'Drive, then search again. Do not compose a sign-in link yourself.'
   );
 }
 

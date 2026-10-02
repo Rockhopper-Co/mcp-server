@@ -1,4 +1,8 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
+import {
+  handleAnchoredCommentGet,
+  handleAnchoredCommentPost,
+} from './anchored-comments-fixture.js';
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -119,6 +123,50 @@ const ALL_WRITE_CAPABILITIES = [
   'files:write',
 ];
 
+/** ENG-6428 — one row per Google document, each with its own anchor. */
+const GOOGLE_DOCUMENT_ROWS: Record<string, Record<string, unknown>> = {
+  'file-gdoc': {
+    eventId: '48140',
+    kind: 'block',
+    locationKind: 'block',
+    containerOrdinal: null,
+    containerProviderId: null,
+    anchorOrdinal: 1,
+    anchorProviderId: 'kix.gdoc-para-1',
+    anchorLabel: null,
+    changeKind: 'block_edit',
+    actorKind: 'human',
+    actorPlatformId: 'u-1',
+    attributionConfidence: 'credential_bound',
+    editorPlatformId: 'u-1',
+    occurredAt: '2026-09-15T10:00:00.000Z',
+    firstObservedAt: '2026-09-15T10:00:01.000Z',
+    fromValue: { v: 'Draft terms' },
+    toValue: { v: 'Final terms' },
+    truncated: false,
+  },
+  'file-gslides': {
+    eventId: '48141',
+    kind: 'shape',
+    locationKind: 'shape',
+    containerOrdinal: null,
+    containerProviderId: 'g-slide-3',
+    anchorOrdinal: 2,
+    anchorProviderId: 'g-slide-3::p4',
+    anchorLabel: 'Title 1',
+    changeKind: 'shape_edit',
+    actorKind: 'human',
+    actorPlatformId: 'u-1',
+    attributionConfidence: 'credential_bound',
+    editorPlatformId: 'u-1',
+    occurredAt: '2026-09-15T11:00:00.000Z',
+    firstObservedAt: '2026-09-15T11:00:01.000Z',
+    fromValue: { v: 'Old headline' },
+    toValue: { v: 'New headline' },
+    truncated: false,
+  },
+};
+
 export function handleMockRockhopperRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -218,6 +266,16 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    // --- Google Drive link (ENG-6414) --- same rule: server-built URL, no body.
+    if (method === 'POST' && path === '/auth/google/connect') {
+      sendJson(res, 201, {
+        authorizeUrl:
+          'https://accounts.google.com/o/oauth2/v2/auth?client_id=real-google-client',
+        expiresAt: '2026-09-28T21:00:00.000Z',
+      });
+      return;
+    }
+
     // --- Drive discovery (ENG-2203 / ENG-2204) ---
     // Keyed on the search terms, so one mock covers every outcome and the e2e
     // spec reads as the conversation it is testing. `unlinked` selects the
@@ -225,6 +283,19 @@ export function handleMockRockhopperRequest(
     if (method === 'GET' && path === '/drive-files/search') {
       const q = new URLSearchParams(queryString).get('q') ?? '';
       if (q.includes('unlinked')) {
+        // ENG-6412 — the Google lane refuses with the same coarse code, no
+        // `reason`, and its own remedy (google-drive-search.service.ts).
+        if (new URLSearchParams(queryString).get('provider') === 'google') {
+          sendJson(res, 403, {
+            statusCode: 403,
+            message:
+              'Rockhopper has no connection to this Google account. Connect ' +
+              'Google Drive in Settings to search it.',
+            code: 'NO_DELEGATED_TOKEN',
+            reason: null,
+          });
+          return;
+        }
         sendJson(res, 403, {
           statusCode: 403,
           message: 'Connect a Microsoft account to search your files',
@@ -395,14 +466,25 @@ export function handleMockRockhopperRequest(
       return;
     }
 
-    // A native Google Doc: enrolled, versioned, and with no capture lane, so
-    // its change list is a REFUSAL rather than an empty answer.
+    // ENG-6428 — a native Google Doc and a Google Slides deck: enrolled,
+    // versioned, and read through the same document lane as `.docx`/`.pptx`.
     if (method === 'GET' && path === '/enrolled-files/file-gdoc') {
       sendJson(res, 200, {
         ...sampleFile,
         platformId: 'file-gdoc',
         name: 'Notes',
         fileType: 'google_doc',
+        hasUncommittedChanges: true,
+      });
+      return;
+    }
+
+    if (method === 'GET' && path === '/enrolled-files/file-gslides') {
+      sendJson(res, 200, {
+        ...sampleFile,
+        platformId: 'file-gslides',
+        name: 'Pitch',
+        fileType: 'google_slides',
         hasUncommittedChanges: true,
       });
       return;
@@ -452,7 +534,8 @@ export function handleMockRockhopperRequest(
     if (
       method === 'GET' &&
       (path === '/file-versions/file/file-docx' ||
-        path === '/file-versions/file/file-gdoc')
+        path === '/file-versions/file/file-gdoc' ||
+        path === '/file-versions/file/file-gslides')
     ) {
       sendJson(res, 200, [sampleVersion]);
       return;
@@ -473,6 +556,62 @@ export function handleMockRockhopperRequest(
         foldPending: pending,
         foldTargetVersionId: pending ? 909 : null,
         checkedAt: '2026-08-04T00:00:00.000Z',
+      });
+      return;
+    }
+
+    // ENG-6433 — the document arm of the same route (backend ENG-6432). A
+    // docx answers an `anchorId` with its own envelope, echoing the anchor and
+    // carrying that anchor's rows only; a cell address on it is refused by
+    // code, exactly as the backend's `assertCellAddressableFileType` does.
+    if (
+      method === 'GET' &&
+      path === '/file-versions/file/file-docx/cell-history'
+    ) {
+      const params = new URLSearchParams(queryString);
+      const anchorId = params.get('anchorId');
+      if (anchorId === null) {
+        sendJson(res, 422, {
+          statusCode: 422,
+          code: 'CELL_HISTORY_UNAVAILABLE',
+          message: 'Cell history is unavailable for this file',
+        });
+        return;
+      }
+      const rows =
+        anchorId === 'w14-paraId-7A3B'
+          ? [
+              ['48101', 'Net 15 days', 'Net 30 days', 101],
+              ['48122', 'Net 30 days', 'Net 60 days', null],
+            ].map(([eventId, from, to, bound]) => ({
+              eventId,
+              kind: 'block',
+              locationKind: 'block',
+              containerOrdinal: null,
+              containerProviderId: null,
+              anchorOrdinal: 4,
+              anchorProviderId: anchorId,
+              anchorLabel: null,
+              changeKind: 'block_edit',
+              actorKind: 'human',
+              actorPlatformId: 'u-1',
+              attributionConfidence: 'credential_bound',
+              editorPlatformId: 'u-1',
+              occurredAt: '2026-09-15T10:00:00.000Z',
+              firstObservedAt: '2026-09-15T10:00:01.000Z',
+              fromValue: { v: from },
+              toValue: { v: to },
+              truncated: false,
+              boundVersionId: bound,
+            }))
+          : [];
+      sendJson(res, 200, {
+        documentType: 'text',
+        anchorId,
+        anchorLane: 'both',
+        anchorIdentity: rows.length ? 'provider_id' : null,
+        history: rows,
+        truncated: false,
       });
       return;
     }
@@ -501,6 +640,8 @@ export function handleMockRockhopperRequest(
     }
 
     // --- File Chat (Comments) ---
+    if (method === 'GET' && handleAnchoredCommentGet(res, path)) return;
+
     if (method === 'GET' && path === '/file-chat/empty-file') {
       sendJson(res, 200, []);
       return;
@@ -523,6 +664,7 @@ export function handleMockRockhopperRequest(
         message?: string;
         cellReference?: string;
       };
+      if (handleAnchoredCommentPost(res, parsed)) return;
       if (parsed.fileMsId === 'fail-file') {
         sendJson(res, 500, { message: 'boom' });
         return;
@@ -664,6 +806,34 @@ export function handleMockRockhopperRequest(
       return;
     }
 
+    // --- Sheet catalogue (ENG-4347) ---
+    //
+    // Keyed by the enrolled file's INTERNAL id, which is what the real route
+    // resolves on. `sampleFile.internalId` is 1, so a client that sent the
+    // `platformId` instead would miss this pattern and fall through to the 404
+    // below — the fixture is the request assertion, not just a stub.
+    if (
+      method === 'GET' &&
+      /^\/file-handler\/by-enrolled-file\/\d+\/live\/workbook-manifest$/.test(
+        path,
+      )
+    ) {
+      sendJson(res, 200, {
+        activeSheetIndex: 0,
+        sheets: [
+          { index: 0, name: 'Sheet1', rowCount: 10, colCount: 4 },
+          { index: 1, name: 'EmptySheet', rowCount: 0, colCount: 0 },
+          { index: 2, name: 'Project Accruals', rowCount: 900, colCount: 70 },
+        ],
+      });
+      return;
+    }
+
+    if (method === 'GET' && /^\/google-drive\/sheet-names\/[^/]+$/.test(path)) {
+      sendJson(res, 200, ['Sheet1', 'EmptySheet', 'Project Accruals']);
+      return;
+    }
+
     // --- Unattributed Changes ---
     if (method === 'GET' && path === '/unattributed-changes/file-1/EmptySheet') {
       sendJson(res, 200, []);
@@ -685,6 +855,18 @@ export function handleMockRockhopperRequest(
           byUserPlatformId: 'u-1',
         },
       ]);
+      return;
+    }
+
+    // ENG-4347 — the real backend takes `sheetName` as a FILTER and answers
+    // `[]` with HTTP 200 for a name that matches nothing. There is no 404 to
+    // surface, which is the whole reason a typo was indistinguishable from a
+    // real sheet with no changes. Model that, not a 404.
+    if (
+      method === 'GET' &&
+      /^\/unattributed-changes\/file-1\/[^/]+$/.test(path)
+    ) {
+      sendJson(res, 200, []);
       return;
     }
 
@@ -711,6 +893,27 @@ export function handleMockRockhopperRequest(
         snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
       });
       return;
+    }
+
+    // ENG-6428 — the Google files get rows of their OWN, keyed on the
+    // `fileMsId` the client sent, so a test asserting on them proves the
+    // request reached `/cell-change-events/document-changes` for that file.
+    if (
+      method === 'GET' &&
+      path === '/cell-change-events/document-changes'
+    ) {
+      const googleRow = GOOGLE_DOCUMENT_ROWS[
+        new URLSearchParams(queryString).get('fileMsId') ?? ''
+      ];
+      if (googleRow) {
+        sendJson(res, 200, {
+          rows: [googleRow],
+          truncated: false,
+          declineReason: null,
+          windowStart: '2026-09-01T00:00:00.000Z',
+        });
+        return;
+      }
     }
 
     // ENG-5397 — the document change lane. One served paragraph change, so the

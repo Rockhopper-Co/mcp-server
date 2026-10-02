@@ -4,8 +4,10 @@ import { getCorrelationId } from './correlation.js';
 import { log } from './logger.js';
 import type {
   CellHistoryEntry,
+  DocumentAnchorHistory,
   DocumentChangesResponse,
   EnrolledFile,
+  CommentAnchorInput,
   FileChat,
   FileVersion,
   FoldStatus,
@@ -18,6 +20,8 @@ import type {
   UserSummary,
   MicrosoftConnectHandoff,
   MicrosoftLinkStatus,
+  GoogleLinkStatus,
+  AccountConnectHandoff,
   EnrollmentInfo,
   QueuedEnrollment,
   ResolvedFileUrl,
@@ -30,10 +34,13 @@ import type {
 } from './types.js';
 import {
   CellHistoryEntryArraySchema,
+  DocumentAnchorHistorySchema,
   DocumentChangesResponseSchema,
   EnrolledFileSchema,
   FileChatSchema,
   FoldStatusSchema,
+  GoogleSheetNamesSchema,
+  WorkbookManifestSchema,
 } from './zod-schemas.js';
 import {
   ChangeHistoryNotReadyError,
@@ -132,17 +139,25 @@ export class RockhopperApiError extends Error {
    * cannot possibly work, and clicking it returns them here: a loop.
    */
   readonly reason: string | null;
+  /**
+   * ENG-6412 — the backend's own `message` for the refusal, when the body
+   * carried a string one. The Google drive-search lane has no `reason` to
+   * branch on, so its remedy text is the only place its next step lives.
+   */
+  readonly serverMessage: string | null;
   constructor(
     status: number,
     message: string,
     code?: string | null,
     reason?: string | null,
+    serverMessage?: string | null,
   ) {
     super(message);
     this.name = 'RockhopperApiError';
     this.status = status;
     this.code = code ?? null;
     this.reason = reason ?? null;
+    this.serverMessage = serverMessage ?? null;
   }
 }
 
@@ -152,7 +167,10 @@ export class RockhopperApiError extends Error {
  * that is not a string all answer `null` — the caller then falls back to the
  * status, which is the answer it had before this existed.
  */
-function parseErrorField(body: string, field: 'code' | 'reason'): string | null {
+function parseErrorField(
+  body: string,
+  field: 'code' | 'reason' | 'message',
+): string | null {
   try {
     const parsed: unknown = JSON.parse(body);
     if (parsed === null || typeof parsed !== 'object') return null;
@@ -196,6 +214,24 @@ function enrollmentBody(file: EnrollmentTarget): Record<string, unknown> {
   };
 }
 
+/**
+ * ENG-2883 — the header carrying the connected client's own name.
+ *
+ * In the `X-Rockhopper-*` provenance family because that is what it is: one
+ * more client-asserted fact about where a write came from, read by the same
+ * backend path and classed the same way.
+ */
+export const CLIENT_TOOL_HEADER = 'X-Rockhopper-Client-Tool';
+
+/** Bounded to the backend column that stores the name. */
+export const MAX_CLIENT_TOOL_NAME_LENGTH = 255;
+
+/** The MCP handshake's `clientInfo` — the APP, never the model. */
+export interface ClientToolInfo {
+  name?: string;
+  version?: string;
+}
+
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -203,6 +239,8 @@ export class ApiClient {
   private readonly surface: string;
   private readonly sessionId: string;
   private drivingHumanPlatformId: string | null;
+  private clientToolProvider: (() => ClientToolInfo | null | undefined) | null =
+    null;
   private authExpiredHandler?: () => void;
   private authExpiredNotified = false;
 
@@ -238,6 +276,41 @@ export class ApiClient {
    */
   setDrivingHuman(platformId: string | null): void {
     this.drivingHumanPlatformId = platformId;
+  }
+
+  /**
+   * ENG-2883 — declare how to find the APP that connected to this server.
+   *
+   * A PROVIDER rather than a value, because `clientInfo` does not exist until
+   * the client finishes `initialize`, which happens after the server (and this
+   * client) are built. Capturing a value at construction would record nothing,
+   * permanently — the same shape of bug as reading a header before the request
+   * that carries it exists.
+   *
+   * The name is CLIENT-ASSERTED and the backend classes it as such. It is
+   * recorded because it is the only name this lane ever has: a user-minted
+   * token carries no tool identity, so without it every Cursor write and every
+   * Claude Desktop write land under the same anonymous surface row.
+   */
+  setClientToolProvider(
+    provider: (() => ClientToolInfo | null | undefined) | null,
+  ): void {
+    this.clientToolProvider = provider;
+  }
+
+  /**
+   * The connected client's name, bounded, or `undefined` when it named none.
+   *
+   * `undefined` — no header — for an absent provider, an absent `clientInfo`,
+   * and a blank name. An empty header would be a tool called "", which is a
+   * name invented out of an absence rather than a record of one.
+   */
+  private clientToolHeader(): string | undefined {
+    const name = this.clientToolProvider?.()?.name?.trim();
+    if (!name) return undefined;
+    // The backend column is 255 wide; bounding here means a long name is
+    // recorded short rather than refused far from the client that sent it.
+    return name.slice(0, MAX_CLIENT_TOOL_NAME_LENGTH);
   }
 
   /**
@@ -344,6 +417,12 @@ export class ApiClient {
                 ...(this.drivingHumanPlatformId
                   ? { 'X-Driving-Human': this.drivingHumanPlatformId }
                   : {}),
+                // ENG-2883: which APP is driving this server. Writes only,
+                // beside the other admission-bearing headers: a read writes
+                // no role row, so there is nothing for the name to attach to.
+                ...(this.clientToolHeader()
+                  ? { [CLIENT_TOOL_HEADER]: this.clientToolHeader() }
+                  : {}),
               }
             : {}),
           ...init?.headers,
@@ -412,6 +491,7 @@ export class ApiClient {
         `Rockhopper API ${response.status}: ${response.statusText} — ${body}`,
         parseErrorField(body, 'code'),
         parseErrorField(body, 'reason'),
+        parseErrorField(body, 'message'),
       );
     }
 
@@ -488,6 +568,29 @@ export class ApiClient {
     );
   }
 
+  // --- Google Drive link (ENG-6414) ---
+  // Same shape as the Microsoft three above, and the same rule: the backend
+  // builds the sign-in URL (`POST /auth/google/connect`, ENG-6411); this
+  // client can send nothing that shapes it.
+
+  async beginGoogleConnect(): Promise<AccountConnectHandoff> {
+    return this.request<AccountConnectHandoff>('/auth/google/connect', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async getGoogleLink(): Promise<GoogleLinkStatus> {
+    return this.request<GoogleLinkStatus>('/auth/google/link');
+  }
+
+  async unlinkGoogle(): Promise<{ linked: boolean; removed: boolean }> {
+    return this.request<{ linked: boolean; removed: boolean }>(
+      '/auth/google/link',
+      { method: 'DELETE' },
+    );
+  }
+
   // --- Teams ---
 
   /**
@@ -517,6 +620,58 @@ export class ApiClient {
 
   async getEnrolledFile(fileMsId: string): Promise<EnrolledFile> {
     return this.request<EnrolledFile>(`/enrolled-files/${fileMsId}`);
+  }
+
+  // --- Sheet catalogue (ENG-4347) ---
+
+  /**
+   * The workbook's sheet names, for a Microsoft workbook or an `.xlsx` in
+   * Google Drive.
+   *
+   * Keyed by the enrolled file's INTERNAL id, not its `platformId` — the route
+   * resolves on `enrolledFile.internalId`
+   * (`backend` `file-handler.controller.ts!resolveLiveFileVersion`), which is
+   * why a caller holding only a `platformId` pays a `getEnrolledFile` hop
+   * first. `get_unattributed_changes` already makes that call unconditionally
+   * (ENG-5397, to route on file type), so only this read is marginal there.
+   *
+   * The LIVE variant deliberately: the caller is asking about the uncommitted
+   * window, and a sheet added since the last saved version is a real sheet
+   * whose changes they are entitled to. Reading the committed manifest would
+   * refuse it.
+   *
+   * Schema-parsed because the route passes the parser's manifest through
+   * opaquely, and a missing `sheets` must fail loudly rather than arrive as
+   * `undefined` — see {@link WorkbookManifestSchema}.
+   */
+  async getWorkbookSheetNames(
+    enrolledFileInternalId: number,
+  ): Promise<string[]> {
+    const manifest = await this.request(
+      `/file-handler/by-enrolled-file/${encodeURIComponent(
+        String(enrolledFileInternalId),
+      )}/live/workbook-manifest`,
+      undefined,
+      WorkbookManifestSchema,
+    );
+    return manifest.sheets.map((sheet) => sheet.name);
+  }
+
+  /**
+   * The tab names of a NATIVE Google Sheet, keyed by its Google file id —
+   * which is the `platformId` this server already carries.
+   *
+   * A separate route from the manifest above because the two platforms answer
+   * from different places: `google-drive.controller.ts!getSheetNames` reads the
+   * Sheets API as the calling user, so the trim is Google's own and this server
+   * applies none of its own.
+   */
+  async getGoogleSheetNames(platformId: string): Promise<string[]> {
+    return this.request(
+      `/google-drive/sheet-names/${encodeURIComponent(platformId)}`,
+      undefined,
+      GoogleSheetNamesSchema,
+    );
   }
 
   // --- Drive discovery (ENG-2203 / plan 13) ---
@@ -791,6 +946,23 @@ export class ApiClient {
     );
   }
 
+  /**
+   * ENG-6433 — one paragraph's or shape's history, from the SAME route as a
+   * cell's (backend ENG-6432 added the `anchorId` arm). No `cell` or
+   * `sheetName`: the backend refuses a request carrying both address forms.
+   */
+  async getAnchorHistory(
+    fileMsId: string,
+    anchorId: string,
+  ): Promise<DocumentAnchorHistory> {
+    const query = new URLSearchParams({ anchorId, format: 'mcp' });
+    return this.request<DocumentAnchorHistory>(
+      `/file-versions/file/${fileMsId}/cell-history?${query}`,
+      undefined,
+      DocumentAnchorHistorySchema as unknown as ZodType<DocumentAnchorHistory>,
+    );
+  }
+
   // --- File Chat (Comments) ---
 
   async getFileComments(fileMsId: string): Promise<FileChat[]> {
@@ -806,6 +978,9 @@ export class ApiClient {
     message: string;
     cellReference?: string;
     versionInternalId: number;
+    /** ENG-6435 — omitted keys drop out of JSON.stringify, so a request
+     * without an anchor is byte-identical to the one sent before. */
+    anchor?: CommentAnchorInput;
   }): Promise<FileChat> {
     return this.request<FileChat>('/file-chat', {
       method: 'POST',
@@ -962,10 +1137,9 @@ export class ApiClient {
    * document. No write capability is needed: the route carries no
    * `@RequiresPatCapability`, so a read-only token reaches it.
    *
-   * THERE IS NO CURSOR ON THIS ROUTE. The backend caps the page and reports
-   * `truncated` on the envelope; a caller that wants the rest has nothing to
-   * ask for, so the tool SAYS the list was cut rather than implying it is
-   * whole.
+   * The backend caps the page, reports `truncated`, and offers `nextCursor`
+   * for the next page (ENG-5634). This client does not page on it yet, so the
+   * tool SAYS the list was cut rather than implying it is whole.
    *
    * A SPREADSHEET GETS `rows: []` HERE, NOT A 404 — the backend serves the
    * empty envelope deliberately, because this read is simply not the one that

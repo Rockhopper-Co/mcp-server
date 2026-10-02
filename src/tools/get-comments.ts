@@ -3,11 +3,12 @@ import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import type { FileChat } from '../types.js';
 import { renderMentions } from '../mentions.js';
+import { commentLocation } from '../comment-location.js';
 
 function formatComment(c: FileChat, indent = 0): string {
   const prefix = '  '.repeat(indent);
   const author = c.authorName || c.authorEmail || 'Unknown';
-  const cell = c.cellReference ? ` [${c.cellReference}]` : '';
+  const cell = commentLocation(c);
   const resolved = c.resolved ? ' (resolved)' : '';
   // ENG-4345 — `reply_to_comment` and `resolve_comment` take this id as their
   // `chatId`, and this is the only place a caller can read one for a thread it

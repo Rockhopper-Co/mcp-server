@@ -6,6 +6,16 @@ All notable changes to this project are documented here. Follows
 
 ## [Unreleased]
 
+### Added
+
+- **`connect_google`, `google_link_status` and `disconnect_google`** (ENG-6414).
+  The Google Drive counterparts of the three Microsoft account-link tools,
+  registered by the same code on the same read floor. `connect_google` relays
+  the sign-in link the backend builds (`POST /auth/google/connect`) and takes no
+  input. A Google `search_drive_files` caller with no connected account now gets
+  that link instead of being sent to Settings. `disconnect_microsoft` and
+  `disconnect_google` now say plainly when a personal access token is refused.
+
 ### Changed
 
 - **Patch numbers are now assigned by the release pipeline, not by hand.** A
@@ -21,6 +31,14 @@ All notable changes to this project are documented here. Follows
   cut a git tag. On 2026-08-19 `2.1.1` reached the registry while `latest` stayed
   on `2.1.0`, so every `npm install @rockhopper-co/mcp-server` kept receiving the
   older package and nothing reported a problem. A merge now publishes on its own.
+
+- **Change rows use the change log's words** (ENG-6608). A row now names its
+  kind the way the change log does (`text`, `formatting`, `split`, `merged`,
+  `moved`, `design`, `added`, `removed`; `value`, `formula, same result` and so
+  on for a cell) instead of printing an internal type such as `block_edit` or
+  `cell`. A side with no stored value reads `Not recorded`, an emptied side reads
+  `—`; `(not recorded)`, `(empty)`, `null` and `undefined` are gone. An added
+  paragraph or shape shows only its new text, a removed one only its old text.
 
 ## [2.0.0] — 2026-08-16
 

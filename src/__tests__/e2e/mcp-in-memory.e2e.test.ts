@@ -67,9 +67,11 @@ describe('MCP in-memory protocol e2e', () => {
         'add_comment',
         'approve_review',
         'cancel_review',
+        'connect_google',
         'connect_microsoft',
         'create_review_request',
         'create_version',
+        'disconnect_google',
         'disconnect_microsoft',
         'discard_changes',
         'enroll_file',
@@ -78,6 +80,7 @@ describe('MCP in-memory protocol e2e', () => {
         'get_file_versions',
         'get_reviews',
         'get_unattributed_changes',
+        'google_link_status',
         'list_files',
         'list_unenrolled_files',
         'microsoft_link_status',
@@ -146,11 +149,14 @@ describe('MCP in-memory protocol e2e', () => {
     };
 
     // Every tool a read-only token is given claims to change nothing — with
-    // ONE exception, and it is deliberate: `disconnect_microsoft` rides the
+    // ONE exception per provider, and it is deliberate: `disconnect_microsoft` (and
+    // `disconnect_google`) rides the
     // read floor because it is an account action, and it is destructive.
     for (const name of [
       'connect_microsoft',
       'microsoft_link_status',
+      'connect_google',
+      'google_link_status',
       'get_cell_history',
       'get_file_comments',
       'get_file_versions',
@@ -170,6 +176,7 @@ describe('MCP in-memory protocol e2e', () => {
       'discard_changes',
       'cancel_review',
       'disconnect_microsoft',
+      'disconnect_google',
     ]) {
       expect(annotationsFor(name).destructiveHint, name).toBe(true);
       expect(annotationsFor(name).readOnlyHint, name).toBe(false);
@@ -380,6 +387,48 @@ describe('MCP in-memory protocol e2e', () => {
     expect(JSON.stringify(result.content)).toContain('No history found');
   });
 
+  // ENG-6433 — one Word paragraph's history over the real transport, asserted
+  // by the paragraph's own id and each row's stored text: an emptiness check
+  // would pass on the defect, which was a refusal before any read.
+  it('get_cell_history follows one docx paragraph by anchorId', async () => {
+    const result = await client.callTool({
+      name: 'get_cell_history',
+      arguments: { fileMsId: 'file-docx', anchorId: 'w14-paraId-7A3B' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBeFalsy();
+    expect(text).toContain('Element \\"w14-paraId-7A3B\\" — 2 change(s)');
+    expect(text).toContain('\\"Net 15 days\\" → \\"Net 30 days\\"');
+    expect(text).toContain('\\"Net 30 days\\" → \\"Net 60 days\\"');
+    expect(text).toContain('[saved in version id 101]');
+    expect(text).toContain('[not yet saved in a version]');
+  });
+
+  it('get_cell_history refuses a cell address on a docx by code', async () => {
+    const result = await client.callTool({
+      name: 'get_cell_history',
+      arguments: { fileMsId: 'file-docx', sheetName: 'Sheet1', cellAddress: 'A1' },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain(
+      '\\"code\\":\\"CELL_HISTORY_UNAVAILABLE\\"',
+    );
+  });
+
+  it('get_cell_history refuses an anchorId sent with a cell address', async () => {
+    const result = await client.callTool({
+      name: 'get_cell_history',
+      arguments: {
+        fileMsId: 'file-docx',
+        sheetName: 'Sheet1',
+        cellAddress: 'A1',
+        anchorId: 'w14-paraId-7A3B',
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('Send anchorId alone');
+  });
+
   it('get_cell_history surfaces API errors', async () => {
     const result = await client.callTool({
       name: 'get_cell_history',
@@ -439,6 +488,43 @@ describe('MCP in-memory protocol e2e', () => {
     expect(JSON.stringify(result.content)).toContain('EmptySheet');
   });
 
+  // ENG-4347 — over the real protocol, against a fixture that models the
+  // backend's actual behaviour (a FILTER returning `[]` with HTTP 200, no
+  // 404). The unit specs mock the API client away, so this is the only place
+  // the URL the client BUILDS is checked against the URL the catalogue is
+  // served at: get the id or the path wrong and the fixture 404s instead.
+  it('get_unattributed_changes refuses a sheet the workbook does not have', async () => {
+    const result = await client.callTool({
+      name: 'get_unattributed_changes',
+      arguments: { fileMsId: 'file-1', sheetName: 'Projekt Akruals' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBe(true);
+    expect(text).toContain('SHEET_NOT_FOUND');
+    expect(text).toContain('Project Accruals');
+    expect(text).not.toContain('No unattributed changes on sheet');
+  });
+
+  it('get_cell_history refuses a sheet the workbook does not have', async () => {
+    const result = await client.callTool({
+      name: 'get_cell_history',
+      arguments: {
+        fileMsId: 'file-1',
+        sheetName: 'Projekt Akruals',
+        // ZZ999 deliberately: the fixture answers every OTHER cell with a
+        // row, and a non-empty answer never reaches the check by design. The
+        // test above pairs this same cell with a REAL sheet and still gets
+        // the plain empty answer, so the two together show the check is
+        // discriminating on the sheet and not on the cell.
+        cellAddress: 'ZZ999',
+      },
+    });
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBe(true);
+    expect(text).toContain('SHEET_NOT_FOUND');
+    expect(text).not.toContain('No history found');
+  });
+
   // KI-097: file-wide mode uses the cursor-paginated route.
   it('get_unattributed_changes returns paginated envelope when no sheetName', async () => {
     const result = await client.callTool({
@@ -496,15 +582,45 @@ describe('MCP in-memory protocol e2e', () => {
     expect(result.isError).toBeFalsy();
   });
 
-  it('refuses a Google Doc over the protocol instead of reporting no changes', async () => {
+  // ENG-6428 — Google documents take the same document read. The rows below
+  // are served by the fixture ONLY for these fileMsIds on
+  // `/cell-change-events/document-changes`, so seeing them proves that request
+  // was made for that file.
+  it('serves a Google Doc its paragraph changes over the protocol', async () => {
     const result = await client.callTool({
       name: 'get_unattributed_changes',
       arguments: { fileMsId: 'file-gdoc' },
     });
     const text = JSON.stringify(result.content);
-    expect(result.isError).toBe(true);
-    expect(text).toContain('DOCUMENT_CHANGES_UNAVAILABLE');
-    expect(text).toContain('no_capture_lane');
+    expect(text).toContain('kix.gdoc-para-1');
+    expect(text).toContain('Draft terms');
+    expect(text).toContain('Final terms');
+    expect(result.isError).toBeFalsy();
+  });
+
+  it('serves a Google Slides deck its shape changes over the protocol', async () => {
+    const result = await client.callTool({
+      name: 'get_unattributed_changes',
+      arguments: { fileMsId: 'file-gslides' },
+    });
+    const text = JSON.stringify(result.content);
+    expect(text).toContain('g-slide-3');
+    expect(text).toContain('Old headline');
+    expect(text).toContain('New headline');
+    expect(result.isError).toBeFalsy();
+  });
+
+  // ENG-6431 — the resource read the spreadsheet-only lane for every file and
+  // served `totalCount: 0` for a `.docx`. Asserted on the paragraph's own
+  // anchor id and stored text, never on a count.
+  it('serves a Word document its paragraph changes on the changes resource', async () => {
+    const result = await client.readResource({
+      uri: 'rockhopper://files/file-docx/changes',
+    });
+    const served = JSON.parse(String((result.contents[0] as { text: string }).text));
+    expect(served.rows[0].anchorProviderId).toBe('w14-paraId-7A3B');
+    expect(served.rows[0].fromValue).toEqual({ v: 'Net 30 days' });
+    expect(served.declineReason).toBeNull();
   });
 
   it('errors the changes resource while a fold is pending', async () => {
@@ -1015,6 +1131,9 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     'connect_microsoft',
     'disconnect_microsoft',
     'microsoft_link_status',
+    'connect_google',
+    'disconnect_google',
+    'google_link_status',
     'get_cell_history',
     'get_file_comments',
     'get_file_versions',
@@ -1055,21 +1174,21 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     }
   }
 
-  it('shows 22 tools to a read-write token', async () => {
+  it('shows 25 tools to a read-write token', async () => {
     const names = await toolNamesForScope('read-write');
-    expect(names).toHaveLength(22);
+    expect(names).toHaveLength(25);
     expect(names).toContain('add_comment');
   });
 
-  it('shows 12 tools to a read-only token', async () => {
+  it('shows 15 tools to a read-only token', async () => {
     expect(await toolNamesForScope('read-only')).toEqual(READ_TOOLS);
   });
 
-  it('shows 12 tools for an unrecognised scope', async () => {
+  it('shows 15 tools for an unrecognised scope', async () => {
     expect(await toolNamesForScope('some-future-scope')).toEqual(READ_TOOLS);
   });
 
-  it('shows 12 tools when the scope is unknown', async () => {
+  it('shows 15 tools when the scope is unknown', async () => {
     expect(await toolNamesForScope()).toEqual(READ_TOOLS);
   });
 });
@@ -1278,6 +1397,18 @@ describe('ENG-1647 replayed: find, confirm, enroll (ENG-2204)', () => {
     expect(text).toContain('"outcome":"microsoft_not_connected"');
     expect(text).toContain('login.microsoftonline.com');
     expect(text).toContain('Do not compose a sign-in link yourself');
+  });
+
+  it('hands a Google caller the Google connect link, not a Microsoft one (ENG-6412, ENG-6414)', async () => {
+    const text = await call('search_drive_files', {
+      query: 'unlinked',
+      provider: 'google',
+    });
+    expect(text).toContain('"outcome":"google_not_connected"');
+    expect(text).toContain('accounts.google.com');
+    expect(text).toContain('google_link_status');
+    expect(text).not.toContain('login.microsoftonline.com');
+    expect(text).not.toContain('microsoft_link_status');
   });
 
   it('says an empty drive search is empty, not broken', async () => {

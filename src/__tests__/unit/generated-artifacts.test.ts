@@ -74,7 +74,7 @@ describe('registration is possible with an ApiClient and nothing else (ENG-2833)
 
     // The full surface, not a subset: the omitted-capabilities call used to
     // hand back only the read tools and the committed collection went stale.
-    expect(server.toolNames).toHaveLength(22);
+    expect(server.toolNames).toHaveLength(25);
     expect(server.toolNames).toContain('search_drive_files');
     expect(server.toolNames).toContain('enroll_file');
     expect(server.resourceNames.length).toBeGreaterThanOrEqual(10);

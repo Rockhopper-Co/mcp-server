@@ -113,7 +113,6 @@ The `reason` says what to do next:
 
 | `reason` | What it means | Next step |
 |---|---|---|
-| `no_capture_lane` | Rockhopper does not track a change-by-change list for this kind of file. It still has versions and comments. | Offer a version comparison instead. |
 | `sheet_filter_not_applicable` | A `sheetName` was passed for a file with no worksheets. | Call again without `sheetName`. |
 | `window_withheld` | The change list is not available for this file right now. | Offer a version comparison instead. |
 | `unknown_file_type` | This connection does not recognise the file's type. | Ask the user what the file is. |
@@ -198,7 +197,7 @@ If you need to know which cloud a file is in, inspect `fileType`, or read `provi
 
 **Adding a file differs by cloud, and it is the one place it matters.** A Microsoft file can be added by link or by the `driveMsId` + `msId` pair `search_drive_files` returns. A Google file is added **by link only** — there is no id pair to pass. `search_drive_files` returns the link for a confirmed Google candidate; hand it to `enroll_file` as `url`.
 
-`search_drive_files` takes a `provider` argument (`microsoft` or `google`). Each needs its own connected account. Ask the user which cloud their file is in rather than guessing: searching the wrong one returns an empty list that reads exactly like "no such file".
+`search_drive_files` takes a `provider` argument (`microsoft` or `google`). Each needs its own connected account: `connect_microsoft` / `microsoft_link_status` / `disconnect_microsoft` for Microsoft, `connect_google` / `google_link_status` / `disconnect_google` for Google Drive. Ask the user which cloud their file is in rather than guessing: searching the wrong one returns an empty list that reads exactly like "no such file".
 
 ## 9. Error handling
 

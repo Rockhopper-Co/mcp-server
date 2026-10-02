@@ -5,7 +5,9 @@ import {
   type McpServer,
   type ServerContext,
 } from '@modelcontextprotocol/server';
+import { GOOGLE_LINK, MICROSOFT_LINK } from '../account-link-providers.js';
 import type { ApiClient } from '../api-client.js';
+import type { FileProvider } from '../types.js';
 import {
   SearchBudget,
   candidateAt,
@@ -14,6 +16,7 @@ import {
   ADMIN_CONSENT_TEXT,
   isAdminConsentRequired,
   isNoDelegatedToken,
+  googleNotConnectedText,
   toCandidate,
   type Candidate,
 } from '../drive-search.js';
@@ -278,7 +281,9 @@ export function registerDriveSearchTool(
             isError: true,
           });
         }
-        if (isNoDelegatedToken(error)) return connectAnswer(api);
+        if (isNoDelegatedToken(error)) {
+          return connectAnswer(api, provider, error);
+        }
         const { outcome, message } = classifyDriveSearchFailure(error);
         return toolResult({ outcome, text: message, isError: true });
       }
@@ -326,23 +331,35 @@ export function registerDriveSearchTool(
  * screen the whole way while approving somebody else's application. Same
  * reasoning as `connect_microsoft`, which is where this link comes from.
  */
-async function connectAnswer(api: ApiClient) {
+async function connectAnswer(
+  api: ApiClient,
+  provider: FileProvider | undefined,
+  error: unknown,
+) {
+  // ENG-6412 — a Google refusal gets Google's remedy; ENG-6414 made that
+  // remedy `connect_google`'s backend-built link, the same path Microsoft
+  // takes, so the two lanes differ only in which provider row they read.
+  const link = provider === 'google' ? GOOGLE_LINK : MICROSOFT_LINK;
+  const outcome =
+    link === GOOGLE_LINK ? 'google_not_connected' : 'microsoft_not_connected';
   try {
-    const handoff = await api.beginMicrosoftConnect();
+    const handoff = await link.begin(api);
     return toolResult({
-      outcome: 'microsoft_not_connected',
-      text: connectPrompt(handoff.authorizeUrl, handoff.expiresAt),
+      outcome,
+      text: connectPrompt(handoff.authorizeUrl, handoff.expiresAt, link),
       detail: { authorizeUrl: handoff.authorizeUrl },
     });
   } catch {
     return toolResult({
-      outcome: 'microsoft_not_connected',
+      outcome,
       isError: true,
       text:
-        'This user has no connected Microsoft account, and Rockhopper could ' +
-        'not produce a sign-in link just now. Ask them to run ' +
-        '`connect_microsoft`, or to paste the workbook link for `enroll_file`. ' +
-        'Do not compose a Microsoft sign-in link yourself.',
+        link === GOOGLE_LINK
+          ? googleNotConnectedText(error)
+          : 'This user has no connected Microsoft account, and Rockhopper could ' +
+            'not produce a sign-in link just now. Ask them to run ' +
+            '`connect_microsoft`, or to paste the workbook link for `enroll_file`. ' +
+            'Do not compose a Microsoft sign-in link yourself.',
     });
   }
 }

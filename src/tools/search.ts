@@ -1,17 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
-import {
-  assertChangeHistoryComplete,
-  assertEnrollmentComplete,
-  isNotReady,
-  notReadyToolResult,
-} from '../not-ready.js';
-import {
-  changeModelForFileType,
-  documentChangesUnavailableToolResult,
-} from '../document-changes.js';
-import { readDocumentChanges } from './document-changes-read.js';
+import { isNotReady, notReadyToolResult } from '../not-ready.js';
+import { formatDocumentChanges } from '../document-changes.js';
+import { formatSpreadsheetChangeRows } from '../change-row-vocabulary.js';
+import { fileChangesUnavailableText, readFileChanges } from '../file-changes.js';
+import { isUnknownSheet, unknownSheetToolResult } from '../sheet-catalogue.js';
 
 export function registerSearchTool(
   server: McpServer,
@@ -145,7 +139,17 @@ export function registerSearchTool(
         'Answers DOCUMENT_CHANGES_UNAVAILABLE (isError) when a change list ' +
         'cannot be produced for this file at all. That is also NOT "no ' +
         'changes": say the list is unavailable and offer to compare two ' +
-        'versions instead. Never report a file as unchanged on either answer.',
+        'versions instead. Never report a file as unchanged on either answer. ' +
+        // ENG-4347 — the contract belongs in the description, not only in the
+        // payload: a model deciding "nothing changed on that sheet" reads the
+        // tool doc, not the error envelope.
+        'Answers SHEET_NOT_FOUND, SHEET_NAME_NOT_EXACT or ' +
+        'SHEET_CATALOGUE_UNAVAILABLE (each isError) when `sheetName` cannot ' +
+        'be shown to be a worksheet of this workbook, spelled the way it is ' +
+        'stored. None of those is "no changes" either: the first lists the ' +
+        'real sheet names, the second gives the exact spelling, and the third ' +
+        'means existence could not be checked. Re-send with a name from the ' +
+        'answer rather than reporting an absence.',
       inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         sheetName: z
@@ -173,59 +177,35 @@ export function registerSearchTool(
     },
     async ({ fileMsId, sheetName, cursor }) => {
       try {
-        // ENG-5397 — WHICH CHANGE MODEL, before which reader. The two lanes
-        // below are spreadsheet-only: `unattributed_change` requires a
-        // `sheetName` and the sheet route also filters `changeType = 'cell'`,
-        // so a Word document or a deck returned `[]` from them by
-        // construction and the tool printed "No unattributed changes found".
-        // Routing on the file's own type is what makes an absence mean
-        // something.
-        const file = await api.getEnrolledFile(fileMsId);
-        const model = changeModelForFileType(file.fileType);
+        // ENG-5397 — WHICH CHANGE MODEL, before which reader: the spreadsheet
+        // lanes cannot hold a document row, so a `.docx` read `[]` from them by
+        // construction. ENG-6431 — that dispatch (plus the fold, enrolment and
+        // sheet-existence gates) lives in `readFileChanges`, shared with the
+        // `…/changes` resource and the prompts; this tool only formats.
+        const read = await readFileChanges(api, fileMsId, { sheetName, cursor });
 
-        if (model === null) {
-          return documentChangesUnavailableToolResult({
-            reason: 'unknown_file_type',
-            fileMsId,
-            fileName: file.name,
-          });
+        if (read.kind === 'unavailable') {
+          return {
+            content: [{ type: 'text', text: fileChangesUnavailableText(read) }],
+            isError: true,
+          };
         }
 
-        if (model !== 'spreadsheet') {
-          return await readDocumentChanges(api, {
-            fileMsId,
-            sheetName,
-            fileType: file.fileType,
-            fileName: file.name,
-          });
+        if (read.kind === 'document') {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: formatDocumentChanges(read.response, read.file.name),
+              },
+            ],
+          };
         }
 
-        // Plan 02 ruling 5 (STRICT): gate BOTH modes. The commit-diff fold
-        // retracts and rewrites the uncommitted window, so a pending fold
-        // means this list is mid-rewrite in either shape.
-        await assertChangeHistoryComplete(api, fileMsId);
-
-        if (sheetName) {
+        if (read.kind === 'spreadsheet_sheet') {
           // Sheet-filtered mode: bounded by sheet size, no pagination needed.
-          // Audit (2026-05-23) measured: `Summary` sheet on a 12 MB file
-          // returned 9 rows clean. This is the practical workaround when the
-          // caller already knows which sheet to drill into.
-          const changes = await api.getUnattributedChangesBySheet(
-            fileMsId,
-            sheetName,
-          );
-          // ENG-2824: an empty answer is the only ambiguous one, so it is the
-          // only one that pays for the version read. A file still being read
-          // for the first time has no versions and no parsed cells, and the
-          // fold probe above cannot see that state — enrolment enqueues no
-          // fold. See `assertEnrollmentComplete`.
-          if (changes.length === 0) {
-            assertEnrollmentComplete(
-              fileMsId,
-              await api.getFileVersions(fileMsId),
-            );
-          }
-          const body = formatChangeRows(changes);
+          const { changes } = read;
+          const body = formatSpreadsheetChangeRows(changes);
           return {
             content: [
               {
@@ -243,21 +223,9 @@ export function registerSearchTool(
         // 25k-token client limit (audit measured one file at 12.5 MB / 28k
         // rows on the unpaginated route — KI-097).
         const MAX_DISPLAYED = 200;
-        const page = await api.getUnattributedChangesPaginated(
-          fileMsId,
-          cursor,
-        );
+        const { page } = read;
 
         if (page.changes.length === 0) {
-          // ENG-2824 — same rule as the sheet mode above. `totalCount === 0`
-          // over a file whose initial read has not landed is a premature
-          // absence, not a fact about the workbook.
-          if (page.totalCount === 0) {
-            assertEnrollmentComplete(
-              fileMsId,
-              await api.getFileVersions(fileMsId),
-            );
-          }
           return {
             content: [
               {
@@ -271,7 +239,7 @@ export function registerSearchTool(
         }
 
         const displayed = page.changes.slice(0, MAX_DISPLAYED);
-        const body = formatChangeRows(displayed);
+        const body = formatSpreadsheetChangeRows(displayed);
         const summary = summarizeBySheet(page.changes);
         const hidden = page.changes.length - displayed.length;
         const lines: string[] = [];
@@ -317,6 +285,10 @@ export function registerSearchTool(
         };
       } catch (error) {
         if (isNotReady(error)) return notReadyToolResult(error);
+        // ENG-4347 — a sheet that cannot be shown to exist is a refusal naming
+        // the sheet, never the empty answer the generic branch below would
+        // dress it as.
+        if (isUnknownSheet(error)) return unknownSheetToolResult(error);
         return {
           content: [
             {
@@ -355,33 +327,6 @@ function describeRemainingCount(totalCount: number, cursor?: string): string {
   return cursor
     ? `${totalCount} remaining from this page onward`
     : `${totalCount} in this file`;
-}
-
-function formatChangeRows(
-  changes: ReadonlyArray<{
-    sheetName: string;
-    cellAddress: string;
-    changeType: string;
-    oldValue: unknown;
-    newValue: unknown;
-    byUserPlatformId: string | null;
-    /** ENG-2603 — resolved display name; absent on an older backend. */
-    byUserName?: string | null;
-    createdAt: string;
-  }>,
-): string {
-  return changes
-    .map(
-      (c) =>
-        `- **${c.sheetName}!${c.cellAddress}** (${c.changeType}): ` +
-        `${JSON.stringify(c.oldValue)} → ${JSON.stringify(c.newValue)}` +
-        // ENG-2603 — see get-versions: name first, platform id as fallback.
-        (c.byUserName ?? c.byUserPlatformId
-          ? ` — by ${c.byUserName ?? c.byUserPlatformId}`
-          : '') +
-        ` — ${c.createdAt}`,
-    )
-    .join('\n');
 }
 
 function summarizeBySheet(

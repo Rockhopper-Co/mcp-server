@@ -72,3 +72,35 @@ export function cellHistoryUnavailableToolResult(
     isError: true,
   };
 }
+
+/**
+ * ENG-6433 — the same refusal for ONE document element addressed by anchorId:
+ * the backend answers `CELL_HISTORY_UNAVAILABLE` for an anchor on a
+ * spreadsheet, and for a document whose ledger read it declined. Named by the
+ * anchor so it cannot be mistaken for a cell's refusal.
+ */
+export function anchorHistoryUnavailableToolResult(
+  anchorId: string,
+): UnavailableToolResult {
+  const payload = {
+    status: 'unavailable',
+    code: CELL_HISTORY_UNAVAILABLE_CODE,
+    anchorId,
+  };
+  return {
+    content: [
+      {
+        type: 'text',
+        text:
+          `${UNAVAILABLE_MARKER} — this is NOT a result and NOT an empty result.\n` +
+          `Rockhopper cannot report the change history of element ` +
+          `"${anchorId}" for this file.\n` +
+          `Do NOT say the element has no history, that nothing changed, or ` +
+          `that the history is empty — none of that is known.\n` +
+          `Retrying will not change this answer.\n` +
+          JSON.stringify(payload),
+      },
+    ],
+    isError: true,
+  };
+}

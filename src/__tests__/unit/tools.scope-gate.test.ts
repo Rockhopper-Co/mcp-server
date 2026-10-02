@@ -29,6 +29,10 @@ const READ_TOOL_NAMES = [
   'connect_microsoft',
   'microsoft_link_status',
   'disconnect_microsoft',
+  // ENG-6414 — the Google Drive link, same floor.
+  'connect_google',
+  'google_link_status',
+  'disconnect_google',
   'list_files',
   'get_file_versions',
   'get_file_comments',
@@ -58,33 +62,33 @@ describe('write-tool scope gate (ENG-2208)', () => {
     expect(grantsWriteTools('read-write-plus')).toBe(false);
   });
 
-  it('registers 22 tools for a read-write scope', () => {
+  it('registers 25 tools for a read-write scope', () => {
     const names = registeredToolNames('read-write');
-    expect(names).toHaveLength(22);
+    expect(names).toHaveLength(25);
     for (const name of [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES]) {
       expect(names).toContain(name);
     }
   });
 
-  it('registers 12 tools for a read-only scope', () => {
+  it('registers 15 tools for a read-only scope', () => {
     const names = registeredToolNames('read-only');
-    expect(names).toHaveLength(12);
+    expect(names).toHaveLength(15);
     expect(names.sort()).toEqual([...READ_TOOL_NAMES].sort());
   });
 
   // The polarity flip. Pre-ENG-2208 each of these registered all 16.
-  it('registers 12 tools for an UNRECOGNISED scope', () => {
+  it('registers 15 tools for an UNRECOGNISED scope', () => {
     for (const scope of ['admin', 'write', 'read-write-plus', '']) {
       const names = registeredToolNames(scope);
-      expect(names, `scope=${JSON.stringify(scope)}`).toHaveLength(12);
+      expect(names, `scope=${JSON.stringify(scope)}`).toHaveLength(15);
       for (const name of WRITE_TOOL_NAMES) {
         expect(names, `scope=${JSON.stringify(scope)}`).not.toContain(name);
       }
     }
   });
 
-  it('registers 12 tools when no scope is supplied at all', () => {
-    expect(registeredToolNames()).toHaveLength(12);
+  it('registers 15 tools when no scope is supplied at all', () => {
+    expect(registeredToolNames()).toHaveLength(15);
     for (const name of WRITE_TOOL_NAMES) {
       expect(registeredToolNames()).not.toContain(name);
     }

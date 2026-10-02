@@ -94,7 +94,12 @@ export function isNotReady(err: unknown): err is ChangeHistoryNotReadyError {
  */
 const DEFINITIVE_HTTP_STATUSES = new Set([400, 401, 403, 404, 405, 410, 422]);
 
-function isDefinitiveRejection(err: unknown): boolean {
+/**
+ * Exported for ENG-4347, which needs the same distinction one probe over: a
+ * sheet-catalogue read that 403s has answered definitively and must not be
+ * dressed as a retryable "could not check".
+ */
+export function isDefinitiveRejection(err: unknown): boolean {
   const status = (err as { status?: unknown } | null | undefined)?.status;
   return typeof status === 'number' && DEFINITIVE_HTTP_STATUSES.has(status);
 }
