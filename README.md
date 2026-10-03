@@ -54,9 +54,19 @@ npx @rockhopper-co/mcp-server
 
 ### 2. Configure your AI tool
 
-#### Claude Desktop / Claude Code
+#### Claude Code
 
-Add to your MCP config (`~/.claude/mcp.json` or Claude Desktop settings):
+Run once:
+
+```bash
+claude mcp add --transport stdio --env ROCKHOPPER_API_URL=https://api.rockhopper.co rockhopper -- npx -y @rockhopper-co/mcp-server
+```
+
+Or add the block below to `.mcp.json` at your project root. Claude Code keeps servers added with `claude mcp add` in `~/.claude.json` ([Claude Code MCP docs](https://code.claude.com/docs/en/mcp)).
+
+#### Claude Desktop
+
+Add to `claude_desktop_config.json` (Settings → Developer → Edit Config):
 
 ```json
 {
@@ -138,14 +148,26 @@ npm run generate:postman
 
 | Tool | Description |
 |------|-------------|
-| `list_files` | List enrolled Excel files with optional search filter |
+| `list_files` | List the files tracked in Rockhopper — Excel workbooks and Google Sheets — with optional search filter |
 | `get_file_versions` | Get version history for a specific file |
 | `get_file_comments` | Get comments and threaded discussions on a file |
 | `get_reviews` | Get review requests for a version or file |
 | `get_cell_history` | Get change history for a specific cell across versions |
 | `search_files` | Search files **already enrolled** in Rockhopper, by name |
 | `search_drive_files` | Find a workbook in the user's own OneDrive / SharePoint, including files Rockhopper has never seen; returns candidates to confirm with the user before `enroll_file` |
-| `get_unattributed_changes` | Get pending cell changes not yet committed to a version |
+| `get_unattributed_changes` | Get the changes made since the last saved version (cells, paragraphs or shapes) |
+| `list_unenrolled_files` | List files Rockhopper has seen for the user that are not enrolled yet |
+
+## Account Link Tools
+
+| Tool | Description |
+|------|-------------|
+| `connect_microsoft` | Start connecting the user's Microsoft account; returns a sign-in link the user opens |
+| `microsoft_link_status` | Check whether a Microsoft account is connected and which one |
+| `disconnect_microsoft` | Remove the stored Microsoft connection (requires an interactive login, not a PAT) |
+| `connect_google` | Start connecting the user's Google account; returns a sign-in link the user opens |
+| `google_link_status` | Check whether a Google account is connected and which one |
+| `disconnect_google` | Remove the stored Google connection (requires an interactive login, not a PAT) |
 
 ## Available Resources
 
@@ -170,19 +192,20 @@ npm run generate:postman
 | `unresolved-comments` | List all unresolved comments on a file for follow-up |
 | `file-overview` | Comprehensive overview: versions, comments, reviews, and changes |
 
-## Write Tools (requires `read-write` scope)
+## Write Tools (each requires its write capability)
 
-| Tool | Description |
-|------|-------------|
-| `create_version` | Commit uncommitted changes as a new semver version (major/minor/patch) |
-| `discard_changes` | Discard all uncommitted changes, revert to latest committed version |
-| `add_comment` | Add a comment to an enrolled file (optionally at a cell) |
-| `reply_to_comment` | Reply to an existing comment thread |
-| `resolve_comment` | Mark a comment as resolved (author only) |
-| `create_review_request` | Request a review on a file version |
-| `approve_review` | Approve a review request (assigned reviewer only) |
-| `cancel_review` | Cancel a pending review request (requester only) |
-| `update_file_description` | Update the display name of an enrolled file |
+| Tool | Capability | Description |
+|------|------------|-------------|
+| `add_comment` | `comments:write` | Add a comment to an enrolled file (optionally at a cell, paragraph or shape) |
+| `reply_to_comment` | `comments:write` | Reply to an existing comment thread |
+| `resolve_comment` | `comments:write` | Mark a comment as resolved (author only) |
+| `create_review_request` | `reviews:write` | Request a review on a file version |
+| `approve_review` | `reviews:write` | Approve a review request (assigned reviewer only) |
+| `cancel_review` | `reviews:write` | Cancel a pending review request (requester only) |
+| `create_version` | `versions:write` | Commit uncommitted changes as a new semver version (major/minor/patch) |
+| `discard_changes` | `versions:write` | Discard all uncommitted changes, revert to latest committed version |
+| `rename_file` | `files:write` | Rename an enrolled file (its display name across Rockhopper) |
+| `enroll_file` | `files:write` | Add a file to Rockhopper from its SharePoint, OneDrive, Google Sheets or Google Drive link |
 
 ## Identifiers
 
