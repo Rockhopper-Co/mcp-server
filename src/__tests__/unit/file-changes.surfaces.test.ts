@@ -169,7 +169,37 @@ describe('ENG-6431 — a workbook still reads the paginated spreadsheet lane', (
     const text = await prompt(api, 'summarize-file-changes')('file-1');
     expect(api.getDocumentChanges).not.toHaveBeenCalled();
     expect(text).toContain('## Unattributed Changes (1 total)');
-    expect(text).toContain('- Sheet1!A1: 1 → 2');
+    expect(text).toContain('- **Sheet1!A1**: 1 → 2 — by ms-user-1 — 2026-01-01T00:00:00Z');
+  });
+
+  // ENG-6917 — the prompt printed every row as a raw cell edit, so a sheet
+  // reorder read `Budget!: {"t":"n","v":0} → {"t":"n","v":2}`. It now uses the
+  // tool's shared row vocabulary, so both say the same line.
+  it('summarize-file-changes says a sheet reorder in the shared words', async () => {
+    const api = createMockApiClient();
+    api.getUnattributedChangesPaginated.mockResolvedValue({
+      changes: [
+        {
+          id: 502,
+          changeType: 'sheet_reorder',
+          sheetName: 'Budget',
+          cellAddress: '',
+          oldValue: { t: 'n', v: 0 },
+          newValue: { t: 'n', v: 2 },
+          byUserPlatformId: 'ms-user-1',
+          byUserName: 'Ada',
+          createdAt: '2026-09-15T10:00:00.000Z',
+        },
+      ],
+      nextCursor: null,
+      totalCount: 1,
+    });
+    const text = await prompt(api, 'summarize-file-changes')('file-1');
+    expect(text).toContain(
+      '## Unattributed Changes (1 total)\n' +
+        '- **Budget!** (sheet moved): position 1 → 3 — by Ada — 2026-09-15T10:00:00.000Z',
+    );
+    expect(text).not.toContain('{"t":"n"');
   });
 
   it('file-overview reports the file total', async () => {
