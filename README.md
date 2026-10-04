@@ -59,10 +59,10 @@ npx @rockhopper-co/mcp-server
 Run once:
 
 ```bash
-claude mcp add --transport stdio --env ROCKHOPPER_API_URL=https://api.rockhopper.co rockhopper -- npx -y @rockhopper-co/mcp-server
+claude mcp add --env ROCKHOPPER_API_URL=https://api.rockhopper.co --transport stdio rockhopper -- npx -y @rockhopper-co/mcp-server
 ```
 
-Or add the block below to `.mcp.json` at your project root. Claude Code keeps servers added with `claude mcp add` in `~/.claude.json` ([Claude Code MCP docs](https://code.claude.com/docs/en/mcp)).
+Or add the JSON block from the Claude Desktop section below to `.mcp.json` at your project root. Claude Code keeps servers added with `claude mcp add` in `~/.claude.json` ([Claude Code MCP docs](https://code.claude.com/docs/en/mcp)).
 
 #### Claude Desktop
 
