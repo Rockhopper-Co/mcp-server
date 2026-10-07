@@ -248,7 +248,7 @@
           "type": "string"
         },
         "cursor": {
-          "description": "Opaque cursor from a previous response's pagination hint. Only valid with no `sheetName` (file-wide paginated mode). Snapshot expires 30 minutes after the first request — older cursors return an SNAPSHOT_EXPIRED error and the caller must restart from the first page.",
+          "description": "Opaque cursor from a previous response's pagination hint. Only valid with no `sheetName` (file-wide paginated mode).",
           "type": "string"
         }
       },

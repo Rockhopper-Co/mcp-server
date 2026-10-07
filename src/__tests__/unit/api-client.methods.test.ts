@@ -149,17 +149,6 @@ describe('ApiClient method coverage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('should build unattributed changes path with sheetName', async () => {
-    const fetchSpy = mockFetch({});
-    vi.stubGlobal('fetch', fetchSpy);
-    await client.getUnattributedChangesBySheet('file-1', 'Sheet1');
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.rockhopper.co/unattributed-changes/file-1/Sheet1',
-      expect.anything(),
-    );
-    vi.unstubAllGlobals();
-  });
-
   it('should call getFileVersions', async () => {
     const fetchSpy = mockFetch([]);
     vi.stubGlobal('fetch', fetchSpy);

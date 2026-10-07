@@ -172,76 +172,33 @@ describe('ApiClient', () => {
     vi.unstubAllGlobals();
   });
 
-  it('uses sheet-filter path for getUnattributedChangesBySheet', async () => {
-    const fetchSpy = mockFetch([]);
+  // ENG-6757 — the workbook change read moved to the ledger compare routes,
+  // keyed by the enrolled file's internal id.
+  it('hits the ledger compare-summary route for getCompareSummary', async () => {
+    const fetchSpy = mockFetch({ sheets: [], sheetDifferences: null, snapshotId: 's' });
     vi.stubGlobal('fetch', fetchSpy);
 
-    await client.getUnattributedChangesBySheet('file123', 'Sheet1');
+    await client.getCompareSummary(42);
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.rockhopper.co/unattributed-changes/file123/Sheet1',
+      'https://api.rockhopper.co/file-handler/compare-summary/by-enrolled-file/42',
       expect.anything(),
     );
 
     vi.unstubAllGlobals();
   });
 
-  it('URL-encodes sheet name with special characters', async () => {
-    const fetchSpy = mockFetch([]);
+  it('puts snapshotId and a URL-encoded cursor on the compare-sheet URL', async () => {
+    const fetchSpy = mockFetch({ cellChanges: [], nextCursor: null });
     vi.stubGlobal('fetch', fetchSpy);
 
-    await client.getUnattributedChangesBySheet('file123', 'My Sheet/Tab');
+    await client.getCompareSheet(42, 3, 'snap-1');
+    await client.getCompareSheet(42, 3, 'snap-1', 'cursor+/with=special');
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.rockhopper.co/unattributed-changes/file123/My%20Sheet%2FTab',
-      expect.anything(),
-    );
-
-    vi.unstubAllGlobals();
-  });
-
-  // KI-097: mcp-server now uses the dedicated `/paginated/:fileMsId` route
-  // added by backend PR #475 (KI-102). The legacy `:fileMsId/v2` route is
-  // shadowed by `:fileMsId/:sheetName` and unusable.
-  it('hits paginated route for getUnattributedChangesPaginated (no cursor)', async () => {
-    const fetchSpy = mockFetch({
-      changes: [],
-      nextCursor: null,
-      totalCount: 0,
-      snapshotId: '1700000000000',
-      snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
-    });
-    vi.stubGlobal('fetch', fetchSpy);
-
-    await client.getUnattributedChangesPaginated('file123');
-
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.rockhopper.co/unattributed-changes/paginated/file123',
-      expect.anything(),
-    );
-
-    vi.unstubAllGlobals();
-  });
-
-  it('passes URL-encoded cursor as query param for getUnattributedChangesPaginated', async () => {
-    const fetchSpy = mockFetch({
-      changes: [],
-      nextCursor: null,
-      totalCount: 0,
-      snapshotId: '1700000000000',
-      snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
-    });
-    vi.stubGlobal('fetch', fetchSpy);
-
-    await client.getUnattributedChangesPaginated(
-      'file123',
-      'cursor+/with=special',
-    );
-
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.rockhopper.co/unattributed-changes/paginated/file123?cursor=cursor%2B%2Fwith%3Dspecial',
-      expect.anything(),
-    );
+    expect(fetchSpy.mock.calls.map((c) => c[0])).toEqual([
+      'https://api.rockhopper.co/file-handler/compare-sheet/by-enrolled-file/42/3?snapshotId=snap-1',
+      'https://api.rockhopper.co/file-handler/compare-sheet/by-enrolled-file/42/3?snapshotId=snap-1&cursor=cursor%2B%2Fwith%3Dspecial',
+    ]);
 
     vi.unstubAllGlobals();
   });
