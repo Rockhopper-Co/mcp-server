@@ -298,8 +298,8 @@ export interface DriveInventoryResponse {
    * route that distinction is the whole feature. The backend's enrollment
    * filter runs after the database cuts a chunk, and one request only reads so
    * many rows, so `items` can be empty while more remain. Only `null` says the
-   * walk is over. Same contract as {@link PaginatedUnattributedResponse}:
-   * 30-minute snapshot, `SNAPSHOT_EXPIRED` on an older cursor.
+   * walk is over. A 30-minute snapshot, `SNAPSHOT_EXPIRED` on an older
+   * cursor.
    */
   nextCursor: string | null;
   snapshotId: string;
@@ -531,51 +531,47 @@ export interface ReviewRecord {
   reviewer?: UserSummary;
 }
 
+/** ENG-6757 — one change since the last saved version, from the ledger
+ * compare routes (`ledger-changes.ts`, which says what is not carried). */
 export interface UnattributedChange {
-  id: number;
   changeType: string;
   /**
    * ENG-6608 — the server's facet classification of a cell edit (`value`,
    * `format`, `formula`, `formula_recalc`, `value_and_format`); the row's word
-   * comes from it. Optional because an older backend may not serve it, and
-   * then the row prints no word rather than guessing one.
+   * comes from it. Null on a structural row, and on a cell whose lane did not
+   * classify it; then the row prints no word rather than guessing one.
    */
   editType?: string | null;
   sheetName: string;
+  /** `sheet_rename` only: the name the sheet carried before. */
+  fromSheetName: string | null;
+  /** The cell or band address; `''` on a sheet-level change, as before. */
   cellAddress: string;
   oldValue: unknown;
   newValue: unknown;
   byUserPlatformId: string | null;
   byUserPlatformType: string | null;
   /**
-   * ENG-2603 — the author's resolved display name.
-   *
-   * Optional because it is additive: a backend older than the change that
-   * added it simply omits the field, and the renderer falls back to
-   * `byUserPlatformId` exactly as before. Absent means "not resolved",
-   * never "nobody" — the placeholder is this client's decision.
+   * ENG-2603 — the author's resolved display name, null when the server
+   * resolved none. The renderer then falls back to `byUserPlatformId`; the
+   * placeholder is this client's decision.
    */
   byUserName?: string | null;
-  processingStatus: string;
-  attributionDate: string | null;
-  createdAt: string;
-  updatedAt: string;
+  /** `done` when an editor is named, `unresolved` when none is (2026-10-06). */
+  processingStatus: string | null;
+  /** The ladder rung that named, or declined to name, the editor. */
+  attributionConfidence: string | null;
+  /** When Rockhopper first saw the change; null where the route serves no such clock. */
+  createdAt: string | null;
 }
 
-/**
- * Envelope returned by the backend's paginated unattributed-changes route
- * (`GET /unattributed-changes/paginated/:fileMsId`). Cursor-based snapshot
- * pagination with a 1k-row page cap + 30-minute snapshot TTL. See KI-102 in
- * `knowledge-base/docs/known-issues.md` for the route history; the bare
- * `:fileMsId/v2` route is shadowed in the controller, so this dedicated
- * non-shadowable prefix is what mcp-server uses.
- */
+/** One page of a workbook's changes (`ledger-changes.ts!readLedgerPage`):
+ * `totalCount` counts rows from this page on; `nextCursor` null on the last. */
 export interface PaginatedUnattributedResponse {
   changes: UnattributedChange[];
   nextCursor: string | null;
   totalCount: number;
   snapshotId: string;
-  snapshotCreatedAt: string;
 }
 
 /**

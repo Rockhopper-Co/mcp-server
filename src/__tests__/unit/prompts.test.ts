@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { registerPrompts } from '../../prompts/index.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
+import { serveLedger } from './ledger-mock.js';
 
 describe('prompt registrations', () => {
   it('should register all prompts', () => {
@@ -30,7 +31,7 @@ describe('prompt registrations', () => {
 
     expect(api.getEnrolledFile).toHaveBeenCalledWith('file-1');
     expect(api.getFileVersions).toHaveBeenCalledWith('file-1');
-    expect(api.getUnattributedChangesPaginated).toHaveBeenCalledWith('file-1');
+    expect(api.getCompareSummary).toHaveBeenCalledWith(11);
     expect(result.messages[0].content.text).toContain('Recent Versions');
     expect(result.messages[0].content.text).toContain('Unattributed Changes');
   });
@@ -301,13 +302,7 @@ describe('summarize-file-changes rendering arms', () => {
 
   it('prints None — not an empty list — when the file has no unattributed changes', async () => {
     const api = createMockApiClient();
-    api.getUnattributedChangesPaginated.mockResolvedValue({
-      changes: [],
-      nextCursor: null,
-      totalCount: 0,
-      snapshotId: '1700000000000',
-      snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
-    });
+    serveLedger(api, []);
 
     const text = await renderPrompt('summarize-file-changes', api);
 
