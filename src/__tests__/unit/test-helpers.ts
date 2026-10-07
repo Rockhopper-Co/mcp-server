@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { vi, type Mock } from 'vitest';
+import { serveLedger, servedCell } from './ledger-mock.js';
 
 // vitest 5 infers `Mock<Procedure>` for every `vi.fn()`, and `Procedure` is NOT
 // re-exported from `vitest` — so an exported helper's inferred return type cannot
@@ -40,11 +41,12 @@ export interface MockApiClient {
   getReviewActivities: Mock;
   createReviewRequest: Mock;
   approveReview: Mock;
-  getUnattributedChangesBySheet: Mock;
+  /** ENG-6757 — the ledger compare routes; `ledger-mock.ts!serveLedger`. */
+  getCompareSummary: Mock;
+  getCompareSheet: Mock;
   /** ENG-4347 — the workbook's sheet catalogue, read only on an empty answer. */
   getWorkbookSheetNames: Mock;
   getGoogleSheetNames: Mock;
-  getUnattributedChangesPaginated: Mock;
   /** ENG-5397 — the document (Word paragraph / PowerPoint shape) change lane. */
   getDocumentChanges: Mock;
   updateEnrolledFile: Mock;
@@ -54,7 +56,7 @@ export interface MockApiClient {
 }
 
 export function createMockApiClient(): MockApiClient {
-  return {
+  const api: MockApiClient = {
     // ENG-2816 — a FIXED key, deliberately. Every mock client derives the same
     // one, so a spec that mints on one server and verifies on another models
     // the gateway's two replicas serving one session. A per-instance random
@@ -312,22 +314,8 @@ export function createMockApiClient(): MockApiClient {
       status: 'PENDING',
     }),
     approveReview: vi.fn().mockResolvedValue({ id: 402 }),
-    getUnattributedChangesBySheet: vi.fn().mockResolvedValue([
-      {
-        id: 501,
-        changeType: 'update',
-        sheetName: 'Sheet1',
-        cellAddress: 'A1',
-        oldValue: 1,
-        newValue: 2,
-        byUserPlatformId: 'ms-user-1',
-        byUserPlatformType: 'microsoft',
-        processingStatus: 'pending',
-        attributionDate: null,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-      },
-    ]),
+    getCompareSummary: vi.fn(),
+    getCompareSheet: vi.fn(),
     // ENG-4347 — the workbook's real sheet catalogue. The default carries
     // every sheet name the existing specs query with, so a spec asserting the
     // GENUINE empty answer ("this sheet exists and has nothing on it") keeps
@@ -338,28 +326,6 @@ export function createMockApiClient(): MockApiClient {
     getGoogleSheetNames: vi
       .fn()
       .mockResolvedValue(['Sheet1', 'Project Accruals', 'Q3 Model', 'EmptySheet']),
-    getUnattributedChangesPaginated: vi.fn().mockResolvedValue({
-      changes: [
-        {
-          id: 501,
-          changeType: 'update',
-          sheetName: 'Sheet1',
-          cellAddress: 'A1',
-          oldValue: 1,
-          newValue: 2,
-          byUserPlatformId: 'ms-user-1',
-          byUserPlatformType: 'microsoft',
-          processingStatus: 'pending',
-          attributionDate: null,
-          createdAt: '2026-01-01T00:00:00Z',
-          updatedAt: '2026-01-01T00:00:00Z',
-        },
-      ],
-      nextCursor: null,
-      totalCount: 1,
-      snapshotId: '1700000000000',
-      snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
-    }),
     // ENG-5397 — the document lane. Served-and-empty by default: the fixture's
     // default file is a workbook, which never reaches this reader, so a spec
     // that DOES reach it is one that set a document fileType on purpose.
@@ -397,6 +363,23 @@ export function createMockApiClient(): MockApiClient {
       status: 'CANCELLED',
     }),
   };
+  // One named cell on Sheet1, the default workbook window.
+  serveLedger(api, [
+    {
+      name: 'Sheet1',
+      cells: [
+        servedCell({
+          cell: 'A1',
+          cell1: { v: 1 },
+          cell2: { v: 2 },
+          byUserPlatformId: 'ms-user-1',
+          byUserName: null,
+          firstObservedAt: '2026-01-01T00:00:00Z',
+        }),
+      ],
+    },
+  ]);
+  return api;
 }
 
 export interface MockMcpServer {

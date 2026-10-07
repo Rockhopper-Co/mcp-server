@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { registerTools } from '../../tools/index.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
+import { serveLedger, servedCell } from './ledger-mock.js';
 
 /**
  * ENG-5397 — `get_unattributed_changes` answered a Word document and a
@@ -178,8 +179,8 @@ describe('get_unattributed_changes on a document', () => {
     expect(api.getDocumentChanges).toHaveBeenCalledWith('file-doc');
     // The spreadsheet reader answers `[]` for a document by construction, so
     // calling it at all is how the wrong negative was produced.
-    expect(api.getUnattributedChangesPaginated).not.toHaveBeenCalled();
-    expect(api.getUnattributedChangesBySheet).not.toHaveBeenCalled();
+    expect(api.getCompareSummary).not.toHaveBeenCalled();
+    expect(api.getCompareSheet).not.toHaveBeenCalled();
   });
 
   it('returns the shape rows a deck actually has, naming the slide by its id', async () => {
@@ -336,22 +337,9 @@ describe('get_unattributed_changes on a document', () => {
 describe('get_unattributed_changes on a spreadsheet is unchanged', () => {
   it('still reads the paginated spreadsheet lane', async () => {
     const api = createMockApiClient();
-    api.getUnattributedChangesPaginated.mockResolvedValue({
-      changes: [
-        {
-          sheetName: 'Summary',
-          cellAddress: 'B4',
-          changeType: 'cell',
-          oldValue: 1,
-          newValue: 2,
-          byUserPlatformId: 'ms-user-1',
-          byUserName: 'Grace Hopper',
-          createdAt: '2026-09-15T10:00:00.000Z',
-        },
-      ],
-      totalCount: 1,
-      nextCursor: null,
-    });
+    serveLedger(api, [
+      { name: 'Summary', cells: [servedCell({ cell: 'B4', byUserName: 'Grace Hopper' })] },
+    ]);
 
     const text = (await changesHandler(api)({ fileMsId: 'file-1' })).content[0]
       .text as string;
@@ -362,17 +350,7 @@ describe('get_unattributed_changes on a spreadsheet is unchanged', () => {
 
   it('still serves the sheet-filtered spreadsheet mode', async () => {
     const api = createMockApiClient();
-    api.getUnattributedChangesBySheet.mockResolvedValue([
-      {
-        sheetName: 'Summary',
-        cellAddress: 'C9',
-        changeType: 'cell',
-        oldValue: 'a',
-        newValue: 'b',
-        byUserPlatformId: 'ms-user-1',
-        createdAt: '2026-09-15T10:00:00.000Z',
-      },
-    ]);
+    serveLedger(api, [{ name: 'Summary', cells: [servedCell({ cell: 'C9' })] }]);
 
     const text = (
       await changesHandler(api)({ fileMsId: 'file-1', sheetName: 'Summary' })

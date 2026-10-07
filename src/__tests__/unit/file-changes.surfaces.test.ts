@@ -3,6 +3,8 @@ import { registerResources } from '../../resources/index.js';
 import { registerPrompts } from '../../prompts/index.js';
 import { DOCUMENT_CHANGES_UNAVAILABLE_MARKER } from '../../document-changes.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
+import { serveLedger } from './ledger-mock.js';
+import { LEDGER_COMPARE_GOLDEN } from '../goldens/ledger-compare.js';
 
 /**
  * ENG-6431 — the `…/changes` resource and the `summarize-file-changes` /
@@ -102,7 +104,7 @@ function documentFile(api: Api, c: DocCase, declineReason: string | null = null)
 
 function expectDocumentLane(api: Api, c: DocCase) {
   expect(api.getDocumentChanges).toHaveBeenCalledWith(c.id);
-  expect(api.getUnattributedChangesPaginated).not.toHaveBeenCalled();
+  expect(api.getCompareSummary).not.toHaveBeenCalled();
 }
 
 describe.each(DOCUMENT_CASES)('ENG-6431 — a $fileType file', (c) => {
@@ -159,9 +161,9 @@ describe('ENG-6431 — a workbook still reads the paginated spreadsheet lane', (
   it('the changes resource serves the paginated envelope', async () => {
     const api = createMockApiClient();
     const served = JSON.parse((await resource(api)('file-1')).contents[0].text);
-    expect(api.getUnattributedChangesPaginated).toHaveBeenCalledWith('file-1');
+    expect(api.getCompareSummary).toHaveBeenCalledWith(11);
     expect(api.getDocumentChanges).not.toHaveBeenCalled();
-    expect(served.changes[0].id).toBe(501);
+    expect(served.changes[0]).toMatchObject({ sheetName: 'Sheet1', cellAddress: 'A1' });
   });
 
   it('summarize-file-changes renders the cell row', async () => {
@@ -169,7 +171,35 @@ describe('ENG-6431 — a workbook still reads the paginated spreadsheet lane', (
     const text = await prompt(api, 'summarize-file-changes')('file-1');
     expect(api.getDocumentChanges).not.toHaveBeenCalled();
     expect(text).toContain('## Unattributed Changes (1 total)');
-    expect(text).toContain('- Sheet1!A1: 1 → 2');
+    expect(text).toContain(
+      '- **Sheet1!A1** (value): {"v":1} → {"v":2} — by ms-user-1 — 2026-01-01T00:00:00Z',
+    );
+  });
+
+  // ENG-6917 — the prompt printed every row as a raw cell edit, so a sheet
+  // reorder read `Budget!: {"t":"n","v":0} → {"t":"n","v":2}`. It now uses the
+  // tool's shared row vocabulary, so both say the same line.
+  it('summarize-file-changes says a sheet reorder in the shared words', async () => {
+    const api = createMockApiClient();
+    const [added] = LEDGER_COMPARE_GOLDEN.summary.sheetDifferences?.added ?? [];
+    serveLedger(api, [], {
+      reordered: [
+        {
+          ...added,
+          sheet: 'Budget',
+          fromIndex: 0,
+          toIndex: 2,
+          byUserPlatformId: 'ms-user-1',
+          byUserName: 'Ada',
+        },
+      ],
+    });
+    const text = await prompt(api, 'summarize-file-changes')('file-1');
+    expect(text).toContain(
+      '## Unattributed Changes (1 total)\n' +
+        '- **Budget!** (sheet moved): position 1 → 3 — by Ada',
+    );
+    expect(text).not.toContain('{"t":"n"');
   });
 
   it('file-overview reports the file total', async () => {
@@ -194,6 +224,6 @@ describe('ENG-6431 — a file type this build does not know', () => {
     await expect(resource(api)('file-x')).rejects.toThrow('unknown_file_type');
     const text = await prompt(api, 'file-overview')('file-x');
     expect(text).toContain('"reason":"unknown_file_type"');
-    expect(api.getUnattributedChangesPaginated).not.toHaveBeenCalled();
+    expect(api.getCompareSummary).not.toHaveBeenCalled();
   });
 });

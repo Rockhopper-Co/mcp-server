@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { registerTools } from '../../tools/index.js';
 import { RockhopperApiError } from '../../api-client.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
+import { serveLedger, servedCell } from './ledger-mock.js';
 
 const getHandler = (
   api: ReturnType<typeof createMockApiClient>,
@@ -44,10 +45,8 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
   describe('get_unattributed_changes', () => {
     it('refuses a sheet the workbook does not have, and names the real ones', async () => {
       const api = withCatalogue(createMockApiClient());
-      // The backend takes sheetName as a FILTER and returns [] for a name that
-      // matches nothing — there is no 404, so the miss is indistinguishable
-      // from a real sheet with no pending changes.
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      // The ledger summary lists no such sheet, as for a real unchanged one.
+      serveLedger(api, []);
 
       const result = await getHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
@@ -67,7 +66,7 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
 
     it('still reports a GENUINE absence on a sheet that exists', async () => {
       const api = withCatalogue(createMockApiClient());
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      serveLedger(api, []);
 
       const result = await getHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
@@ -83,6 +82,7 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
 
     it('does not read the catalogue at all when rows came back', async () => {
       const api = withCatalogue(createMockApiClient());
+      serveLedger(api, [{ name: 'Whatever', cells: [servedCell({ cell: 'A1' })] }]);
 
       const result = await getHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
@@ -163,7 +163,7 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
     // case-INSENSITIVE existence check would wave exactly this through.
     it('a case-wrong name is refused with the exact spelling, not listed as missing', async () => {
       const api = withCatalogue(createMockApiClient());
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      serveLedger(api, []);
 
       const result = await getHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
@@ -194,7 +194,7 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
 
     it('an unreadable catalogue refuses WITHOUT claiming the sheet is missing', async () => {
       const api = createMockApiClient();
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      serveLedger(api, []);
       api.getWorkbookSheetNames.mockRejectedValue(
         new RockhopperApiError(500, 'Rockhopper API 500: parser timed out'),
       );
@@ -222,7 +222,7 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
       // wearing a successful one's clothes. Proving an absence from it is the
       // same class of error as the defect being fixed.
       const api = withCatalogue(createMockApiClient(), []);
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      serveLedger(api, []);
 
       const result = await getHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
@@ -246,7 +246,7 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
         name: 'Budget.xlsx',
         hasUncommittedChanges: true,
       });
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      serveLedger(api, []);
 
       const result = await getHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
@@ -260,7 +260,7 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
 
     it('a definitive rejection is not dressed as a retryable "could not check"', async () => {
       const api = createMockApiClient();
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      serveLedger(api, []);
       api.getWorkbookSheetNames.mockRejectedValue(
         new RockhopperApiError(403, 'Rockhopper API 403: Forbidden'),
       );
@@ -290,7 +290,7 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
   describe('platform routing — the same capability on both, not one lane', () => {
     it('a Microsoft workbook is looked up by its INTERNAL id, not its platformId', async () => {
       const api = withCatalogue(createMockApiClient());
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      serveLedger(api, []);
 
       await getHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
@@ -314,7 +314,7 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
         name: 'Model.gsheet',
         hasUncommittedChanges: true,
       });
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      serveLedger(api, []);
 
       const result = await getHandler(api, 'get_unattributed_changes')({
         fileMsId: 'gsheet-abc',
@@ -339,7 +339,7 @@ describe('an unknown sheetName is refused, not answered empty (ENG-4347)', () =>
         name: 'Budget.xlsx',
         hasUncommittedChanges: true,
       });
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      serveLedger(api, []);
 
       await getHandler(api, 'get_unattributed_changes')({
         fileMsId: 'gdrive-xlsx-1',

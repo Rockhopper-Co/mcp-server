@@ -3,6 +3,7 @@ import { RockhopperApiError } from '../../api-client.js';
 import { registerTools } from '../../tools/index.js';
 import { registerResources } from '../../resources/index.js';
 import { registerPrompts } from '../../prompts/index.js';
+import { serveLedger } from './ledger-mock.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
 import {
   ChangeHistoryNotReadyError,
@@ -231,7 +232,7 @@ describe('strict no-partial — change-history surfaces', () => {
         sheetName: 'Sheet1',
       });
 
-      expect(api.getUnattributedChangesBySheet).not.toHaveBeenCalled();
+      expect(api.getCompareSummary).not.toHaveBeenCalled();
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain(NOT_READY_MARKER);
     });
@@ -244,7 +245,7 @@ describe('strict no-partial — change-history surfaces', () => {
         fileMsId: 'file-1',
       });
 
-      expect(api.getUnattributedChangesPaginated).not.toHaveBeenCalled();
+      expect(api.getCompareSummary).not.toHaveBeenCalled();
       expect(result.isError).toBe(true);
       expect(result.content[0].text).not.toContain(
         'No unattributed changes found',
@@ -257,7 +258,7 @@ describe('strict no-partial — change-history surfaces', () => {
         fileMsId: 'file-1',
       });
 
-      expect(api.getUnattributedChangesPaginated).toHaveBeenCalled();
+      expect(api.getCompareSheet).toHaveBeenCalled();
       expect(result.isError).toBeUndefined();
     });
   });
@@ -272,7 +273,7 @@ describe('strict no-partial — change-history surfaces', () => {
           fileMsId: 'file-1',
         }),
       ).rejects.toThrow(NOT_READY_MARKER);
-      expect(api.getUnattributedChangesPaginated).not.toHaveBeenCalled();
+      expect(api.getCompareSummary).not.toHaveBeenCalled();
     });
   });
 
@@ -420,11 +421,7 @@ describe('strict no-partial — change-history surfaces', () => {
 
     it('get_unattributed_changes refuses the file-wide empty answer', async () => {
       const api = stillEnrolling(createMockApiClient());
-      api.getUnattributedChangesPaginated.mockResolvedValue({
-        changes: [],
-        totalCount: 0,
-        nextCursor: null,
-      });
+      serveLedger(api, []);
 
       const result = await toolHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
@@ -439,7 +436,7 @@ describe('strict no-partial — change-history surfaces', () => {
 
     it('get_unattributed_changes refuses the sheet-filtered empty answer', async () => {
       const api = stillEnrolling(createMockApiClient());
-      api.getUnattributedChangesBySheet.mockResolvedValue([]);
+      serveLedger(api, []);
 
       const result = await toolHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
@@ -455,11 +452,7 @@ describe('strict no-partial — change-history surfaces', () => {
 
     it('reports a GENUINE absence when the file is enrolled and simply has no changes', async () => {
       const api = createMockApiClient();
-      api.getUnattributedChangesPaginated.mockResolvedValue({
-        changes: [],
-        totalCount: 0,
-        nextCursor: null,
-      });
+      serveLedger(api, []);
 
       const result = await toolHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
@@ -504,11 +497,7 @@ describe('strict no-partial — change-history surfaces', () => {
     it('the changes resource throws on an empty envelope from a file still being read (ENG-2824)', async () => {
       const api = createMockApiClient();
       api.getFileVersions.mockResolvedValue([]);
-      api.getUnattributedChangesPaginated.mockResolvedValue({
-        changes: [],
-        totalCount: 0,
-        nextCursor: null,
-      });
+      serveLedger(api, []);
 
       await expect(
         resourceHandler(api)({ href: 'rockhopper://files/file-1/changes' }, {

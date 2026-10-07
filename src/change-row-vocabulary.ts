@@ -82,13 +82,40 @@ export const SPREADSHEET_EDIT_TYPE_WORDS: Readonly<Record<string, string>> = {
 };
 
 /**
- * A structural `changeType` → its row word, one row per change:
- * `changeLabel.ts!sheetChangeLabel` and `rowColumnChangeLabel` at a count of 1.
+ * Every spreadsheet `changeType` this build reads: backend
+ * `unattributed-change.entity.ts!UnattributedChangeType`. ENG-6917 — the
+ * tables and the switch below are keyed on it, so a type added here without a
+ * word and a row shape fails the build.
  */
-export const SPREADSHEET_STRUCTURAL_WORDS: Readonly<Record<string, string>> = {
+export const SPREADSHEET_CHANGE_TYPES = [
+  'cell',
+  'sheet_add',
+  'sheet_delete',
+  'sheet_rename',
+  'sheet_reorder',
+  'row_insert',
+  'row_delete',
+  'column_insert',
+  'column_delete',
+] as const;
+export type SpreadsheetChangeType = (typeof SPREADSHEET_CHANGE_TYPES)[number];
+type StructuralChangeType = Exclude<SpreadsheetChangeType, 'cell'>;
+
+const isSpreadsheetChangeType = (t: string): t is SpreadsheetChangeType =>
+  (SPREADSHEET_CHANGE_TYPES as ReadonlyArray<string>).includes(t);
+
+/**
+ * A structural `changeType` → its row word, one row per change:
+ * `changeLabel.ts!sheetChangeLabel` (a reorder reads "moved", ENG-6688) and
+ * `rowColumnChangeLabel` at a count of 1.
+ */
+export const SPREADSHEET_STRUCTURAL_WORDS: Readonly<
+  Record<StructuralChangeType, string>
+> = {
   sheet_add: 'sheet added',
   sheet_delete: 'sheet removed',
   sheet_rename: 'sheet renamed',
+  sheet_reorder: 'sheet moved',
   row_insert: 'row inserted',
   row_delete: 'row deleted',
   column_insert: 'column inserted',
@@ -164,32 +191,81 @@ export interface SpreadsheetChangeRowInput {
   byUserPlatformId: string | null;
   /** ENG-2603 — resolved display name; absent on an older backend. */
   byUserName?: string | null;
-  createdAt: string;
+  /** ENG-6757 — null where the route serves no first-seen clock (a band, a tab). */
+  createdAt: string | null;
+}
+
+/**
+ * A moved sheet's tab positions, counted from 1 as the tabs read: the served
+ * value columns carry the 0-based indices (backend ENG-6913). Frontend
+ * `UserStructuralChange.tsx` — no positions when either side lacks one.
+ */
+function sheetPositions(oldValue: unknown, newValue: unknown): string {
+  const index = (side: unknown) => {
+    const v = (side as { v?: unknown } | null | undefined)?.v;
+    return typeof v === 'number' && Number.isInteger(v) ? v : null;
+  };
+  const from = index(oldValue);
+  const to = index(newValue);
+  return from === null || to === null
+    ? ''
+    : `: position ${from + 1} → ${to + 1}`;
+}
+
+/** The word and the text after it on one known spreadsheet row. Total. */
+function knownRowParts(
+  type: SpreadsheetChangeType,
+  c: SpreadsheetChangeRowInput,
+): { word: string | undefined; tail: string } {
+  switch (type) {
+    case 'cell':
+      return {
+        word: c.editType ? own(SPREADSHEET_EDIT_TYPE_WORDS, c.editType) : undefined,
+        tail: `: ${cellSide(c.oldValue)} → ${cellSide(c.newValue)}`,
+      };
+    case 'sheet_reorder':
+      return {
+        word: SPREADSHEET_STRUCTURAL_WORDS[type],
+        tail: sheetPositions(c.oldValue, c.newValue),
+      };
+    case 'sheet_add':
+    case 'sheet_delete':
+    case 'sheet_rename':
+    case 'row_insert':
+    case 'row_delete':
+    case 'column_insert':
+    case 'column_delete':
+      return { word: SPREADSHEET_STRUCTURAL_WORDS[type], tail: '' };
+    default: {
+      const unhandled: never = type;
+      return unhandled;
+    }
+  }
 }
 
 /**
  * Spreadsheet change rows, rendered. A structural row names what happened to
- * the sheet, row or column and has no value sides, as in the change log.
+ * the sheet, row or column and has no value sides, as in the change log; a
+ * moved sheet states its two tab positions. A type this build cannot read
+ * prints no word and keeps its sides.
  */
 export function formatSpreadsheetChangeRows(
   changes: ReadonlyArray<SpreadsheetChangeRowInput>,
 ): string {
   return changes
     .map((c) => {
-      const structural = own(SPREADSHEET_STRUCTURAL_WORDS, c.changeType);
-      const word =
-        structural ??
-        (c.changeType === 'cell' && c.editType
-          ? own(SPREADSHEET_EDIT_TYPE_WORDS, c.editType)
-          : undefined);
+      const { word, tail } = isSpreadsheetChangeType(c.changeType)
+        ? knownRowParts(c.changeType, c)
+        : {
+            word: undefined,
+            tail: `: ${cellSide(c.oldValue)} → ${cellSide(c.newValue)}`,
+          };
       const label = word ? ` (${word})` : '';
-      const sides = structural
-        ? ''
-        : `: ${cellSide(c.oldValue)} → ${cellSide(c.newValue)}`;
       // ENG-2603 — see get-versions: name first, platform id as fallback.
       const author = c.byUserName ?? c.byUserPlatformId;
       const by = author ? ` — by ${author}` : '';
-      return `- **${c.sheetName}!${c.cellAddress}**${label}${sides}${by} — ${c.createdAt}`;
+      const at = c.createdAt ? ` — ${c.createdAt}` : '';
+      return `- **${c.sheetName}!${c.cellAddress}**${label}${tail}${by}${at}`;
     })
     .join('\n');
 }

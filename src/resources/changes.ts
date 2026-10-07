@@ -24,12 +24,10 @@ export function registerChangeResources(
       mimeType: 'application/json',
     },
     async (uri, { fileMsId }) => {
-      // KI-097: switched to cursor-paginated route. Resource returns the
-      // full envelope (`{changes, nextCursor, totalCount, snapshotId, ...}`)
-      // so consumers can paginate by re-reading the resource with a
-      // different cursor — though most clients will treat this as a
-      // single read. Resource shape is now the paginated envelope, not
-      // a bare array.
+      // KI-097: the resource returns the first page's envelope
+      // (`{changes, nextCursor, totalCount, snapshotId}`), not a bare array.
+      // ENG-6757: read from the ledger compare routes; each row is the legacy
+      // row minus the five bookkeeping fields (`ledger-changes.ts`).
       // Plan 02 ruling 5 (STRICT) — a resource read has no `isError` channel,
       // so an incomplete window must THROW. The SDK renders that as a protocol
       // error, which is the only shape here that cannot be mistaken for an
