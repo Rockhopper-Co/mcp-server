@@ -91,3 +91,24 @@ export interface LedgerChangeReader {
     cursor?: string,
   ): Promise<CompareSheetPage>;
 }
+
+/**
+ * The backend's `X-Client-Surface` spelling of each provenance surface
+ * (`client-surface.constants.ts!CLIENT_SURFACE_ALIASES`). The compare routes
+ * choose the ledger read from that header alone; without it the backend
+ * recomputes from the file bytes, where an editor-less change reads `pending`.
+ */
+const CLIENT_SURFACES = new Map([
+  ['mcp', 'mcp-server'],
+  ['gateway', 'mcp-gateway'],
+]);
+
+/**
+ * The compare calls' surface header, or none for a surface with no spelling.
+ * Compare calls only: other routes persist `X-Client-Surface` as the
+ * submitting surface, and starting that record is a separate decision.
+ */
+export function compareSurfaceHeaders(surface: string): Record<string, string> {
+  const value = CLIENT_SURFACES.get(surface);
+  return value ? { 'X-Client-Surface': value } : {};
+}

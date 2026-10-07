@@ -2,7 +2,11 @@ import { createHmac, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 import { getCorrelationId } from './correlation.js';
 import { log } from './logger.js';
-import type { CompareSheetPage, CompareSummary } from './ledger-wire.js';
+import {
+  compareSurfaceHeaders,
+  type CompareSheetPage,
+  type CompareSummary,
+} from './ledger-wire.js';
 import type {
   CellHistoryEntry,
   DocumentAnchorHistory,
@@ -1090,6 +1094,7 @@ export class ApiClient {
       `/file-handler/compare-summary/by-enrolled-file/${encodeURIComponent(
         String(enrolledFileInternalId),
       )}`,
+      { headers: compareSurfaceHeaders(this.surface) },
     );
   }
 
@@ -1110,6 +1115,7 @@ export class ApiClient {
       `/file-handler/compare-sheet/by-enrolled-file/${encodeURIComponent(
         String(enrolledFileInternalId),
       )}/${sheetIndex}?${query.toString()}`,
+      { headers: compareSurfaceHeaders(this.surface) },
     );
   }
 

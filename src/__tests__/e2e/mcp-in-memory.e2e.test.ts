@@ -1023,10 +1023,8 @@ describe('MCP in-memory protocol e2e', () => {
   });
 
   it('reads rockhopper://files/{fileMsId}/changes', async () => {
-    const result = await client.readResource({
-      uri: 'rockhopper://files/file-1/changes',
-    });
-    const { changes } = JSON.parse(textOf(result.contents[0])); // ENG-6757: never `pending`
+    const result = await client.readResource({ uri: 'rockhopper://files/file-1/changes' });
+    const { changes } = JSON.parse(textOf(result.contents[0])); // ENG-6757: ledger-served
     expect(changes.find((c: { cellAddress: string }) => c.cellAddress === 'A2'))
       .toMatchObject({ sheetName: 'Sheet1', byUserPlatformId: null, processingStatus: 'unresolved' });
   });
