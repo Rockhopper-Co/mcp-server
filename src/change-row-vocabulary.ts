@@ -191,7 +191,8 @@ export interface SpreadsheetChangeRowInput {
   byUserPlatformId: string | null;
   /** ENG-2603 — resolved display name; absent on an older backend. */
   byUserName?: string | null;
-  createdAt: string;
+  /** ENG-6757 — null where the route serves no first-seen clock (a band, a tab). */
+  createdAt: string | null;
 }
 
 /**
@@ -263,7 +264,8 @@ export function formatSpreadsheetChangeRows(
       // ENG-2603 — see get-versions: name first, platform id as fallback.
       const author = c.byUserName ?? c.byUserPlatformId;
       const by = author ? ` — by ${author}` : '';
-      return `- **${c.sheetName}!${c.cellAddress}**${label}${tail}${by} — ${c.createdAt}`;
+      const at = c.createdAt ? ` — ${c.createdAt}` : '';
+      return `- **${c.sheetName}!${c.cellAddress}**${label}${tail}${by}${at}`;
     })
     .join('\n');
 }

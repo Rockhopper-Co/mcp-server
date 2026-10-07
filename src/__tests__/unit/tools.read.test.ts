@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { registerTools } from '../../tools/index.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
+import { serveLedger, servedCell } from './ledger-mock.js';
 
 describe('read tool handlers', () => {
   it('should register read tools', () => {
@@ -234,109 +235,52 @@ describe('read tool handlers', () => {
     }
   });
 
-  // KI-097: paginated/repointed get_unattributed_changes
+  // KI-097 / ENG-6757: get_unattributed_changes reads the ledger compare
+  // routes — the summary, then each sheet's pages.
   describe('get_unattributed_changes (KI-097)', () => {
-    it('uses BySheet method when sheetName supplied', async () => {
+    const tool = (api: ReturnType<typeof createMockApiClient>) => {
       const server = createMockMcpServer();
-      const api = createMockApiClient();
       registerTools(server as any, api as any);
-
-      const call = server.registerTool.mock.calls.find(
+      return server.registerTool.mock.calls.find(
         (c) => c[0] === 'get_unattributed_changes',
+      )?.[2] as (
+        args: Record<string, unknown>,
+      ) => Promise<{ content: Array<{ text: string }> }>;
+    };
+    const cells = (n: number, from = 1) =>
+      Array.from({ length: n }, (_, i) =>
+        servedCell({ cell: `A${from + i}`, cell1: { v: i }, cell2: { v: i + 1 } }),
       );
-      const handler = call?.[2];
-      await handler({ fileMsId: 'file-1', sheetName: 'Sheet1' });
 
-      expect(api.getUnattributedChangesBySheet).toHaveBeenCalledWith(
-        'file-1',
-        'Sheet1',
-      );
-      expect(api.getUnattributedChangesPaginated).not.toHaveBeenCalled();
+    it('reads the named sheet by its summary index when sheetName is supplied', async () => {
+      const api = createMockApiClient();
+      serveLedger(api, [{ name: 'Other', cells: cells(1) }, { name: 'Sheet1', cells: cells(1) }]);
+      await tool(api)({ fileMsId: 'file-1', sheetName: 'Sheet1' });
+
+      expect(api.getCompareSummary).toHaveBeenCalledWith(11);
+      expect(api.getCompareSheet.mock.calls).toEqual([[11, 1, 'snap-1', undefined]]);
     });
 
-    it('uses Paginated method when sheetName omitted', async () => {
-      const server = createMockMcpServer();
+    it('walks every sheet with changes when sheetName is omitted', async () => {
       const api = createMockApiClient();
-      registerTools(server as any, api as any);
+      serveLedger(api, [
+        { name: 'Sheet1', cells: cells(1) },
+        { name: 'Quiet' },
+        { name: 'Sheet2', cells: cells(1) },
+      ]);
+      await tool(api)({ fileMsId: 'file-1' });
 
-      const call = server.registerTool.mock.calls.find(
-        (c) => c[0] === 'get_unattributed_changes',
-      );
-      const handler = call?.[2];
-      await handler({ fileMsId: 'file-1' });
-
-      expect(api.getUnattributedChangesPaginated).toHaveBeenCalledWith(
-        'file-1',
-        undefined,
-      );
-      expect(api.getUnattributedChangesBySheet).not.toHaveBeenCalled();
-    });
-
-    it('forwards cursor to Paginated method', async () => {
-      const server = createMockMcpServer();
-      const api = createMockApiClient();
-      registerTools(server as any, api as any);
-
-      const call = server.registerTool.mock.calls.find(
-        (c) => c[0] === 'get_unattributed_changes',
-      );
-      const handler = call?.[2];
-      await handler({ fileMsId: 'file-1', cursor: 'abc123' });
-
-      expect(api.getUnattributedChangesPaginated).toHaveBeenCalledWith(
-        'file-1',
-        'abc123',
-      );
+      expect(api.getCompareSheet.mock.calls.map((c) => c[1])).toEqual([0, 2]);
     });
 
     it('renders paginated summary line with totals + top sheets', async () => {
-      const server = createMockMcpServer();
       const api = createMockApiClient();
-      api.getUnattributedChangesPaginated.mockResolvedValue({
-        changes: [
-          {
-            id: 1,
-            changeType: 'update',
-            sheetName: 'Sheet1',
-            cellAddress: 'A1',
-            oldValue: 1,
-            newValue: 2,
-            byUserPlatformId: 'u-1',
-            byUserPlatformType: 'microsoft',
-            processingStatus: 'pending',
-            attributionDate: null,
-            createdAt: '2026-01-01T00:00:00Z',
-            updatedAt: '2026-01-01T00:00:00Z',
-          },
-          {
-            id: 2,
-            changeType: 'update',
-            sheetName: 'Sheet2',
-            cellAddress: 'B2',
-            oldValue: 'a',
-            newValue: 'b',
-            byUserPlatformId: null,
-            byUserPlatformType: null,
-            processingStatus: 'pending',
-            attributionDate: null,
-            createdAt: '2026-01-02T00:00:00Z',
-            updatedAt: '2026-01-02T00:00:00Z',
-          },
-        ],
-        nextCursor: null,
-        totalCount: 2,
-        snapshotId: '1700000000000',
-        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
-      });
-      registerTools(server as any, api as any);
+      serveLedger(api, [
+        { name: 'Sheet1', cells: cells(1) },
+        { name: 'Sheet2', cells: [servedCell({ cell: 'B2', cell1: { v: 'a' }, cell2: { v: 'b' } })] },
+      ]);
+      const text = (await tool(api)({ fileMsId: 'file-1' })).content[0].text;
 
-      const call = server.registerTool.mock.calls.find(
-        (c) => c[0] === 'get_unattributed_changes',
-      );
-      const handler = call?.[2];
-      const result = await handler({ fileMsId: 'file-1' });
-
-      const text = result.content[0].text;
       expect(text).toContain('Showing 2 of 2');
       expect(text).toContain('Top sheets on this page: Sheet1 (1), Sheet2 (1)');
       expect(text).toContain('Sheet1!A1');
@@ -346,128 +290,57 @@ describe('read tool handlers', () => {
     });
 
     it('caps displayed rows at 200 and shows hidden-row hint', async () => {
-      const server = createMockMcpServer();
       const api = createMockApiClient();
-      const rows = Array.from({ length: 250 }, (_, i) => ({
-        id: i + 1,
-        changeType: 'update',
-        sheetName: 'Sheet1',
-        cellAddress: `A${i + 1}`,
-        oldValue: i,
-        newValue: i + 1,
-        byUserPlatformId: 'u-1',
-        byUserPlatformType: 'microsoft',
-        processingStatus: 'pending',
-        attributionDate: null,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-      }));
-      api.getUnattributedChangesPaginated.mockResolvedValue({
-        changes: rows,
-        nextCursor: null,
-        totalCount: 250,
-        snapshotId: '1700000000000',
-        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
-      });
-      registerTools(server as any, api as any);
+      serveLedger(api, [{ name: 'Sheet1', cells: cells(250) }]);
+      const text = (await tool(api)({ fileMsId: 'file-1' })).content[0].text;
 
-      const call = server.registerTool.mock.calls.find(
-        (c) => c[0] === 'get_unattributed_changes',
-      );
-      const handler = call?.[2];
-      const result = await handler({ fileMsId: 'file-1' });
-
-      const text = result.content[0].text;
       expect(text).toContain('Showing 200 of 250');
       expect(text).toContain('50 more row(s) on this page not shown');
-      expect(text).toContain('Sheet1!A1');
+      expect(text).toContain('Sheet1!A1**');
       expect(text).toContain('Sheet1!A200');
       expect(text).not.toContain('Sheet1!A201');
     });
 
-    it('emits cursor pagination hint when nextCursor is non-null', async () => {
-      const server = createMockMcpServer();
+    it('emits a cursor hint that reaches the next sheet, and the next page reads it', async () => {
       const api = createMockApiClient();
-      api.getUnattributedChangesPaginated.mockResolvedValue({
-        changes: [
-          {
-            id: 1,
-            changeType: 'update',
-            sheetName: 'Sheet1',
-            cellAddress: 'A1',
-            oldValue: 1,
-            newValue: 2,
-            byUserPlatformId: null,
-            byUserPlatformType: null,
-            processingStatus: 'pending',
-            attributionDate: null,
-            createdAt: '2026-01-01T00:00:00Z',
-            updatedAt: '2026-01-01T00:00:00Z',
-          },
-        ],
-        nextCursor: 'next-cursor-xyz',
-        totalCount: 1500,
-        snapshotId: '1700000000000',
-        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
-      });
-      registerTools(server as any, api as any);
+      serveLedger(api, [
+        { name: 'Sheet1', cells: cells(1000) },
+        { name: 'Sheet2', cells: cells(500) },
+      ]);
+      const text = (await tool(api)({ fileMsId: 'file-1' })).content[0].text;
 
-      const call = server.registerTool.mock.calls.find(
-        (c) => c[0] === 'get_unattributed_changes',
-      );
-      const handler = call?.[2];
-      const result = await handler({ fileMsId: 'file-1' });
-
-      const text = result.content[0].text;
       expect(text).toContain('More pages available');
-      expect(text).toContain('cursor="next-cursor-xyz"');
       expect(text).toContain('1500 in this file');
+      const cursor = /cursor="([^"]+)"/.exec(text)?.[1] as string;
+      expect(api.getCompareSheet.mock.calls.map((c) => c[1])).toEqual([0]);
+
+      const next = (await tool(api)({ fileMsId: 'file-1', cursor })).content[0].text;
+      expect(api.getCompareSummary).toHaveBeenCalledTimes(1);
+      expect(api.getCompareSheet.mock.calls.at(-1)).toEqual([11, 1, 'snap-1', undefined]);
+      expect(next).toContain('Showing 200 of 500 change(s) on this page (500 remaining from this page onward)');
+      expect(next).not.toContain('cursor="');
     });
 
-    it('returns end-of-pages message when changes is empty but totalCount > 0', async () => {
-      const server = createMockMcpServer();
+    it('returns end-of-pages message when the summary counts rows no page serves', async () => {
       const api = createMockApiClient();
-      api.getUnattributedChangesPaginated.mockResolvedValue({
-        changes: [],
+      serveLedger(api, [{ name: 'Sheet1', cells: cells(42) }]);
+      api.getCompareSheet.mockResolvedValue({
+        sheetName: 'Sheet1',
+        cellChanges: [],
+        rowColumnChanges: {},
         nextCursor: null,
-        totalCount: 42,
-        snapshotId: '1700000000000',
-        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
       });
-      registerTools(server as any, api as any);
+      const text = (await tool(api)({ fileMsId: 'file-1' })).content[0].text;
 
-      const call = server.registerTool.mock.calls.find(
-        (c) => c[0] === 'get_unattributed_changes',
-      );
-      const handler = call?.[2];
-      const result = await handler({ fileMsId: 'file-1' });
-
-      expect(result.content[0].text).toContain(
-        'End of pages reached (42 in this file)',
-      );
+      expect(text).toContain('End of pages reached (42 in this file)');
     });
 
     it('returns no-changes message when file has no unattributed changes', async () => {
-      const server = createMockMcpServer();
       const api = createMockApiClient();
-      api.getUnattributedChangesPaginated.mockResolvedValue({
-        changes: [],
-        nextCursor: null,
-        totalCount: 0,
-        snapshotId: '1700000000000',
-        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
-      });
-      registerTools(server as any, api as any);
+      serveLedger(api, []);
+      const text = (await tool(api)({ fileMsId: 'file-1' })).content[0].text;
 
-      const call = server.registerTool.mock.calls.find(
-        (c) => c[0] === 'get_unattributed_changes',
-      );
-      const handler = call?.[2];
-      const result = await handler({ fileMsId: 'file-1' });
-
-      expect(result.content[0].text).toBe(
-        'No unattributed changes found for this file.',
-      );
+      expect(text).toBe('No unattributed changes found for this file.');
     });
 
     /**
@@ -490,60 +363,15 @@ describe('read tool handlers', () => {
       [...text.matchAll(FILE_WIDE_PHRASE)].map((m) => Number(m[1]));
 
     it('page 1 and page 2 of one snapshot never disagree about a file-wide quantity (ENG-4346)', async () => {
-      const row = (id: number) => ({
-        id,
-        changeType: 'update',
-        sheetName: 'Sheet1',
-        cellAddress: `A${id}`,
-        oldValue: id,
-        newValue: id + 1,
-        byUserPlatformId: 'u-1',
-        byUserPlatformType: 'microsoft',
-        processingStatus: 'pending',
-        attributionDate: null,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-      });
-      const snapshotId = '1757000000000';
-      const snapshotCreatedAt = '2026-09-03T00:00:00.000Z';
-
-      const renderPage = async (
-        args: Record<string, unknown>,
-        page: Record<string, unknown>,
-      ): Promise<string> => {
-        const server = createMockMcpServer();
-        const api = createMockApiClient();
-        api.getUnattributedChangesPaginated.mockResolvedValue(page);
-        registerTools(server as any, api as any);
-        const handler = server.registerTool.mock.calls.find(
-          (c) => c[0] === 'get_unattributed_changes',
-        )?.[2];
-        return (await handler(args)).content[0].text;
-      };
-
-      // Page 1 - unscoped read. 1000 rows served, 1647 remaining from the start.
-      const pageOne = await renderPage(
-        { fileMsId: 'file-1' },
-        {
-          changes: Array.from({ length: 1000 }, (_, i) => row(i + 1)),
-          nextCursor: 'cursor-page-2',
-          totalCount: 1647,
-          snapshotId,
-          snapshotCreatedAt,
-        },
-      );
-
-      // Page 2 - same snapshot, scoped by the cursor. 647 remaining from here.
-      const pageTwo = await renderPage(
-        { fileMsId: 'file-1', cursor: 'cursor-page-2' },
-        {
-          changes: Array.from({ length: 647 }, (_, i) => row(i + 1001)),
-          nextCursor: null,
-          totalCount: 647,
-          snapshotId,
-          snapshotCreatedAt,
-        },
-      );
+      const api = createMockApiClient();
+      // 1000 rows on page 1, 1647 from the start; 647 from page 2 on.
+      serveLedger(api, [
+        { name: 'Sheet1', cells: cells(1000) },
+        { name: 'Sheet2', cells: cells(647, 1001) },
+      ]);
+      const pageOne = (await tool(api)({ fileMsId: 'file-1' })).content[0].text;
+      const cursor = /cursor="([^"]+)"/.exec(pageOne)?.[1] as string;
+      const pageTwo = (await tool(api)({ fileMsId: 'file-1', cursor })).content[0].text;
 
       const claimedOnPageOne = fileWideQuantities(pageOne);
       const claimedOnPageTwo = fileWideQuantities(pageTwo);

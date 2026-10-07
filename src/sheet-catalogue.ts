@@ -17,9 +17,9 @@
  * reachable only for a sheet that EXISTS.
  *
  * WHY THE CHECK IS EXACT-MATCH, WHICH IS THE ONE DECISION WORTH READING.
- * Both backend lanes filter on the caller's string with case-SENSITIVE SQL
- * equality — `unattributed-changes.service.ts!findChangesBySheet` binds
- * `change.sheetName = :sheetName`, and `cell-history.query.ts!sheetPredicate`
+ * Both change reads filter on the caller's string with case-SENSITIVE
+ * equality — `ledger-changes.ts!readLedgerSheet` matches the summary's
+ * `sheetName` with `===`, and `cell-history.query.ts!sheetPredicate`
  * binds `"sheet_name" = $N`. So `project accruals` matches nothing on a
  * workbook whose sheet is `Project Accruals`, and produces the identical
  * false negative a misspelling does. A case-INSENSITIVE existence check would

@@ -3,6 +3,7 @@ import {
   handleAnchoredCommentGet,
   handleAnchoredCommentPost,
 } from './anchored-comments-fixture.js';
+import { LEDGER_COMPARE_GOLDEN } from '../../goldens/ledger-compare.js';
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -498,7 +499,15 @@ export function handleMockRockhopperRequest(
      * on every id no fixture had named. That failure is about the FIXTURE, not
      * the tool, and it reads exactly like a product defect — which is worth a
      * catch-all rather than one more hand-listed id each time.
+     *
+     * ENG-6757 — except `does-not-exist`, which the backend answers 404. The
+     * error spec used to reach its 404 one hop later, at the retired change
+     * route; the ledger routes key on the internal id this catch-all hands out.
      */
+    if (method === 'GET' && path === '/enrolled-files/does-not-exist') {
+      sendJson(res, 404, { message: 'Enrolled file not found' });
+      return;
+    }
     if (
       method === 'GET' &&
       path.startsWith('/enrolled-files/') &&
@@ -834,64 +843,31 @@ export function handleMockRockhopperRequest(
       return;
     }
 
-    // --- Unattributed Changes ---
-    if (method === 'GET' && path === '/unattributed-changes/file-1/EmptySheet') {
-      sendJson(res, 200, []);
+    // --- Workbook changes: the ledger compare routes (ENG-6757) ---
+    //
+    // The backend's own bodies (`goldens/ledger-compare.ts`), keyed on
+    // `sampleFile.internalId`; a page is served only for the summary's
+    // `snapshotId`. A request to a retired `/unattributed-changes` route, or
+    // with the platformId, falls through to the 404 below.
+    if (
+      method === 'GET' &&
+      path === `/file-handler/compare-summary/by-enrolled-file/${sampleFile.internalId}`
+    ) {
+      sendJson(res, 200, LEDGER_COMPARE_GOLDEN.summary);
       return;
     }
 
+    const sheetPage = new RegExp(
+      `^/file-handler/compare-sheet/by-enrolled-file/${sampleFile.internalId}/(\\d+)$`,
+    ).exec(path);
+    const page = sheetPage && LEDGER_COMPARE_GOLDEN.pages[Number(sheetPage[1])];
     if (
       method === 'GET' &&
-      path === '/unattributed-changes/file-1/Sheet1'
+      page &&
+      new URLSearchParams(queryString).get('snapshotId') ===
+        LEDGER_COMPARE_GOLDEN.summary.snapshotId
     ) {
-      sendJson(res, 200, [
-        {
-          sheetName: 'Sheet1',
-          cellAddress: 'A1',
-          oldValue: 100,
-          newValue: 200,
-          changeType: 'update',
-          createdAt: '2026-01-07T00:00:00Z',
-          byUserPlatformId: 'u-1',
-        },
-      ]);
-      return;
-    }
-
-    // ENG-4347 — the real backend takes `sheetName` as a FILTER and answers
-    // `[]` with HTTP 200 for a name that matches nothing. There is no 404 to
-    // surface, which is the whole reason a typo was indistinguishable from a
-    // real sheet with no changes. Model that, not a 404.
-    if (
-      method === 'GET' &&
-      /^\/unattributed-changes\/file-1\/[^/]+$/.test(path)
-    ) {
-      sendJson(res, 200, []);
-      return;
-    }
-
-    // KI-097: dedicated paginated route added by backend PR #475 (KI-102).
-    if (
-      method === 'GET' &&
-      path.startsWith('/unattributed-changes/paginated/file-1')
-    ) {
-      sendJson(res, 200, {
-        changes: [
-          {
-            sheetName: 'Sheet1',
-            cellAddress: 'A1',
-            oldValue: 100,
-            newValue: 200,
-            changeType: 'update',
-            createdAt: '2026-01-07T00:00:00Z',
-            byUserPlatformId: 'u-1',
-          },
-        ],
-        nextCursor: null,
-        totalCount: 1,
-        snapshotId: '1700000000000',
-        snapshotCreatedAt: '2023-11-14T22:13:20.000Z',
-      });
+      sendJson(res, 200, page);
       return;
     }
 

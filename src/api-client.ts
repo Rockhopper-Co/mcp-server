@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 import { getCorrelationId } from './correlation.js';
 import { log } from './logger.js';
+import type { CompareSheetPage, CompareSummary } from './ledger-wire.js';
 import type {
   CellHistoryEntry,
   DocumentAnchorHistory,
@@ -11,12 +12,10 @@ import type {
   FileChat,
   FileVersion,
   FoldStatus,
-  PaginatedUnattributedResponse,
   ReviewActivity,
   ReviewRequest,
   RockhopperId,
   Team,
-  UnattributedChange,
   UserSummary,
   MicrosoftConnectHandoff,
   MicrosoftLinkStatus,
@@ -1079,45 +1078,39 @@ export class ApiClient {
     );
   }
 
-  // --- Unattributed Changes ---
+  // --- Workbook changes: the ledger compare routes (ENG-6757) ---
 
   /**
-   * Sheet-filtered unattributed changes. Returns ALL rows for the given
-   * sheet on the file (no pagination — sheet filter inherently bounds
-   * result size). Use this when the caller already knows which sheet to
-   * inspect; use {@link getUnattributedChangesPaginated} for the file-wide
-   * view.
+   * The live window's per-sheet summary and sheet-level changes. Keyed by the
+   * enrolled file's INTERNAL id, like {@link getWorkbookSheetNames}. Each call
+   * mints a fresh `snapshotId` that {@link getCompareSheet} pages slice.
    */
-  async getUnattributedChangesBySheet(
-    fileMsId: string,
-    sheetName: string,
-  ): Promise<UnattributedChange[]> {
-    const path = `/unattributed-changes/${fileMsId}/${encodeURIComponent(
-      sheetName,
-    )}`;
-    return this.request<UnattributedChange[]>(path);
+  async getCompareSummary(enrolledFileInternalId: number): Promise<CompareSummary> {
+    return this.request<CompareSummary>(
+      `/file-handler/compare-summary/by-enrolled-file/${encodeURIComponent(
+        String(enrolledFileInternalId),
+      )}`,
+    );
   }
 
   /**
-   * Cursor-paginated file-wide unattributed changes (KI-097).
-   *
-   * Hits the non-shadowable `GET /unattributed-changes/paginated/:fileMsId`
-   * route added by backend PR #475 (KI-102). The legacy `:fileMsId/v2`
-   * route is shadowed by `:fileMsId/:sheetName` route ordering and returns
-   * an empty array; do not call it from here.
-   *
-   * Pass `cursor` returned by a previous call to fetch the next page.
-   * Snapshot TTL is 30 minutes — older cursors cause the backend to return
-   * HTTP 410 GONE with `{ resyncRequired: { code: 'SNAPSHOT_EXPIRED' } }`,
-   * which surfaces here as a thrown RockhopperApiError.
+   * One sheet's changes: up to 5,000 cells a page, and the sheet's row and
+   * column bands on its first page. A snapshot the server no longer holds is
+   * recomputed, never refused.
    */
-  async getUnattributedChangesPaginated(
-    fileMsId: string,
+  async getCompareSheet(
+    enrolledFileInternalId: number,
+    sheetIndex: number,
+    snapshotId: string,
     cursor?: string,
-  ): Promise<PaginatedUnattributedResponse> {
-    const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-    const path = `/unattributed-changes/paginated/${fileMsId}${qs}`;
-    return this.request<PaginatedUnattributedResponse>(path);
+  ): Promise<CompareSheetPage> {
+    const query = new URLSearchParams({ snapshotId });
+    if (cursor) query.set('cursor', cursor);
+    return this.request<CompareSheetPage>(
+      `/file-handler/compare-sheet/by-enrolled-file/${encodeURIComponent(
+        String(enrolledFileInternalId),
+      )}/${sheetIndex}?${query.toString()}`,
+    );
   }
 
   // --- Document changes ---
@@ -1127,9 +1120,9 @@ export class ApiClient {
    * committed version.
    *
    * THIS CLIENT HAD NO CALL TO THIS LANE AT ALL, which is why every document
-   * question reached the SPREADSHEET reader above and came back empty. The
-   * `unattributed_change` table those two routes read requires a `sheetName`
-   * and the sheet route also filters `changeType = 'cell'`, so a `.docx` or
+   * question reached the legacy SPREADSHEET routes and came back empty. Their
+   * `unattributed_change` table requires a `sheetName` (ENG-6757 retired them)
+   * and the sheet route also filtered `changeType = 'cell'`, so a `.docx` or
    * `.pptx` returned `[]` from them by construction — never because nothing
    * had changed.
    *
