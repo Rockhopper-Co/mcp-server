@@ -9,6 +9,7 @@ import {
   ChangeHistoryNotReadyError,
   DEFAULT_RETRY_AFTER_SECONDS,
   NOT_READY_MARKER,
+  assertChangeHistoryComplete,
   isNotReady,
   notReadyToolResult,
 } from '../../not-ready.js';
@@ -648,5 +649,50 @@ describe('notReadyToolResult unwrapping', () => {
     expect(text).toContain('reading this workbook for the first time');
     expect(text).not.toContain("change history");
     expect(text).toContain('Do NOT say the file has no versions');
+  });
+});
+
+/**
+ * ENG-7243 moved `get_cell_history` off {@link assertChangeHistoryComplete};
+ * the strict surfaces still call it, so its four exits are pinned directly.
+ */
+describe('assertChangeHistoryComplete — the strict surfaces\' gate', () => {
+  const probe = (impl: () => Promise<unknown>) => ({
+    getFoldStatus: vi.fn().mockImplementation(impl),
+  });
+
+  it('rethrows a typed not-ready from the probe with its own reason', async () => {
+    const err = new ChangeHistoryNotReadyError({ reason: 'still_producing', retryAfterSeconds: 7 });
+    await expect(
+      assertChangeHistoryComplete(probe(() => Promise.reject(err)) as never, 'f'),
+    ).rejects.toMatchObject({ reason: 'still_producing', retryAfterSeconds: 7 });
+  });
+
+  it('lets a definitive rejection through as itself', async () => {
+    const err = Object.assign(new Error('Rockhopper API 404: Not Found'), { status: 404 });
+    await expect(
+      assertChangeHistoryComplete(probe(() => Promise.reject(err)) as never, 'f'),
+    ).rejects.toBe(err);
+  });
+
+  it('turns any other probe failure into completeness_unknown', async () => {
+    await expect(
+      assertChangeHistoryComplete(probe(() => Promise.reject('boom')) as never, 'f'),
+    ).rejects.toMatchObject({ reason: 'completeness_unknown' });
+  });
+
+  it('refuses a pending fold, with or without a target version', async () => {
+    await expect(
+      assertChangeHistoryComplete(
+        probe(() => Promise.resolve({ foldPending: true, foldTargetVersionId: null })) as never,
+        'f',
+      ),
+    ).rejects.toMatchObject({ reason: 'change_history_incomplete' });
+    await expect(
+      assertChangeHistoryComplete(
+        probe(() => Promise.resolve({ foldPending: false, foldTargetVersionId: null })) as never,
+        'f',
+      ),
+    ).resolves.toBeUndefined();
   });
 });
