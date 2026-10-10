@@ -101,7 +101,11 @@ describe('get_cell_history — one document element by anchorId', () => {
     const api = withAnchorApi();
     const result = await registration(api)[2]({ fileMsId: 'file-docx', anchorId: PARAGRAPH });
 
-    expect(api.getAnchorHistory).toHaveBeenCalledWith('file-docx', PARAGRAPH);
+    expect(api.getAnchorHistory).toHaveBeenCalledWith(
+      'file-docx',
+      PARAGRAPH,
+      expect.objectContaining({ onFreshness: expect.any(Function) }),
+    );
     expect(api.getCellHistory).not.toHaveBeenCalled();
     const text = result.content[0].text as string;
     expect(result.isError).toBeFalsy();
