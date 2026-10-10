@@ -212,6 +212,12 @@ export interface CompletenessProbe {
  * Throws {@link ChangeHistoryNotReadyError} unless the file's change history is
  * complete.
  *
+ * ENG-7243 — no longer on `get_cell_history`. Ledger reads never refuse (R1,
+ * David 2026-10-08), so both of that tool's arms read the same probe as a
+ * freshness INPUT (`ledger-freshness.ts!foldFreshness`): a pending fold marks
+ * the rows UPDATING instead of withholding them. The surfaces still calling
+ * this keep the strict refusal until they are moved the same way.
+ *
  * `foldPending` is the backend's own authoritative queue read
  * (`GET /file-versions/file/:fileMsId/fold-status`, KI-1399) — while it is
  * true a commit-diff fold is queued, retrying or running, and the change-log

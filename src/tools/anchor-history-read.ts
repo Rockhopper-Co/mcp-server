@@ -5,10 +5,13 @@ import {
 } from '../cell-history-unavailable.js';
 import { formatDocumentRow } from '../document-changes.js';
 import {
-  assertChangeHistoryComplete,
-  isNotReady,
-  notReadyToolResult,
-} from '../not-ready.js';
+  CURRENT,
+  foldFreshness,
+  mergeFreshness,
+  updatingLine,
+  type ReadFreshness,
+} from '../ledger-freshness.js';
+import { isNotReady, notReadyToolResult } from '../not-ready.js';
 import type { DocumentAnchorHistory } from '../types.js';
 
 /**
@@ -60,8 +63,28 @@ function coverageNotes(response: DocumentAnchorHistory): string[] {
   return notes;
 }
 
-export function formatAnchorHistory(response: DocumentAnchorHistory): string {
+export function formatAnchorHistory(
+  response: DocumentAnchorHistory,
+  freshness: ReadFreshness = CURRENT,
+): string {
   const notes = coverageNotes(response);
+  // ENG-7243 — an updating answer opens with the marker, and an updating zero
+  // is never the "No change recorded" sentence, which is a claim about the
+  // element.
+  if (freshness.state === 'updating') {
+    const n = response.history.length;
+    const rows = response.history
+      .map((row) => formatDocumentRow(row) + versionNote(row.boundVersionId))
+      .join('\n');
+    return [
+      updatingLine(n, freshness.retryAfterSeconds),
+      '',
+      `Element "${response.anchorId}" — ${n} change(s) so far, oldest first` +
+        (n ? ':' : '.'),
+      ...(n ? ['', rows] : []),
+      ...(notes.length ? ['', ...notes] : []),
+    ].join('\n');
+  }
   if (response.history.length === 0) {
     return [
       `No change recorded for element "${response.anchorId}". This is an ` +
@@ -88,11 +111,23 @@ export async function readAnchorHistory(
   anchorId: string,
 ): Promise<ToolResult> {
   try {
-    // Same completeness gate as the cell arm: a pending fold means the window
-    // is mid-rewrite and rows served now are a partial view.
-    await assertChangeHistoryComplete(api, fileMsId);
-    const response = await api.getAnchorHistory(fileMsId, anchorId);
-    return { content: [{ type: 'text', text: formatAnchorHistory(response) }] };
+    // ENG-7243 — same freshness inputs as the cell arm, plus the body field
+    // this envelope can carry: any one saying `updating` marks the answer.
+    const fold = await foldFreshness(api, fileMsId);
+    let served: ReadFreshness = CURRENT;
+    const response = await api.getAnchorHistory(fileMsId, anchorId, {
+      onFreshness: (f) => {
+        served = f;
+      },
+    });
+    const body: ReadFreshness =
+      response.ledgerFreshness?.state === 'updating'
+        ? { ...CURRENT, state: 'updating' }
+        : CURRENT;
+    const freshness = mergeFreshness(mergeFreshness(fold, served), body);
+    return {
+      content: [{ type: 'text', text: formatAnchorHistory(response, freshness) }],
+    };
   } catch (error) {
     if (isNotReady(error)) return notReadyToolResult(error);
     if (isCellHistoryUnavailable(error)) {

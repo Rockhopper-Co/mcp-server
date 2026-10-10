@@ -49,6 +49,17 @@ import {
   ChangeHistoryNotReadyError,
   DEFAULT_RETRY_AFTER_SECONDS,
 } from './not-ready.js';
+import {
+  CLIENT_CAPABILITIES_HEADER,
+  CLIENT_CAPABILITIES_VALUE,
+  freshnessFromHeaders,
+  type ReadFreshness,
+} from './ledger-freshness.js';
+
+/** ENG-7243 — opt-in freshness return for the cell-history reads. */
+export interface CellHistoryReadOptions {
+  onFreshness?: (freshness: ReadFreshness) => void;
+}
 
 /**
  * Plan 02 ruling 5 — the poll hint comes from the SERVER's `Retry-After`
@@ -377,6 +388,8 @@ export class ApiClient {
     path: string,
     init?: RequestInit,
     responseSchema?: ZodType<T>,
+    /** ENG-7243 — opt-in: the response headers of a successful call. */
+    onHeaders?: (headers: { get(name: string): string | null }) => void,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     // KI-225: log only the URL pathname (drop the query string) — query may
@@ -502,6 +515,7 @@ export class ApiClient {
       { event: 'api_request', method, path: pathname, status: response.status, durationMs },
       'api_request',
     );
+    onHeaders?.(response.headers);
 
     const json = await response.json();
     if (responseSchema) {
@@ -928,14 +942,20 @@ export class ApiClient {
    * SAME ledger read-decision choke point as the webapp/add-in popovers
    * (cross-surface parity). An eligible file serves the WIDENED entries
    * (+ formula, provenance, actorKind, drivingHuman, formatted — including
-   * live events with versionId 'uncommitted'); a not-eligible file, a Google
-   * file, or an older backend serves the four-field legacy projection. The
-   * schema accepts both.
+   * live events with versionId 'uncommitted'); an older backend serves the
+   * four-field projection. The schema accepts both.
+   *
+   * ENG-7243 — announces {@link CLIENT_CAPABILITIES_HEADER}, so a backend
+   * whose ledger is still updating serves the rows it holds plus
+   * `X-Ledger-Freshness` instead of the strict 503 it keeps for older
+   * mcp-servers (backend ENG-7039). The body stays an array; the freshness
+   * reaches the caller through `opts.onFreshness`.
    */
   async getCellHistory(
     fileMsId: string,
     sheetName: string,
     cellAddress: string,
+    opts?: CellHistoryReadOptions,
   ): Promise<CellHistoryEntry[]> {
     const query = new URLSearchParams({
       cell: cellAddress,
@@ -944,8 +964,9 @@ export class ApiClient {
     });
     return this.request<CellHistoryEntry[]>(
       `/file-versions/file/${fileMsId}/cell-history?${query}`,
-      undefined,
+      { headers: { [CLIENT_CAPABILITIES_HEADER]: CLIENT_CAPABILITIES_VALUE } },
       CellHistoryEntryArraySchema as unknown as ZodType<CellHistoryEntry[]>,
+      (headers) => opts?.onFreshness?.(freshnessFromHeaders(headers)),
     );
   }
 
@@ -957,12 +978,15 @@ export class ApiClient {
   async getAnchorHistory(
     fileMsId: string,
     anchorId: string,
+    opts?: CellHistoryReadOptions,
   ): Promise<DocumentAnchorHistory> {
     const query = new URLSearchParams({ anchorId, format: 'mcp' });
     return this.request<DocumentAnchorHistory>(
       `/file-versions/file/${fileMsId}/cell-history?${query}`,
-      undefined,
+      // ENG-7243 — same route, same announcement as the cell arm.
+      { headers: { [CLIENT_CAPABILITIES_HEADER]: CLIENT_CAPABILITIES_VALUE } },
       DocumentAnchorHistorySchema as unknown as ZodType<DocumentAnchorHistory>,
+      (headers) => opts?.onFreshness?.(freshnessFromHeaders(headers)),
     );
   }
 

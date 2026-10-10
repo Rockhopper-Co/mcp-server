@@ -120,11 +120,20 @@ The `reason` says what to do next:
 Say the change list is unavailable. Never say the file is unchanged, has no changes, or
 is clean — none of that is known on any of these answers.
 
+### `UPDATING — incomplete:` — a partial history, never the whole one
+
+While Rockhopper is still recording changes to a file, `get_cell_history` serves the
+changes recorded so far and OPENS its answer with `UPDATING — incomplete:`, naming a
+retry interval. The list is partial: more may appear. Never report it as the complete
+history, and never read an UPDATING answer with no rows as "no changes" — retry after the
+stated interval. An answer without that line is complete.
+
 ### `CHANGE_HISTORY_NOT_READY` — never report it as "no changes"
 
-`get_cell_history`, `get_unattributed_changes`, the `rockhopper://files/{id}/changes`
-resource and the change prompts all serve change history strictly: while Rockhopper is
-still computing a file's history they refuse, and the refusal carries
+`get_unattributed_changes`, the `rockhopper://files/{id}/changes` resource and the change
+prompts serve change history strictly: while Rockhopper is still computing a file's
+history they refuse. `get_cell_history` refuses only when it cannot serve rows at all.
+The refusal carries
 `{"status":"not_ready", "reason": …, "retryAfterSeconds": N}` with `isError: true`
 (the resource and prompts throw).
 
