@@ -10,6 +10,8 @@
 // wire header is what is under test — not a fixture of the parsed answer.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiClient } from '../../api-client.js';
+import { freshnessFromHeaders } from '../../ledger-freshness.js';
+import { DEFAULT_RETRY_AFTER_SECONDS } from '../../not-ready.js';
 import { registerTools } from '../../tools/index.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
 
@@ -149,5 +151,32 @@ describe('get_cell_history anchor arm — the same marker (ENG-7243)', () => {
     const call = fetchSpy.mock.calls.find(([url]) => String(url).includes('/cell-history?'));
     const headers = (call![1] as { headers: Record<string, string> }).headers;
     expect(headers['X-Rockhopper-Client-Capabilities']).toBe('ledger-freshness');
+  });
+});
+
+describe('freshnessFromHeaders — never reads a present header as complete', () => {
+  const h = (o: Record<string, string>) => new Headers(o);
+
+  it('absent header: current', () => {
+    expect(freshnessFromHeaders(h({})).state).toBe('current');
+    expect(freshnessFromHeaders(undefined).state).toBe('current');
+  });
+
+  it('a header naming current: current', () => {
+    expect(
+      freshnessFromHeaders(h({ 'X-Ledger-Freshness': '{"state":"current"}' })).state,
+    ).toBe('current');
+  });
+
+  it('an unparseable header: updating, with the server Retry-After', () => {
+    const f = freshnessFromHeaders(
+      h({ 'X-Ledger-Freshness': 'not json', 'Retry-After': '30' }),
+    );
+    expect(f).toEqual({ state: 'updating', retryAfterSeconds: 30 });
+  });
+
+  it('an updating header without Retry-After: the shared default', () => {
+    const f = freshnessFromHeaders(h({ 'X-Ledger-Freshness': UPDATING }));
+    expect(f).toEqual({ state: 'updating', retryAfterSeconds: DEFAULT_RETRY_AFTER_SECONDS });
   });
 });
