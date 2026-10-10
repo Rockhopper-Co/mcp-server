@@ -74,7 +74,8 @@ describe('get_cell_history sheet-qualified cell addresses (ENG-4340)', () => {
     // `cell` as a literal string, so "Project Accruals!BS11" matches nothing.
     expect(api.getCellHistory).toHaveBeenCalledTimes(2);
     for (const call of api.getCellHistory.mock.calls) {
-      expect(call).toEqual(['file-1', 'Project Accruals', 'BS11']);
+      // ENG-7243 — the fourth argument is the opt-in freshness return.
+      expect(call).toEqual(['file-1', 'Project Accruals', 'BS11', expect.objectContaining({ onFreshness: expect.any(Function) })]);
     }
   });
 
@@ -97,6 +98,7 @@ describe('get_cell_history sheet-qualified cell addresses (ENG-4340)', () => {
       'file-1',
       'Project Accruals',
       'BS11',
+      expect.objectContaining({ onFreshness: expect.any(Function) }),
     );
   });
 
@@ -157,6 +159,7 @@ describe('get_cell_history sheet-qualified cell addresses (ENG-4340)', () => {
       'file-1',
       'Project Accruals',
       'ZZ99',
+      expect.objectContaining({ onFreshness: expect.any(Function) }),
     );
   });
 });

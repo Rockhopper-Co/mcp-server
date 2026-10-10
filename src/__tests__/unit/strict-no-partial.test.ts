@@ -9,6 +9,7 @@ import {
   ChangeHistoryNotReadyError,
   DEFAULT_RETRY_AFTER_SECONDS,
   NOT_READY_MARKER,
+  assertChangeHistoryComplete,
   isNotReady,
   notReadyToolResult,
 } from '../../not-ready.js';
@@ -75,7 +76,10 @@ const promptHandler = (
 
 describe('strict no-partial — change-history surfaces', () => {
   describe('get_cell_history', () => {
-    it('refuses to serve rows while a fold is still rewriting the window', async () => {
+    // ENG-7243 — ledger reads never refuse (R1, David 2026-10-08): this tool
+    // now serves the rows it holds under the UPDATING marker. The strict
+    // refusal below still holds for the other surfaces.
+    it('serves rows under UPDATING while a fold is still rewriting the window', async () => {
       const api = createMockApiClient();
       api.getFoldStatus.mockResolvedValue(PENDING_FOLD);
 
@@ -85,10 +89,10 @@ describe('strict no-partial — change-history surfaces', () => {
         cellAddress: 'A1',
       });
 
-      expect(api.getCellHistory).not.toHaveBeenCalled();
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain(NOT_READY_MARKER);
-      expect(result.content[0].text).toContain('change_history_incomplete');
+      expect(api.getCellHistory).toHaveBeenCalled();
+      expect(result.isError).toBeUndefined();
+      expect(result.content[0].text.startsWith('UPDATING — incomplete:')).toBe(true);
+      expect(result.content[0].text).toContain('1 change(s) so far');
     });
 
     it('never claims "no history" without proving completeness', async () => {
@@ -105,7 +109,7 @@ describe('strict no-partial — change-history surfaces', () => {
       expect(result.content[0].text).not.toContain('No history found');
     });
 
-    it('fails CLOSED when the completeness probe itself cannot answer', async () => {
+    it('never reads an unanswering probe as complete: UPDATING, not a refusal', async () => {
       const api = createMockApiClient();
       api.getFoldStatus.mockRejectedValue(new Error('ECONNRESET'));
 
@@ -115,9 +119,8 @@ describe('strict no-partial — change-history surfaces', () => {
         cellAddress: 'A1',
       });
 
-      expect(api.getCellHistory).not.toHaveBeenCalled();
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('completeness_unknown');
+      expect(api.getCellHistory).toHaveBeenCalled();
+      expect(result.content[0].text.startsWith('UPDATING — incomplete:')).toBe(true);
     });
 
     /**
@@ -161,9 +164,8 @@ describe('strict no-partial — change-history surfaces', () => {
 
     it('keeps the backend ETA when the probe ITSELF answers not-ready', async () => {
       // A 429 on the fold-status route is the backend saying "still producing"
-      // and naming its own interval. Flattening it to `completeness_unknown`
-      // would be correct-ish and would throw away the only measured retry hint
-      // in the exchange, replacing 90s with the local 15s default.
+      // and naming its own interval. The UPDATING line must keep it rather
+      // than replacing 90s with the local 15s default.
       const api = createMockApiClient();
       api.getFoldStatus.mockRejectedValue(
         new ChangeHistoryNotReadyError({
@@ -179,16 +181,8 @@ describe('strict no-partial — change-history surfaces', () => {
         cellAddress: 'A1',
       });
 
-      expect(result.isError).toBe(true);
-      const json = result.content[0].text.slice(
-        result.content[0].text.indexOf('{'),
-      );
-      expect(JSON.parse(json)).toEqual({
-        status: 'not_ready',
-        reason: 'still_producing',
-        retryAfterSeconds: 90,
-        fileMsId: 'file-1',
-      });
+      expect(result.isError).toBeUndefined();
+      expect(result.content[0].text).toContain('Retry in 90 s.');
     });
 
     it('serves rows when the fold is complete', async () => {
@@ -302,10 +296,11 @@ describe('strict no-partial — change-history surfaces', () => {
       const api = createMockApiClient();
       api.getFoldStatus.mockResolvedValue(PENDING_FOLD);
 
-      const result = await toolHandler(api, 'get_cell_history')({
+      // ENG-7243 — `get_cell_history` no longer refuses on a pending fold;
+      // the refusal payload is pinned on a surface that still does.
+      const result = await toolHandler(api, 'get_unattributed_changes')({
         fileMsId: 'file-1',
         sheetName: 'Sheet1',
-        cellAddress: 'A1',
       });
 
       const json = result.content[0].text.slice(
@@ -559,18 +554,23 @@ describe('a probe that answers DEFINITIVELY is not a not-ready signal', () => {
   it('still fails CLOSED on a status that is NOT definitive', async () => {
     // The polarity check the row above cannot make on its own: 503 means the
     // probe could not answer, and an unknown completeness state is never
-    // permission to serve rows.
+    // permission to serve rows as complete. ENG-7243: on `get_cell_history`
+    // that is the UPDATING marker; on the strict surfaces, the refusal.
     const api = probeRejecting(503, 'Rockhopper API 503: Service Unavailable');
 
-    const result = await toolHandler(api, 'get_cell_history')({
+    const cell = await toolHandler(api, 'get_cell_history')({
       fileMsId: 'file-1',
       sheetName: 'Sheet1',
       cellAddress: 'A1',
     });
+    expect(cell.content[0].text.startsWith('UPDATING — incomplete:')).toBe(true);
 
-    expect(api.getCellHistory).not.toHaveBeenCalled();
-    expect(result.content[0].text).toContain(NOT_READY_MARKER);
-    expect(result.content[0].text).toContain('completeness_unknown');
+    const strict = await toolHandler(api, 'get_unattributed_changes')({
+      fileMsId: 'file-1',
+      sheetName: 'Sheet1',
+    });
+    expect(strict.content[0].text).toContain(NOT_READY_MARKER);
+    expect(strict.content[0].text).toContain('completeness_unknown');
   });
 
   it('treats a definitive-looking status that is not a number as unreadable', async () => {
@@ -579,13 +579,18 @@ describe('a probe that answers DEFINITIVELY is not a not-ready signal', () => {
       Object.assign(new Error('weird'), { status: '404' }),
     );
 
-    const result = await toolHandler(api, 'get_cell_history')({
+    const cell = await toolHandler(api, 'get_cell_history')({
       fileMsId: 'file-1',
       sheetName: 'Sheet1',
       cellAddress: 'A1',
     });
+    expect(cell.content[0].text.startsWith('UPDATING — incomplete:')).toBe(true);
 
-    expect(result.content[0].text).toContain('completeness_unknown');
+    const strict = await toolHandler(api, 'get_unattributed_changes')({
+      fileMsId: 'file-1',
+      sheetName: 'Sheet1',
+    });
+    expect(strict.content[0].text).toContain('completeness_unknown');
   });
 });
 
@@ -644,5 +649,50 @@ describe('notReadyToolResult unwrapping', () => {
     expect(text).toContain('reading this workbook for the first time');
     expect(text).not.toContain("change history");
     expect(text).toContain('Do NOT say the file has no versions');
+  });
+});
+
+/**
+ * ENG-7243 moved `get_cell_history` off {@link assertChangeHistoryComplete};
+ * the strict surfaces still call it, so its four exits are pinned directly.
+ */
+describe('assertChangeHistoryComplete — the strict surfaces\' gate', () => {
+  const probe = (impl: () => Promise<unknown>) => ({
+    getFoldStatus: vi.fn().mockImplementation(impl),
+  });
+
+  it('rethrows a typed not-ready from the probe with its own reason', async () => {
+    const err = new ChangeHistoryNotReadyError({ reason: 'still_producing', retryAfterSeconds: 7 });
+    await expect(
+      assertChangeHistoryComplete(probe(() => Promise.reject(err)) as never, 'f'),
+    ).rejects.toMatchObject({ reason: 'still_producing', retryAfterSeconds: 7 });
+  });
+
+  it('lets a definitive rejection through as itself', async () => {
+    const err = Object.assign(new Error('Rockhopper API 404: Not Found'), { status: 404 });
+    await expect(
+      assertChangeHistoryComplete(probe(() => Promise.reject(err)) as never, 'f'),
+    ).rejects.toBe(err);
+  });
+
+  it('turns any other probe failure into completeness_unknown', async () => {
+    await expect(
+      assertChangeHistoryComplete(probe(() => Promise.reject('boom')) as never, 'f'),
+    ).rejects.toMatchObject({ reason: 'completeness_unknown' });
+  });
+
+  it('refuses a pending fold, with or without a target version', async () => {
+    await expect(
+      assertChangeHistoryComplete(
+        probe(() => Promise.resolve({ foldPending: true, foldTargetVersionId: null })) as never,
+        'f',
+      ),
+    ).rejects.toMatchObject({ reason: 'change_history_incomplete' });
+    await expect(
+      assertChangeHistoryComplete(
+        probe(() => Promise.resolve({ foldPending: false, foldTargetVersionId: null })) as never,
+        'f',
+      ),
+    ).resolves.toBeUndefined();
   });
 });
