@@ -673,6 +673,8 @@ export interface DocumentAnchorHistory {
   anchorIdentity: 'provider_id' | 'positional' | null;
   history: Array<DocumentChangeRow & { boundVersionId: number | null }>;
   truncated: boolean;
+  /** ENG-7243 — the freshness answer in body form, when the backend sends it. */
+  ledgerFreshness?: { state: 'current' | 'updating' };
 }
 
 /**
@@ -689,8 +691,7 @@ export interface CellHistoryEntry {
   changedAt: string;
   // ENG-1638 (P3-2) remainder — widened fields served when the backend's
   // read decision routes the MCP read to the Model-B ledger. All optional:
-  // the legacy normalized fallback (not-eligible file, Google provider, old
-  // backend) omits them entirely.
+  // an older backend omits them entirely.
   /** Post-change formula (the ledger `f` facet). */
   formula?: string | null;
   /** Raw ledger provenance (`human_direct`, `ai_auto`, `reconcile_repair`…). */

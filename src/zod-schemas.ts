@@ -61,8 +61,7 @@ export const CellHistoryEntrySchema = z.object({
   changedBy: z.string().nullable(),
   changedAt: z.string(),
   // ENG-1638 (P3-2) remainder: the widened ledger-served projection. Optional —
-  // the legacy normalized fallback (not-eligible file / Google / old backend)
-  // carries only the four core fields.
+  // an older backend carries only the four core fields.
   formula: z.string().nullable().optional(),
   provenance: z.string().optional(),
   actorKind: z.string().nullable().optional(),
@@ -186,5 +185,11 @@ export const DocumentAnchorHistorySchema = z
       }),
     ),
     truncated: z.boolean(),
+    // ENG-7243 — the body form of the freshness answer, where the body is an
+    // object. Optional: absent means the response says nothing either way.
+    ledgerFreshness: z
+      .object({ state: z.enum(['current', 'updating']) })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
