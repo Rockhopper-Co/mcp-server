@@ -101,7 +101,11 @@ describe('get_cell_history — one document element by anchorId', () => {
     const api = withAnchorApi();
     const result = await registration(api)[2]({ fileMsId: 'file-docx', anchorId: PARAGRAPH });
 
-    expect(api.getAnchorHistory).toHaveBeenCalledWith('file-docx', PARAGRAPH);
+    expect(api.getAnchorHistory).toHaveBeenCalledWith(
+      'file-docx',
+      PARAGRAPH,
+      expect.objectContaining({ onFreshness: expect.any(Function) }),
+    );
     expect(api.getCellHistory).not.toHaveBeenCalled();
     const text = result.content[0].text as string;
     expect(result.isError).toBeFalsy();
@@ -165,5 +169,34 @@ describe('ApiClient.getAnchorHistory', () => {
     expect(url.searchParams.get('format')).toBe('mcp');
     expect(url.searchParams.has('cell')).toBe(false);
     expect(got.history.map((h) => h.eventId)).toEqual(['48122', '48127']);
+  });
+});
+
+// ENG-7243 — an updating element history keeps its rows and its coverage
+// notes, under the marker.
+describe('get_cell_history anchorId — updating answer (ENG-7243)', () => {
+  it('lists the rows recorded so far, then the coverage notes, under UPDATING', async () => {
+    const api = createMockApiClient();
+    api.getFoldStatus.mockResolvedValue({ foldPending: true, foldTargetVersionId: null });
+    api.getAnchorHistory.mockResolvedValue(
+      envelope({ anchorLane: 'task_pane', anchorIdentity: 'positional', truncated: true }),
+    );
+    const result = await registration(api)[2]({ fileMsId: 'file-docx', anchorId: PARAGRAPH });
+    const text = result.content[0].text as string;
+    expect(text.startsWith('UPDATING — incomplete:')).toBe(true);
+    expect(text).toContain(`Element "${PARAGRAPH}" — 2 change(s) so far, oldest first:`);
+    expect(text).toContain('[saved in version id 101]');
+    expect(text).toContain('[not yet saved in a version]');
+    expect(text).toContain('not the whole history of the shape');
+    expect(text).toContain('matched by its position');
+    expect(text).toContain('More changes exist than are shown here');
+  });
+
+  it('a generic failure is reported, never rendered as an element answer', async () => {
+    const api = createMockApiClient();
+    api.getAnchorHistory.mockRejectedValue('socket hang up');
+    const result = await registration(api)[2]({ fileMsId: 'file-docx', anchorId: PARAGRAPH });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe('Failed to get cell history: socket hang up');
   });
 });

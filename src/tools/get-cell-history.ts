@@ -6,10 +6,13 @@ import {
   isCellHistoryUnavailable,
 } from '../cell-history-unavailable.js';
 import {
-  assertChangeHistoryComplete,
-  isNotReady,
-  notReadyToolResult,
-} from '../not-ready.js';
+  CURRENT,
+  foldFreshness,
+  mergeFreshness,
+  updatingLine,
+  type ReadFreshness,
+} from '../ledger-freshness.js';
+import { isNotReady, notReadyToolResult } from '../not-ready.js';
 import {
   assertSheetExistsForFile,
   isUnknownSheet,
@@ -78,13 +81,17 @@ export function registerGetCellHistoryTool(
       description:
         'Get the change history for a specific cell, paragraph or shape in ' +
         'an enrolled file. Shows how its value changed across versions. ' +
-        // Plan 02 ruling 5 — the contract belongs in the description, not only
-        // in the payload: a model deciding "nothing changed" reads the tool
-        // doc, not the error envelope.
-        'Answers CHANGE_HISTORY_NOT_READY (isError) while Rockhopper is still ' +
-        'computing this history. That is NOT an empty history — nothing is ' +
-        'known yet; retry after the stated interval and never report an ' +
-        'absence of changes from it. ' +
+        // ENG-7243 — the contract belongs in the description, not only in the
+        // payload: a model deciding "nothing changed" reads the tool doc.
+        'While Rockhopper is still recording changes to the file, the answer ' +
+        'OPENS with "UPDATING — incomplete:" and lists the changes recorded ' +
+        'so far. That list is partial: more may appear, so never report it ' +
+        'as the complete history, and never read an UPDATING answer with no ' +
+        'rows as "no changes"; retry after the stated interval. ' +
+        'Answers CHANGE_HISTORY_NOT_READY (isError) when Rockhopper cannot ' +
+        'serve rows yet. That is NOT an empty history — nothing is known yet; ' +
+        'retry after the stated interval and never report an absence of ' +
+        'changes from it. ' +
         // ENG-1748 — same reasoning one case over: a history this tool cannot
         // report is a refusal, and the model must know that before it calls,
         // because the alternative it used to get was a confident zero.
@@ -117,7 +124,8 @@ export function registerGetCellHistoryTool(
         'sheet names, the second gives the exact spelling, and the third ' +
         'means existence could not be checked. Re-send with a name from the ' +
         'answer rather than reporting that the cell never changed. ' +
-        'An empty result WITHOUT one of those answers is a real answer ' +
+        'An empty result WITHOUT one of those answers and without the ' +
+        'UPDATING line is a real answer ' +
         'about ONE CELL on a sheet that exists: no change to that cell is ' +
         'recorded. It says nothing about the rest of the file, and it is ' +
         'never grounds for saying the file is unchanged.',
@@ -172,12 +180,18 @@ export function registerGetCellHistoryTool(
       const cell = parsed.cell;
 
       try {
-        // Plan 02 ruling 5 (STRICT): completeness FIRST. A pending fold means
-        // the change-log window is mid-rewrite, so rows served now are a
-        // partial view an assistant would summarise as the whole truth.
-        await assertChangeHistoryComplete(api, fileMsId);
-
-        const history = await api.getCellHistory(fileMsId, sheetName, cell);
+        // ENG-7243 — ledger reads never refuse (R1, David 2026-10-08): a
+        // pending fold no longer withholds the rows, it marks them UPDATING.
+        // Either source saying `updating` wins: the fold probe, or the
+        // backend's `X-Ledger-Freshness` answer to the capability header.
+        const fold = await foldFreshness(api, fileMsId);
+        let served: ReadFreshness = CURRENT;
+        const history = await api.getCellHistory(fileMsId, sheetName, cell, {
+          onFreshness: (f) => {
+            served = f;
+          },
+        });
+        const freshness = mergeFreshness(fold, served);
 
         // ENG-4347 — ENG-4340 above compares the two ARGUMENTS against each
         // other; neither was ever compared against the workbook. A caller who
@@ -195,9 +209,8 @@ export function registerGetCellHistoryTool(
 
         // ENG-1638 (P3-2): a ledger-served entry carries a backend-rendered
         // `formatted` line — 'vX.Y.Z: <value> — <provenance> (driven by
-        // <human>) — <ts>' — print it verbatim. The legacy normalized
-        // fallback (not-eligible file / Google / old backend) has only the
-        // four core fields; keep the original rendering for it.
+        // <human>) — <ts>' — print it verbatim. An older backend's entry has
+        // only the four core fields; keep the original rendering for it.
         const summary = history
           .map((h) =>
             h.formatted
@@ -208,19 +221,19 @@ export function registerGetCellHistoryTool(
           )
           .join('\n');
 
-        return {
-          content: [
-            {
-              type: 'text',
-              // Render the normalized cell, so the qualified and bare forms
-              // of one address answer identically rather than merely
-              // equivalently.
-              text: history.length
-                ? `Cell ${cell} on "${sheetName}" — ${history.length} change(s):\n\n${summary}`
-                : `No history found for ${cell} on "${sheetName}".`,
-            },
-          ],
-        };
+        // Render the normalized cell, so the qualified and bare forms of one
+        // address answer identically rather than merely equivalently.
+        const listed = `Cell ${cell} on "${sheetName}" — ${history.length} change(s)`;
+        // ENG-7243 — never "No history found" while updating: that sentence
+        // is a positive claim about the cell, and an updating zero is not one.
+        const text =
+          freshness.state === 'updating'
+            ? `${updatingLine(history.length, freshness.retryAfterSeconds)}\n\n` +
+              (history.length ? `${listed}:\n\n${summary}` : `${listed} so far.`)
+            : history.length
+              ? `${listed}:\n\n${summary}`
+              : `No history found for ${cell} on "${sheetName}".`;
+        return { content: [{ type: 'text', text }] };
       } catch (error) {
         // A not-ready answer is a refusal, never an error string: the generic
         // branch below hands the model prose it may read as "the tool is

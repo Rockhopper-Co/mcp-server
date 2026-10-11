@@ -18,6 +18,15 @@ All notable changes to this project are documented here. Follows
 
 ### Changed
 
+- **`get_cell_history` says when a history is still updating** (ENG-7243).
+  Cell-history reads now send `X-Rockhopper-Client-Capabilities:
+  ledger-freshness`, so a backend still recording a file's changes serves the
+  rows it holds plus `X-Ledger-Freshness` instead of refusing. Such an answer
+  opens with `UPDATING — incomplete:` and a retry interval, and an updating
+  empty answer never reads "No history found". A pending commit-diff fold now
+  marks the answer UPDATING rather than refusing it. The anchor arm reads the
+  same header and a `ledgerFreshness` body field.
+
 - **Patch numbers are now assigned by the release pipeline, not by hand.** A
   merge to `main` publishes `<major>.<minor>.<build number>` to the `latest`
   dist-tag; a merge to `staging` publishes the matching
