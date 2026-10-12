@@ -8,6 +8,7 @@ import {
   documentChangesUnavailableToolResult,
   type DocumentChangesUnavailableReason,
 } from './document-changes.js';
+import { readLedgerPage, readLedgerSheet } from './ledger-changes.js';
 import { assertSheetExists } from './sheet-catalogue.js';
 import type {
   DocumentChangesResponse,
@@ -101,8 +102,9 @@ export async function readFileChanges(
   // this list is mid-rewrite in either shape.
   await assertChangeHistoryComplete(api, fileMsId);
 
+  // ENG-6757 — both spreadsheet modes read the ledger compare routes.
   if (opts.sheetName) {
-    const changes = await api.getUnattributedChangesBySheet(fileMsId, opts.sheetName);
+    const changes = await readLedgerSheet(api, file.internalId, opts.sheetName);
     // ENG-2824 / ENG-4347 — only an empty answer is ambiguous, so only it pays
     // for the version read and then the sheet-existence check, in that order.
     if (changes.length === 0) {
@@ -112,13 +114,9 @@ export async function readFileChanges(
     return { kind: 'spreadsheet_sheet', file, sheetName: opts.sheetName, changes };
   }
 
-  // ENG-4346 — `totalCount` is a FILE total only when no cursor is passed.
-  // Pass `cursor` through only when the caller supplied the key (the tool
-  // does, possibly as undefined); the resource and prompts never page.
-  const page =
-    'cursor' in opts
-      ? await api.getUnattributedChangesPaginated(fileMsId, opts.cursor)
-      : await api.getUnattributedChangesPaginated(fileMsId);
+  // ENG-4346 — `totalCount` is a FILE total only when no cursor is passed;
+  // the resource and prompts never page.
+  const page = await readLedgerPage(api, file.internalId, opts.cursor);
   if (page.changes.length === 0 && page.totalCount === 0) {
     assertEnrollmentComplete(fileMsId, await api.getFileVersions(fileMsId));
   }

@@ -164,10 +164,7 @@ export function registerSearchTool(
           .optional()
           .describe(
             'Opaque cursor from a previous response\'s pagination hint. ' +
-              'Only valid with no `sheetName` (file-wide paginated mode). ' +
-              'Snapshot expires 30 minutes after the first request — older ' +
-              'cursors return an SNAPSHOT_EXPIRED error and the caller must ' +
-              'restart from the first page.',
+              'Only valid with no `sheetName` (file-wide paginated mode).',
           ),
       }),
       annotations: {
@@ -218,8 +215,8 @@ export function registerSearchTool(
           };
         }
 
-        // File-wide mode: paginated. Backend caps each page at 1000 rows;
-        // we cap display at MAX_DISPLAYED to keep MCP responses under the
+        // File-wide mode: paginated (`ledger-changes.ts!readLedgerPage`); we
+        // cap display at MAX_DISPLAYED to keep MCP responses under the
         // 25k-token client limit (audit measured one file at 12.5 MB / 28k
         // rows on the unpaginated route — KI-097).
         const MAX_DISPLAYED = 200;
@@ -267,7 +264,7 @@ export function registerSearchTool(
         }
         if (page.nextCursor) {
           hints.push(
-            `More pages available. Pass \`cursor="${page.nextCursor}"\` to fetch the next page (snapshot valid for 30 minutes).`,
+            `More pages available. Pass \`cursor="${page.nextCursor}"\` to fetch the next page.`,
           );
         }
         if (hints.length > 0) {
@@ -320,8 +317,8 @@ export function registerSearchTool(
  * file-wide number. The number itself is never dropped: the size of the
  * change set is what a caller most needs.
  *
- * NOT covered: whether the backend's `totalCount` is itself correct. That is
- * ENG-4338. This assembler describes the value it is handed, faithfully.
+ * NOT covered: whether `totalCount` is itself correct (ENG-4338; summed from
+ * the ledger summary since ENG-6757). This assembler describes the value it is handed, faithfully.
  */
 function describeRemainingCount(totalCount: number, cursor?: string): string {
   return cursor

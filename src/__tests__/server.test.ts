@@ -72,7 +72,9 @@ function createMockApiClient(): ApiClient {
     getReviewsForVersion: vi.fn().mockResolvedValue([]),
     getReviewsForLatestVersion: vi.fn().mockResolvedValue([]),
     getTeam: vi.fn().mockResolvedValue({ internalId: 1, name: 'Finance' }),
-    getUnattributedChanges: vi.fn().mockResolvedValue([]),
+    getCompareSummary: vi
+      .fn()
+      .mockResolvedValue({ sheets: [], sheetDifferences: null, snapshotId: 's' }),
     getCellHistory: vi.fn().mockResolvedValue([]),
     getMe: vi.fn().mockResolvedValue({ internalId: 1, email: 'test@test.com' }),
     // ENG-2816 — `search_drive_files` derives its confirmation-signing key at

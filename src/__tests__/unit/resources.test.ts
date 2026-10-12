@@ -129,7 +129,7 @@ describe('resource registrations', () => {
       fileMsId: 'file-1',
     });
 
-    expect(api.getUnattributedChangesPaginated).toHaveBeenCalledWith('file-1');
+    expect(api.getCompareSummary).toHaveBeenCalledWith(11);
     expect(result.contents[0].uri).toContain('rockhopper://files/file-1/changes');
   });
 });

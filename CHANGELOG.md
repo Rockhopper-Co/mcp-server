@@ -18,6 +18,15 @@ All notable changes to this project are documented here. Follows
 
 ### Changed
 
+- **`get_cell_history` says when a history is still updating** (ENG-7243).
+  Cell-history reads now send `X-Rockhopper-Client-Capabilities:
+  ledger-freshness`, so a backend still recording a file's changes serves the
+  rows it holds plus `X-Ledger-Freshness` instead of refusing. Such an answer
+  opens with `UPDATING — incomplete:` and a retry interval, and an updating
+  empty answer never reads "No history found". A pending commit-diff fold now
+  marks the answer UPDATING rather than refusing it. The anchor arm reads the
+  same header and a `ledgerFreshness` body field.
+
 - **Patch numbers are now assigned by the release pipeline, not by hand.** A
   merge to `main` publishes `<major>.<minor>.<build number>` to the `latest`
   dist-tag; a merge to `staging` publishes the matching
@@ -39,6 +48,21 @@ All notable changes to this project are documented here. Follows
   `cell`. A side with no stored value reads `Not recorded`, an emptied side reads
   `—`; `(not recorded)`, `(empty)`, `null` and `undefined` are gone. An added
   paragraph or shape shows only its new text, a removed one only its old text.
+
+- **Workbook changes are read from the change ledger** (ENG-6757). The
+  `get_unattributed_changes` tool, the `rockhopper://files/{fileMsId}/changes`
+  resource and the change prompts no longer call the retired
+  `/unattributed-changes` routes; they read the ledger's compare summary and
+  per-sheet pages. Those two requests send `X-Client-Surface` (`mcp-server`, or
+  `mcp-gateway` from the remote gateway), which the backend reads to serve them
+  from the ledger, where a change with no named editor reports
+  `processingStatus: "unresolved"`. A backend that cannot serve from the ledger
+  recomputes from the file bytes, where it can still report `"pending"`. The
+  resource's rows no longer carry `id`, `attributionBasis`, `attributionDate` or
+  `updatedAt`, nor its envelope `snapshotCreatedAt`. A row, column or
+  sheet-level change has a null `createdAt`: the ledger serves no first-seen
+  time for one. With `sheetName`, the answer now includes that sheet's row and
+  column inserts and deletes. A cursor no longer expires after 30 minutes.
 
 ## [2.0.0] — 2026-08-16
 

@@ -1,0 +1,269 @@
+{
+  "summary": {
+    "latestVersion": "1.0.0",
+    "updatedOn": "2026-10-07T00:31:17.568Z",
+    "sheets": [
+      {
+        "sheetIndex": 0,
+        "sheetName": "Sheet1",
+        "cellChangeCount": 3,
+        "rowColumnChangeCount": 1,
+        "rangeFormatChangeCount": 0,
+        "cursorRequired": false
+      },
+      {
+        "sheetIndex": 1,
+        "sheetName": "Sheet2",
+        "cellChangeCount": 1,
+        "rowColumnChangeCount": 0,
+        "rangeFormatChangeCount": 0,
+        "cursorRequired": false
+      }
+    ],
+    "sheetDifferences": {
+      "removed": [],
+      "added": [
+        {
+          "sheet": "Added",
+          "byUserPlatformId": null,
+          "createdAt": null,
+          "processingStatus": "unresolved",
+          "provenance": "human_direct",
+          "causeRule": null,
+          "actorClaim": null,
+          "actorRoles": [],
+          "attributionConfidence": "unknown",
+          "valueConfidence": "captured_client",
+          "locationHiddenNow": null,
+          "byUserName": null,
+          "byUserPlatformType": null
+        }
+      ],
+      "renamed": [],
+      "reordered": []
+    },
+    "snapshotId": "dc9270d2-afe5-4d5a-92d4-06a59c8a5228",
+    "windowStamp": "f1f570fc4c06",
+    "changeLogSettledThroughVersionId": 2
+  },
+  "pages": [
+    {
+      "sheetIndex": 0,
+      "sheetName": "Sheet1",
+      "cellChanges": [
+        {
+          "cell": "A1",
+          "cell1": {
+            "v": 1
+          },
+          "cell2": {
+            "v": 2
+          },
+          "byUserPlatformId": "test-ms-id-user1",
+          "processingStatus": "done",
+          "attributionConfidence": "in_session_actor",
+          "createdAt": null,
+          "firstObservedAt": "2026-10-07T00:31:17.494Z",
+          "editNotBefore": null,
+          "editNotAfter": null,
+          "editTimeBasis": "ingest_only",
+          "valueConfidence": "captured_client",
+          "editType": "value",
+          "baselineKind": null,
+          "provenance": "human_direct",
+          "valueKind": "value",
+          "referenceShapeChange": "none",
+          "blockConsistency": null,
+          "editorSheetFamiliarity": "actor_not_editor",
+          "editorPriorChangesInFile": 0,
+          "afterBaselineSignOff": null,
+          "eventType": "cell_edit",
+          "actorRoles": [],
+          "actorKind": null,
+          "causeRule": null,
+          "causeRuleVersion": null,
+          "causeRuleSource": null,
+          "actorClaim": null,
+          "correctsEventId": null,
+          "foundBetweenVersions": false,
+          "restoredFromVersion": null,
+          "_category": "common",
+          "locationHiddenNow": null,
+          "byUserName": "Test User1",
+          "byUserPlatformType": "microsoft"
+        },
+        {
+          "cell": "A2",
+          "cell1": {
+            "v": 3
+          },
+          "cell2": {
+            "v": 4
+          },
+          "byUserPlatformId": null,
+          "processingStatus": "unresolved",
+          "attributionConfidence": "unknown",
+          "createdAt": null,
+          "firstObservedAt": "2026-10-07T00:31:17.503Z",
+          "editNotBefore": null,
+          "editNotAfter": null,
+          "editTimeBasis": "ingest_only",
+          "valueConfidence": "captured_client",
+          "editType": "value",
+          "baselineKind": null,
+          "provenance": "human_direct",
+          "valueKind": "value",
+          "referenceShapeChange": "none",
+          "blockConsistency": null,
+          "editorSheetFamiliarity": "actor_not_editor",
+          "editorPriorChangesInFile": 0,
+          "afterBaselineSignOff": null,
+          "eventType": "cell_edit",
+          "actorRoles": [],
+          "actorKind": null,
+          "causeRule": null,
+          "causeRuleVersion": null,
+          "causeRuleSource": null,
+          "actorClaim": null,
+          "correctsEventId": null,
+          "foundBetweenVersions": false,
+          "restoredFromVersion": null,
+          "_category": "common",
+          "locationHiddenNow": null,
+          "byUserName": null,
+          "byUserPlatformType": null
+        },
+        {
+          "cell": "A3",
+          "cell1": {
+            "v": 5
+          },
+          "cell2": {
+            "v": 6
+          },
+          "byUserPlatformId": "eng6755-not-a-user",
+          "processingStatus": "done",
+          "attributionConfidence": "in_session_actor",
+          "createdAt": null,
+          "firstObservedAt": "2026-10-07T00:31:17.507Z",
+          "editNotBefore": null,
+          "editNotAfter": null,
+          "editTimeBasis": "ingest_only",
+          "valueConfidence": "captured_client",
+          "editType": "value",
+          "baselineKind": null,
+          "provenance": "human_direct",
+          "valueKind": "value",
+          "referenceShapeChange": "none",
+          "blockConsistency": null,
+          "editorSheetFamiliarity": "actor_not_editor",
+          "editorPriorChangesInFile": 0,
+          "afterBaselineSignOff": null,
+          "eventType": "cell_edit",
+          "actorRoles": [],
+          "actorKind": null,
+          "causeRule": null,
+          "causeRuleVersion": null,
+          "causeRuleSource": null,
+          "actorClaim": null,
+          "correctsEventId": null,
+          "foundBetweenVersions": false,
+          "restoredFromVersion": null,
+          "_category": "common",
+          "locationHiddenNow": null,
+          "byUserName": null,
+          "byUserPlatformType": null
+        }
+      ],
+      "rowColumnChanges": {
+        "rowInsertions": [
+          {
+            "address": "5:5",
+            "type": "row",
+            "startRow": 5,
+            "endRow": 5,
+            "count": 1,
+            "userPlatformId": null,
+            "processingStatus": "unresolved",
+            "timestamp": null,
+            "provenance": "human_direct",
+            "causeRule": null,
+            "actorClaim": null,
+            "actorRoles": [],
+            "attributionConfidence": "unknown",
+            "valueConfidence": "captured_client",
+            "locationHiddenNow": null,
+            "byUserName": null,
+            "byUserPlatformType": null
+          }
+        ],
+        "rowDeletions": [],
+        "columnInsertions": [],
+        "columnDeletions": []
+      },
+      "rangeFormats": [],
+      "nextCursor": null,
+      "totalCellChangeCount": 3,
+      "snapshotId": "dc9270d2-afe5-4d5a-92d4-06a59c8a5228",
+      "windowStamp": "f1f570fc4c06"
+    },
+    {
+      "sheetIndex": 1,
+      "sheetName": "Sheet2",
+      "cellChanges": [
+        {
+          "cell": "B1",
+          "cell1": {
+            "v": "old"
+          },
+          "cell2": {
+            "v": "new"
+          },
+          "byUserPlatformId": "test-ms-id-user1",
+          "processingStatus": "done",
+          "attributionConfidence": "in_session_actor",
+          "createdAt": null,
+          "firstObservedAt": "2026-10-07T00:31:17.517Z",
+          "editNotBefore": null,
+          "editNotAfter": null,
+          "editTimeBasis": "ingest_only",
+          "valueConfidence": "captured_client",
+          "editType": "value",
+          "baselineKind": null,
+          "provenance": "human_direct",
+          "valueKind": "value",
+          "referenceShapeChange": "none",
+          "blockConsistency": null,
+          "editorSheetFamiliarity": "actor_not_editor",
+          "editorPriorChangesInFile": 0,
+          "afterBaselineSignOff": null,
+          "eventType": "cell_edit",
+          "actorRoles": [],
+          "actorKind": null,
+          "causeRule": null,
+          "causeRuleVersion": null,
+          "causeRuleSource": null,
+          "actorClaim": null,
+          "correctsEventId": null,
+          "foundBetweenVersions": false,
+          "restoredFromVersion": null,
+          "_category": "common",
+          "locationHiddenNow": null,
+          "byUserName": "Test User1",
+          "byUserPlatformType": "microsoft"
+        }
+      ],
+      "rowColumnChanges": {
+        "rowInsertions": [],
+        "rowDeletions": [],
+        "columnInsertions": [],
+        "columnDeletions": []
+      },
+      "rangeFormats": [],
+      "nextCursor": null,
+      "totalCellChangeCount": 1,
+      "snapshotId": "dc9270d2-afe5-4d5a-92d4-06a59c8a5228",
+      "windowStamp": "f1f570fc4c06"
+    }
+  ]
+}

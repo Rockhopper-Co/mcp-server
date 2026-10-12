@@ -525,15 +525,15 @@ describe('MCP in-memory protocol e2e', () => {
     expect(text).not.toContain('No history found');
   });
 
-  // KI-097: file-wide mode uses the cursor-paginated route.
+  // KI-097 / ENG-6757: file-wide mode walks the ledger summary's sheets.
   it('get_unattributed_changes returns paginated envelope when no sheetName', async () => {
     const result = await client.callTool({
       name: 'get_unattributed_changes',
       arguments: { fileMsId: 'file-1' },
     });
     const text = JSON.stringify(result.content);
-    expect(text).toContain('Showing 1 of 1');
-    expect(text).toContain('Top sheets on this page: Sheet1 (1)');
+    expect(text).toContain('Showing 6 of 6 change(s) on this page (6 in this file)');
+    expect(text).toContain('Top sheets on this page: Sheet1 (4), Added (1), Sheet2 (1)');
     expect(text).toContain('Sheet1!A1');
   });
 
@@ -1023,10 +1023,10 @@ describe('MCP in-memory protocol e2e', () => {
   });
 
   it('reads rockhopper://files/{fileMsId}/changes', async () => {
-    const result = await client.readResource({
-      uri: 'rockhopper://files/file-1/changes',
-    });
-    expect(textOf(result.contents[0])).toContain('Sheet1');
+    const result = await client.readResource({ uri: 'rockhopper://files/file-1/changes' });
+    const { changes } = JSON.parse(textOf(result.contents[0])); // ENG-6757: ledger-served
+    expect(changes.find((c: { cellAddress: string }) => c.cellAddress === 'A2'))
+      .toMatchObject({ sheetName: 'Sheet1', byUserPlatformId: null, processingStatus: 'unresolved' });
   });
 
   // ---------------- resource list shape ----------------

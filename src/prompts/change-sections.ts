@@ -1,3 +1,4 @@
+import { formatSpreadsheetChangeRows } from '../change-row-vocabulary.js';
 import { formatDocumentChanges } from '../document-changes.js';
 import {
   fileChangesUnavailableText,
@@ -23,15 +24,10 @@ export function changeSummarySection(read: FileChangesRead): string {
       // `totalCount` is a file total; the preview uses up to 20 rows of it.
       const rows = read.kind === 'spreadsheet' ? read.page.changes : read.changes;
       const total = read.kind === 'spreadsheet' ? read.page.totalCount : rows.length;
-      const body = rows.length
-        ? rows
-            .slice(0, 20)
-            .map(
-              (c) =>
-                `- ${c.sheetName}!${c.cellAddress}: ${JSON.stringify(c.oldValue)} → ${JSON.stringify(c.newValue)}`,
-            )
-            .join('\n')
-        : 'None';
+      // ENG-6917 — the tool's shared row vocabulary, never a prompt-local copy,
+      // so a structural row (a sheet moved, a row inserted) is NAMED rather
+      // than printed as a raw cell edit.
+      const body = rows.length ? formatSpreadsheetChangeRows(rows.slice(0, 20)) : 'None';
       return `## Unattributed Changes (${total} total)\n${body}`;
     }
   }

@@ -2,6 +2,11 @@ import { createHmac, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 import { getCorrelationId } from './correlation.js';
 import { log } from './logger.js';
+import {
+  compareSurfaceHeaders,
+  type CompareSheetPage,
+  type CompareSummary,
+} from './ledger-wire.js';
 import type {
   CellHistoryEntry,
   DocumentAnchorHistory,
@@ -11,12 +16,10 @@ import type {
   FileChat,
   FileVersion,
   FoldStatus,
-  PaginatedUnattributedResponse,
   ReviewActivity,
   ReviewRequest,
   RockhopperId,
   Team,
-  UnattributedChange,
   UserSummary,
   MicrosoftConnectHandoff,
   MicrosoftLinkStatus,
@@ -46,6 +49,17 @@ import {
   ChangeHistoryNotReadyError,
   DEFAULT_RETRY_AFTER_SECONDS,
 } from './not-ready.js';
+import {
+  CLIENT_CAPABILITIES_HEADER,
+  CLIENT_CAPABILITIES_VALUE,
+  freshnessFromHeaders,
+  type ReadFreshness,
+} from './ledger-freshness.js';
+
+/** ENG-7243 — opt-in freshness return for the cell-history reads. */
+export interface CellHistoryReadOptions {
+  onFreshness?: (freshness: ReadFreshness) => void;
+}
 
 /**
  * Plan 02 ruling 5 — the poll hint comes from the SERVER's `Retry-After`
@@ -374,6 +388,8 @@ export class ApiClient {
     path: string,
     init?: RequestInit,
     responseSchema?: ZodType<T>,
+    /** ENG-7243 — opt-in: the response headers of a successful call. */
+    onHeaders?: (headers: { get(name: string): string | null }) => void,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     // KI-225: log only the URL pathname (drop the query string) — query may
@@ -499,6 +515,7 @@ export class ApiClient {
       { event: 'api_request', method, path: pathname, status: response.status, durationMs },
       'api_request',
     );
+    onHeaders?.(response.headers);
 
     const json = await response.json();
     if (responseSchema) {
@@ -925,14 +942,20 @@ export class ApiClient {
    * SAME ledger read-decision choke point as the webapp/add-in popovers
    * (cross-surface parity). An eligible file serves the WIDENED entries
    * (+ formula, provenance, actorKind, drivingHuman, formatted — including
-   * live events with versionId 'uncommitted'); a not-eligible file, a Google
-   * file, or an older backend serves the four-field legacy projection. The
-   * schema accepts both.
+   * live events with versionId 'uncommitted'); an older backend serves the
+   * four-field projection. The schema accepts both.
+   *
+   * ENG-7243 — announces {@link CLIENT_CAPABILITIES_HEADER}, so a backend
+   * whose ledger is still updating serves the rows it holds plus
+   * `X-Ledger-Freshness` instead of the strict 503 it keeps for older
+   * mcp-servers (backend ENG-7039). The body stays an array; the freshness
+   * reaches the caller through `opts.onFreshness`.
    */
   async getCellHistory(
     fileMsId: string,
     sheetName: string,
     cellAddress: string,
+    opts?: CellHistoryReadOptions,
   ): Promise<CellHistoryEntry[]> {
     const query = new URLSearchParams({
       cell: cellAddress,
@@ -941,8 +964,9 @@ export class ApiClient {
     });
     return this.request<CellHistoryEntry[]>(
       `/file-versions/file/${fileMsId}/cell-history?${query}`,
-      undefined,
+      { headers: { [CLIENT_CAPABILITIES_HEADER]: CLIENT_CAPABILITIES_VALUE } },
       CellHistoryEntryArraySchema as unknown as ZodType<CellHistoryEntry[]>,
+      (headers) => opts?.onFreshness?.(freshnessFromHeaders(headers)),
     );
   }
 
@@ -954,12 +978,15 @@ export class ApiClient {
   async getAnchorHistory(
     fileMsId: string,
     anchorId: string,
+    opts?: CellHistoryReadOptions,
   ): Promise<DocumentAnchorHistory> {
     const query = new URLSearchParams({ anchorId, format: 'mcp' });
     return this.request<DocumentAnchorHistory>(
       `/file-versions/file/${fileMsId}/cell-history?${query}`,
-      undefined,
+      // ENG-7243 — same route, same announcement as the cell arm.
+      { headers: { [CLIENT_CAPABILITIES_HEADER]: CLIENT_CAPABILITIES_VALUE } },
       DocumentAnchorHistorySchema as unknown as ZodType<DocumentAnchorHistory>,
+      (headers) => opts?.onFreshness?.(freshnessFromHeaders(headers)),
     );
   }
 
@@ -1079,45 +1106,41 @@ export class ApiClient {
     );
   }
 
-  // --- Unattributed Changes ---
+  // --- Workbook changes: the ledger compare routes (ENG-6757) ---
 
   /**
-   * Sheet-filtered unattributed changes. Returns ALL rows for the given
-   * sheet on the file (no pagination — sheet filter inherently bounds
-   * result size). Use this when the caller already knows which sheet to
-   * inspect; use {@link getUnattributedChangesPaginated} for the file-wide
-   * view.
+   * The live window's per-sheet summary and sheet-level changes. Keyed by the
+   * enrolled file's INTERNAL id, like {@link getWorkbookSheetNames}. Each call
+   * mints a fresh `snapshotId` that {@link getCompareSheet} pages slice.
    */
-  async getUnattributedChangesBySheet(
-    fileMsId: string,
-    sheetName: string,
-  ): Promise<UnattributedChange[]> {
-    const path = `/unattributed-changes/${fileMsId}/${encodeURIComponent(
-      sheetName,
-    )}`;
-    return this.request<UnattributedChange[]>(path);
+  async getCompareSummary(enrolledFileInternalId: number): Promise<CompareSummary> {
+    return this.request<CompareSummary>(
+      `/file-handler/compare-summary/by-enrolled-file/${encodeURIComponent(
+        String(enrolledFileInternalId),
+      )}`,
+      { headers: compareSurfaceHeaders(this.surface) },
+    );
   }
 
   /**
-   * Cursor-paginated file-wide unattributed changes (KI-097).
-   *
-   * Hits the non-shadowable `GET /unattributed-changes/paginated/:fileMsId`
-   * route added by backend PR #475 (KI-102). The legacy `:fileMsId/v2`
-   * route is shadowed by `:fileMsId/:sheetName` route ordering and returns
-   * an empty array; do not call it from here.
-   *
-   * Pass `cursor` returned by a previous call to fetch the next page.
-   * Snapshot TTL is 30 minutes — older cursors cause the backend to return
-   * HTTP 410 GONE with `{ resyncRequired: { code: 'SNAPSHOT_EXPIRED' } }`,
-   * which surfaces here as a thrown RockhopperApiError.
+   * One sheet's changes: up to 5,000 cells a page, and the sheet's row and
+   * column bands on its first page. A snapshot the server no longer holds is
+   * recomputed, never refused.
    */
-  async getUnattributedChangesPaginated(
-    fileMsId: string,
+  async getCompareSheet(
+    enrolledFileInternalId: number,
+    sheetIndex: number,
+    snapshotId: string,
     cursor?: string,
-  ): Promise<PaginatedUnattributedResponse> {
-    const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-    const path = `/unattributed-changes/paginated/${fileMsId}${qs}`;
-    return this.request<PaginatedUnattributedResponse>(path);
+  ): Promise<CompareSheetPage> {
+    const query = new URLSearchParams({ snapshotId });
+    if (cursor) query.set('cursor', cursor);
+    return this.request<CompareSheetPage>(
+      `/file-handler/compare-sheet/by-enrolled-file/${encodeURIComponent(
+        String(enrolledFileInternalId),
+      )}/${sheetIndex}?${query.toString()}`,
+      { headers: compareSurfaceHeaders(this.surface) },
+    );
   }
 
   // --- Document changes ---
@@ -1127,9 +1150,9 @@ export class ApiClient {
    * committed version.
    *
    * THIS CLIENT HAD NO CALL TO THIS LANE AT ALL, which is why every document
-   * question reached the SPREADSHEET reader above and came back empty. The
-   * `unattributed_change` table those two routes read requires a `sheetName`
-   * and the sheet route also filters `changeType = 'cell'`, so a `.docx` or
+   * question reached the legacy SPREADSHEET routes and came back empty. Their
+   * `unattributed_change` table requires a `sheetName` (ENG-6757 retired them)
+   * and the sheet route also filtered `changeType = 'cell'`, so a `.docx` or
    * `.pptx` returned `[]` from them by construction — never because nothing
    * had changed.
    *

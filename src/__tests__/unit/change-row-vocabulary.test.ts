@@ -78,6 +78,7 @@ describe('the change-row words are the change log words', () => {
       sheet_add: 'sheet added',
       sheet_delete: 'sheet removed',
       sheet_rename: 'sheet renamed',
+      sheet_reorder: 'sheet moved',
       row_insert: 'row inserted',
       row_delete: 'row deleted',
       column_insert: 'column inserted',
@@ -149,6 +150,37 @@ describe('formatSpreadsheetChangeRows — the row word, never the change type', 
         }),
       ]),
     ).toBe('- **Sheet1!5:5** (row inserted) — by ms-1 — 2026-09-15T10:00:00.000Z');
+  });
+});
+
+describe('formatSpreadsheetChangeRows — a sheet reorder (ENG-6917)', () => {
+  // The backend serves the 0-based tab positions in the value columns
+  // (backend ENG-6913, `file-handler.service.ts` reorder save); the change log
+  // reads "sheet moved" and counts positions from 1
+  // (`changeLabel.ts!sheetChangeLabel`, `UserStructuralChange.tsx`).
+  const reorder = (over: Record<string, unknown>) =>
+    cell({
+      sheetName: 'Budget',
+      cellAddress: '',
+      changeType: 'sheet_reorder',
+      editType: null,
+      oldValue: { t: 'n', v: 0 },
+      newValue: { t: 'n', v: 2 },
+      byUserName: 'Ada',
+      ...over,
+    });
+
+  it('names a reorder "sheet moved" with both tab positions counted from 1', () => {
+    expect(formatSpreadsheetChangeRows([reorder({})])).toBe(
+      '- **Budget!** (sheet moved): position 1 → 3 — by Ada — ' +
+        '2026-09-15T10:00:00.000Z',
+    );
+  });
+
+  it('prints no positions, and no raw values, when a side is not a position', () => {
+    expect(
+      formatSpreadsheetChangeRows([reorder({ oldValue: null })]),
+    ).toBe('- **Budget!** (sheet moved) — by Ada — 2026-09-15T10:00:00.000Z');
   });
 });
 
