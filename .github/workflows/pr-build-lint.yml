@@ -1,0 +1,52 @@
+name: PR build and lint
+
+# ENG-7607 — a pull request into `dev` runs ONLY this cheap job (lint,
+# typecheck, build), so it can merge as soon as it builds and lints.
+#
+# WHY. The full suites (`ci.yml` unit + in-process/stdio e2e, `coverage.yml`,
+# `postman-drift.yml`) are expensive, and several sessions edit this repository
+# at once, so every re-run on every feature pull request multiplies the cost.
+# The big suites run where a pull request sits and someone waits: the
+# `epic/**` -> `dev` pull request (gate 2, in ci.yml and the other gate
+# workflows), `dev` -> `staging` and `staging` -> `main`. An `epic/**` pull
+# request into `dev` is treated like an elevation: unit pull requests merge into
+# the epic once they build and lint, the full suite runs on the epic -> `dev`
+# pull request, and `dev` is merged into the epic continually.
+#
+# WHAT RUNS HERE. Any head into `dev`, with the default event types. There is no
+# job-level `if:`, so the check never shows SKIPPED. On an `epic/**` -> `dev`
+# pull request it runs alongside the full suite; that overlap costs seconds.
+# `runs-on` stays GitHub-hosted. The `epic/**` push/pull-request gate
+# (`epic-branch.yml`), publishing and the gate workflows are unchanged.
+on:
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+# Keyed on the pull request number, so a run collides only with its own
+# re-triggers (ENG-3439).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-lint:
+    name: Lint, typecheck, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      # `tsc --noEmit` covers src/__tests__ too, so spec files are type-checked.
+      - run: npm run typecheck
+      - run: npm run build
