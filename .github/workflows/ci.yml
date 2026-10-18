@@ -113,6 +113,24 @@ on:
   # `github.base_ref != 'dev' || ...`, is already true for any `epic/**` base,
   # so the run fires unconditionally once the trigger admits it. Gates 1-4 are
   # unchanged — see docs/conventions/ci-gate-topology.md in knowledge-base.
+  # ENG-7608 (2026-10-18) — FULL SUITES WAIT UNTIL THE BRANCH IS READY. Test
+  # suites run on CI only once all code is complete on a branch and its pull
+  # request is being readied to merge into `dev`, never on every push. Every
+  # full-suite job in this file runs on exactly:
+  #   (a) a NON-DRAFT `epic/**` -> `dev` pull request (opened ready,
+  #       `ready_for_review`, and every `synchronize` while it stays ready);
+  #   (b) a pull request into `staging` or `main`, unchanged, draft elevation
+  #       handling included;
+  #   (c) `workflow_dispatch` (`gh workflow run <file> --ref <branch>`).
+  # A pull request into `epic/**`, a DRAFT epic -> `dev` pull request and a
+  # feature -> `dev` pull request skip them and get only the cheap
+  # build-and-lint check. This SUPERSEDES the ENG-3570/ENG-5367 reasoning that
+  # kept the draft epic -> `dev` pull request re-testing on every push: it
+  # assumed a permanent draft nobody marks ready, and the epic pull request is
+  # now marked ready once its code is complete. ENG-5367's `base_ref` keying of
+  # the elevation leg stays, and there is still no `push:` trigger on `dev`.
+  # The cheap check is pr-build-lint.yml (`dev` bases) and epic-branch.yml's
+  # `verify` (`epic/**` bases, its test step now dispatch-only).
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
     branches: [dev, staging, main, 'epic/**']
@@ -183,14 +201,18 @@ jobs:
     #     and runs.
     # `workflow_dispatch` is untouched: it short-circuits on the first sub-leg
     # before either of the others is evaluated.
+    # ENG-7608 — FULL SUITE ONLY WHEN THE BRANCH IS READY: a non-draft
+    # epic/** -> dev pull request, an elevation (draft elevation still waits
+    # for a human), or a dispatch. Unit -> epic, draft epic -> dev and
+    # feature -> dev skip. Reasoning in the trigger header.
     if: >-
-      (github.event_name != 'pull_request'
-      || github.event.pull_request.draft == false
-      || !contains(fromJSON('["dev","staging"]'), github.head_ref))
-      && (github.base_ref != 'dev' || startsWith(github.head_ref, 'epic/'))
-      && (github.event.action != 'synchronize'
-      || github.base_ref != 'dev'
-      || startsWith(github.head_ref, 'epic/'))
+      github.event_name != 'pull_request'
+      || (contains(fromJSON('["staging","main"]'), github.base_ref)
+      && (github.event.pull_request.draft == false
+      || !contains(fromJSON('["dev","staging"]'), github.head_ref)))
+      || (github.base_ref == 'dev'
+      && startsWith(github.head_ref, 'epic/')
+      && github.event.pull_request.draft == false)
     name: Typecheck, test, build
     runs-on: ubuntu-latest
     steps:
