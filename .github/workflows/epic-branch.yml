@@ -101,7 +101,13 @@ jobs:
       # Rockhopper API (`src/__tests__/e2e/harness/`), with no containers, no
       # database and no network. They are also where a deleted or renamed tool
       # surfaces, which is the collision this gate is for.
+      #
+      # ENG-7608 — DISPATCH ONLY. Test suites run on CI only once a branch is
+      # code-complete: a NON-DRAFT epic -> `dev` pull request (ci.yml `verify`,
+      # coverage.yml), an elevation, or a dispatch. A pull request INTO an epic
+      # gets lint, typecheck and build here and nothing else.
       - name: Tests
+        if: github.event_name == 'workflow_dispatch'
         run: npm test
 
       - name: Build
