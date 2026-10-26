@@ -95,7 +95,9 @@ describe('search_drive_files registration', () => {
       description: string;
       annotations: { readOnlyHint: boolean };
     };
-    expect(spec.description).toContain('CONFIRM THE FILE WITH THE USER');
+    expect(spec.description).toContain(
+      'Confirm the file with the user before enrolling it',
+    );
     expect(spec.description).toContain('enroll_file');
     expect(spec.annotations.readOnlyHint).toBe(true);
   });

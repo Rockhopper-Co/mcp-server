@@ -21,6 +21,7 @@ import {
   type Candidate,
   type DriveSearchOutcome,
 } from '../drive-search.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 export const DRIVE_SEARCH_INPUT_SCHEMA = z.object({
   query: z
@@ -44,7 +45,7 @@ export const DRIVE_SEARCH_INPUT_SCHEMA = z.object({
     .optional()
     .describe(
       'Where to look: "microsoft" (default) searches the user\'s OneDrive ' +
-        'and SharePoint, "google" searches their Google Drive. ASK THE USER ' +
+        'and SharePoint, "google" searches their Google Drive. Ask the user ' +
         'which one their file is in rather than guessing — searching the ' +
         'wrong one returns an empty list that reads exactly like "no such ' +
         'file". A person may have both.',
@@ -73,7 +74,7 @@ export const DRIVE_SEARCH_INPUT_SCHEMA = z.object({
     .int()
     .optional()
     .describe(
-      'The number of the candidate the USER picked from a previous ' +
+      'The number of the candidate the user picked from a previous ' +
         '`search_drive_files` answer, after you asked them which file they ' +
         'meant. Send it together with `confirm_token` from that same answer. ' +
         'Send 0 if they said none of them is the right file. ' +
@@ -94,10 +95,10 @@ export const DRIVE_SEARCH_DESCRIPTION =
   'seen. Workbooks, Word documents and PowerPoint decks. ' +
   'Set `provider` to say which; ask the user rather than guessing. ' +
   'Each candidate comes back marked as already in Rockhopper or not. ' +
-  'USE THIS when the user names a file that `search_files` and ' +
+  'Use this tool when the user names a file that `search_files` and ' +
   '`list_files` cannot find: those two see only files already added to ' +
   'Rockhopper, so "no match" there means "never added", not "no such file". ' +
-  'YOU MUST CONFIRM THE FILE WITH THE USER before enrolling it. Show them the ' +
+  'Confirm the file with the user before enrolling it: show them the ' +
   'candidates, ask which one they mean, then call this tool again with their ' +
   'pick as `confirm_index` plus the `confirm_token`; the answer carries the ' +
   'identifiers to hand to `enroll_file`. Never enroll a file the user has not ' +
@@ -114,9 +115,10 @@ export const DRIVE_SEARCH_DESCRIPTION =
 
 export const DRIVE_SEARCH_ANNOTATIONS = {
   readOnlyHint: true,
-  // It reaches SharePoint / OneDrive through Rockhopper.
+  destructiveHint: false,
+  // It reaches OneDrive and SharePoint, or Google Drive, through Rockhopper.
   openWorldHint: true,
-} as const;
+} as const satisfies ToolAnnotations;
 
 /** The machine-readable half of every answer, so a model can branch on it. */
 export interface DriveSearchAnswer {

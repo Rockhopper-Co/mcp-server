@@ -6,6 +6,7 @@ import {
   commentLocation,
   isTaskPanePresentationId,
 } from '../comment-location.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 /**
  * ENG-6435 — the kinds backend `comment-anchor.ts!COMMENT_ANCHOR_KINDS`
@@ -90,7 +91,10 @@ export function registerWriteCommentTools(
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: false,
-      },
+        // A top-level comment is stored in Rockhopper only; nothing is written
+        // back to the workbook (backend `file-chat.service.ts!create`).
+        openWorldHint: false,
+      } satisfies ToolAnnotations,
     },
     async ({ fileMsId, message, cellReference, versionInternalId, anchor }) => {
       if (anchor && isTaskPanePresentationId(anchor.providerAnchorId)) {
@@ -166,7 +170,11 @@ export function registerWriteCommentTools(
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: false,
-      },
+        // A reply is written back to the native thread: Google Drive through
+        // the service account, Excel through Graph when an interactive login
+        // is present (backend `file-chat.service.ts!syncReplyToNativeThread`).
+        openWorldHint: true,
+      } satisfies ToolAnnotations,
     },
     async ({ chatId, message, versionInternalId }) => {
       try {
@@ -210,7 +218,9 @@ export function registerWriteCommentTools(
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: true,
-      },
+        // Resolving updates the Rockhopper row only (`PATCH /file-chat/:id`).
+        openWorldHint: false,
+      } satisfies ToolAnnotations,
     },
     async ({ chatId }) => {
       try {

@@ -20,6 +20,7 @@ import {
 } from '../sheet-catalogue.js';
 import { readAnchorHistory } from './anchor-history-read.js';
 import { parseCellAddress, sheetNamesAgree } from './cell-address.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 /**
  * ENG-6433 — EXACTLY ONE address: a sheet + cell, or an anchorId.
@@ -132,8 +133,11 @@ export function registerGetCellHistoryTool(
       inputSchema: getCellHistoryInputSchema,
       annotations: {
         readOnlyHint: true,
-        openWorldHint: false,
-      },
+        destructiveHint: false,
+        // An empty answer on a native Google Sheet checks the sheet against
+        // the Sheets API (sheet-catalogue.ts!assertSheetExists).
+        openWorldHint: true,
+      } satisfies ToolAnnotations,
     },
     async ({ fileMsId, sheetName, cellAddress, anchorId }) => {
       // ENG-6433 — the document arm. The schema admits exactly one address

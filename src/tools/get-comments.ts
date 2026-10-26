@@ -4,6 +4,7 @@ import type { ApiClient } from '../api-client.js';
 import type { FileChat } from '../types.js';
 import { renderMentions } from '../mentions.js';
 import { commentLocation } from '../comment-location.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 function formatComment(c: FileChat, indent = 0): string {
   const prefix = '  '.repeat(indent);
@@ -36,8 +37,11 @@ export function registerGetCommentsTool(
       }),
       annotations: {
         readOnlyHint: true,
-        openWorldHint: false,
-      },
+        destructiveHint: false,
+        // Every read starts a native-comment import from Graph or Drive:
+        // backend file-chat.service.ts!triggerNativeCommentImport.
+        openWorldHint: true,
+      } satisfies ToolAnnotations,
     },
     async ({ fileMsId }) => {
       try {

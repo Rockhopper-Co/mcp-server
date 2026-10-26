@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { renderEmpty, renderFound } from './list-unenrolled-render.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 /**
  * ENG-2785 — "which of my workbooks are NOT in Rockhopper yet?"
@@ -102,8 +103,11 @@ export function registerListUnenrolledFilesTool(
       }),
       annotations: {
         readOnlyHint: true,
-        openWorldHint: false,
-      },
+        destructiveHint: false,
+        // Rows come from storage, but every call starts a Graph/Drive refresh:
+        // backend user-drive-inventory.service.ts!list → refresh.trigger.
+        openWorldHint: true,
+      } satisfies ToolAnnotations,
     },
     async ({ limit, cursor }) => {
       try {

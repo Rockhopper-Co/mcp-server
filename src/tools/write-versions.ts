@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { formatVersion } from '../version-format.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 function bumpVersion(
   major: number,
@@ -47,7 +48,10 @@ export function registerWriteVersionTools(
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: false,
-      },
+        // Committing downloads the live file from Microsoft Graph or Google
+        // Drive into the version snapshot.
+        openWorldHint: true,
+      } satisfies ToolAnnotations,
     },
     async ({ fileMsId, versionType, description }) => {
       try {
@@ -133,7 +137,9 @@ export function registerWriteVersionTools(
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: false,
-      },
+        // Discarding rewrites the live file in Microsoft or Google storage.
+        openWorldHint: true,
+      } satisfies ToolAnnotations,
     },
     async ({ fileMsId, description }) => {
       try {
