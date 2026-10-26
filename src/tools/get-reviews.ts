@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { displayUserName } from '../user-display-name.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 export function registerGetReviewsTool(
   server: McpServer,
@@ -33,8 +34,9 @@ export function registerGetReviewsTool(
       }),
       annotations: {
         readOnlyHint: true,
+        destructiveHint: false,
         openWorldHint: false,
-      },
+      } satisfies ToolAnnotations,
     },
     async ({ versionId, fileMsId }) => {
       try {

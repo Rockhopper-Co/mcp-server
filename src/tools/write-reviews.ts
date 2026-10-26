@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 /**
  * ENG-2230 — a reviewer id in EITHER spelling: the version-7 uuid, or the
@@ -102,7 +103,9 @@ export function registerWriteReviewTools(
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: false,
-      },
+        // Review rows and notifications are Rockhopper's own.
+        openWorldHint: false,
+      } satisfies ToolAnnotations,
     },
     async ({ versionId, subject, description, reviewerIds }) => {
       try {
@@ -157,7 +160,9 @@ export function registerWriteReviewTools(
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: true,
-      },
+        // Review rows and notifications are Rockhopper's own.
+        openWorldHint: false,
+      } satisfies ToolAnnotations,
     },
     async ({ reviewId, notes }) => {
       try {
@@ -203,7 +208,9 @@ export function registerWriteReviewTools(
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: true,
-      },
+        // Review rows and notifications are Rockhopper's own.
+        openWorldHint: false,
+      } satisfies ToolAnnotations,
     },
     async ({ reviewId }) => {
       try {

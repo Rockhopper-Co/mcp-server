@@ -49,7 +49,7 @@ describe('list_unenrolled_files', () => {
     expect(call).toBeDefined();
     expect(call?.[1].annotations).toMatchObject({
       readOnlyHint: true,
-      openWorldHint: false,
+      openWorldHint: true,
     });
   });
 

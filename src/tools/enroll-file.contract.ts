@@ -12,6 +12,7 @@
 
 import { z } from 'zod';
 import type { EnrollOutcome } from '../enrollment.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 export const ENROLL_INPUT_SCHEMA = z.object({
   url: z
@@ -114,7 +115,7 @@ export const ENROLL_ANNOTATIONS = {
   idempotentHint: true,
   // It reaches the user's own file storage through Rockhopper.
   openWorldHint: true,
-} as const;
+} as const satisfies ToolAnnotations;
 
 /** The question the model puts to the user when `share_with` was omitted. */
 export const SHARE_QUESTION =

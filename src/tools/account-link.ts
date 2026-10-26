@@ -7,6 +7,7 @@ import {
   statusToolName,
   type AccountLinkProvider,
 } from '../account-link-providers.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 /**
  * The account-link tools — `connect_<provider>`, `<provider>_link_status` and
@@ -82,9 +83,10 @@ function registerProviderLinkTools(
         // Creates no Rockhopper data by itself — it hands back a link. The
         // grant only exists once the USER completes the consent.
         readOnlyHint: true,
+        destructiveHint: false,
         // It sends the user to the provider.
         openWorldHint: true,
-      },
+      } satisfies ToolAnnotations,
     },
     async () => {
       try {
@@ -119,7 +121,11 @@ function registerProviderLinkTools(
       title: `${p.label} Connection Status`,
       description: p.statusDescription,
       inputSchema: z.object({}),
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false,
+      } satisfies ToolAnnotations,
     },
     async () => {
       try {
@@ -161,7 +167,7 @@ function registerProviderLinkTools(
         destructiveHint: true,
         idempotentHint: true,
         openWorldHint: false,
-      },
+      } satisfies ToolAnnotations,
     },
     async () => {
       try {

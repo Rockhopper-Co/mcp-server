@@ -209,7 +209,7 @@ export function registerDriveSearchTool(
   server.registerTool(
     'search_drive_files',
     {
-      title: "Find a File in the User's Microsoft Drive",
+      title: 'Find a File in OneDrive, SharePoint or Google Drive',
       description: DRIVE_SEARCH_DESCRIPTION,
       inputSchema: DRIVE_SEARCH_INPUT_SCHEMA,
       annotations: DRIVE_SEARCH_ANNOTATIONS,
