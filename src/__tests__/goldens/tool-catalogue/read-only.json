@@ -9,6 +9,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": true,
       "readOnlyHint": true
     }
@@ -23,6 +24,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": true,
       "readOnlyHint": true
     }
@@ -91,6 +93,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": true
     }
@@ -113,6 +116,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": true
     }
@@ -135,6 +139,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": true
     }
@@ -158,6 +163,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": true
     }
@@ -188,6 +194,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": true
     }
@@ -202,6 +209,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": true
     }
@@ -221,6 +229,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": true
     }
@@ -246,6 +255,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": true
     }
@@ -260,14 +270,15 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": true
     }
   },
   {
     "name": "search_drive_files",
-    "title": "Find a File in the User's Microsoft Drive",
-    "description": "Find a file in the user's own file storage — their OneDrive and SharePoint, or their Google Drive — including files Rockhopper has never seen. Workbooks, Word documents and PowerPoint decks. Set `provider` to say which; ask the user rather than guessing. Each candidate comes back marked as already in Rockhopper or not. USE THIS when the user names a file that `search_files` and `list_files` cannot find: those two see only files already added to Rockhopper, so \"no match\" there means \"never added\", not \"no such file\". YOU MUST CONFIRM THE FILE WITH THE USER before enrolling it. Show them the candidates, ask which one they mean, then call this tool again with their pick as `confirm_index` plus the `confirm_token`; the answer carries the identifiers to hand to `enroll_file`. Never enroll a file the user has not named, and never claim a file is already in Rockhopper because one search result looked similar. Read the outcome rather than assuming: `declined` means the user saw the candidates and rejected them, `dismissed` means the prompt closed with no answer at all — put the list to them yourself and do not search again — and `link_supplied` means they pasted the file address, which goes to `enroll_file` as `url` on its own. Searching is capped per session, so search deliberately rather than browsing. Each provider needs its own connected account — if the one you asked for is not connected, this returns the link the user must open.",
+    "title": "Find a File in OneDrive, SharePoint or Google Drive",
+    "description": "Find a file in the user's own file storage — their OneDrive and SharePoint, or their Google Drive — including files Rockhopper has never seen. Workbooks, Word documents and PowerPoint decks. Set `provider` to say which; ask the user rather than guessing. Each candidate comes back marked as already in Rockhopper or not. Use this tool when the user names a file that `search_files` and `list_files` cannot find: those two see only files already added to Rockhopper, so \"no match\" there means \"never added\", not \"no such file\". Confirm the file with the user before enrolling it: show them the candidates, ask which one they mean, then call this tool again with their pick as `confirm_index` plus the `confirm_token`; the answer carries the identifiers to hand to `enroll_file`. Never enroll a file the user has not named, and never claim a file is already in Rockhopper because one search result looked similar. Read the outcome rather than assuming: `declined` means the user saw the candidates and rejected them, `dismissed` means the prompt closed with no answer at all — put the list to them yourself and do not search again — and `link_supplied` means they pasted the file address, which goes to `enroll_file` as `url` on its own. Searching is capped per session, so search deliberately rather than browsing. Each provider needs its own connected account — if the one you asked for is not connected, this returns the link the user must open.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -284,7 +295,7 @@
           ]
         },
         "provider": {
-          "description": "Where to look: \"microsoft\" (default) searches the user's OneDrive and SharePoint, \"google\" searches their Google Drive. ASK THE USER which one their file is in rather than guessing — searching the wrong one returns an empty list that reads exactly like \"no such file\". A person may have both.",
+          "description": "Where to look: \"microsoft\" (default) searches the user's OneDrive and SharePoint, \"google\" searches their Google Drive. Ask the user which one their file is in rather than guessing — searching the wrong one returns an empty list that reads exactly like \"no such file\". A person may have both.",
           "type": "string",
           "enum": [
             "microsoft",
@@ -298,7 +309,7 @@
           "maximum": 50
         },
         "confirm_index": {
-          "description": "The number of the candidate the USER picked from a previous `search_drive_files` answer, after you asked them which file they meant. Send it together with `confirm_token` from that same answer. Send 0 if they said none of them is the right file. Never guess it and never pick on the user's behalf.",
+          "description": "The number of the candidate the user picked from a previous `search_drive_files` answer, after you asked them which file they meant. Send it together with `confirm_token` from that same answer. Send 0 if they said none of them is the right file. Never guess it and never pick on the user's behalf.",
           "type": "integer",
           "minimum": -9007199254740991,
           "maximum": 9007199254740991
@@ -311,6 +322,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": true,
       "readOnlyHint": true
     }
@@ -318,7 +330,7 @@
   {
     "name": "search_files",
     "title": "Search Files",
-    "description": "Search enrolled files by name (default), comment text, version descriptions, or all of the above. Returns matching files with their metadata including uncommitted change status. Only files ALREADY added to Rockhopper are searched, and matching is by name substring — so a file that does not appear here is very likely one that has never been added, not one that does not exist. When nothing matches, or when the match does not look like the file the user described, call `search_drive_files` — it looks across the user's whole OneDrive and SharePoint, including files Rockhopper has never seen. Confirm the pick with the user there, then `enroll_file`. A file this person ARCHIVED is also absent from these results: archive is a per-person hide, the file is still enrolled and still visible to teammates, and it is restored from the archived list in the Rockhopper web app. No tool here archives or restores.",
+    "description": "Search enrolled files by name (default), comment text, version descriptions, or all of the above. Returns matching files with their metadata including uncommitted change status. Only files ALREADY added to Rockhopper are searched, and matching is by name substring — so a file that does not appear here is very likely one that has never been added, not one that does not exist. When nothing matches, or when the match does not look like the file the user described, call `search_drive_files` — it looks across the user's OneDrive and SharePoint, or their Google Drive, including files Rockhopper has never seen. Confirm the pick with the user there, then `enroll_file`. A file this person ARCHIVED is also absent from these results: archive is a per-person hide, the file is still enrolled and still visible to teammates, and it is restored from the archived list in the Rockhopper web app. No tool here archives or restores.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -343,6 +355,7 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema"
     },
     "annotations": {
+      "destructiveHint": false,
       "openWorldHint": false,
       "readOnlyHint": true
     }

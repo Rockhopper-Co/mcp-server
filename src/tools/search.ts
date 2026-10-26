@@ -6,6 +6,7 @@ import { formatDocumentChanges } from '../document-changes.js';
 import { formatSpreadsheetChangeRows } from '../change-row-vocabulary.js';
 import { fileChangesUnavailableText, readFileChanges } from '../file-changes.js';
 import { isUnknownSheet, unknownSheetToolResult } from '../sheet-catalogue.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 export function registerSearchTool(
   server: McpServer,
@@ -33,8 +34,8 @@ export function registerSearchTool(
         // customer exactly.
         'When nothing matches, or when the match does not look like the file ' +
         'the user described, call `search_drive_files` — it looks across the ' +
-        "user's whole OneDrive and SharePoint, including files Rockhopper has " +
-        'never seen. Confirm the pick with the user there, then `enroll_file`. ' +
+        "user's OneDrive and SharePoint, or their Google Drive, including " +
+        'files Rockhopper has never seen. Confirm the pick with the user there, then `enroll_file`. ' +
         // ENG-3402 / plan 28 F20: plan 28's archive predicate lands in the
         // SHARED `GET /enrolled-files` query this tool reads, so "not enrolled"
         // stopped being the only reason a file is absent. The line above is
@@ -57,8 +58,9 @@ export function registerSearchTool(
       }),
       annotations: {
         readOnlyHint: true,
+        destructiveHint: false,
         openWorldHint: false,
-      },
+      } satisfies ToolAnnotations,
     },
     async ({ query, matchIn }) => {
       try {
@@ -169,8 +171,9 @@ export function registerSearchTool(
       }),
       annotations: {
         readOnlyHint: true,
+        destructiveHint: false,
         openWorldHint: false,
-      },
+      } satisfies ToolAnnotations,
     },
     async ({ fileMsId, sheetName, cursor }) => {
       try {

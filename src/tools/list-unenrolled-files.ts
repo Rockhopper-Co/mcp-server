@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { renderEmpty, renderFound } from './list-unenrolled-render.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 /**
  * ENG-2785 — "which of my workbooks are NOT in Rockhopper yet?"
@@ -102,8 +103,9 @@ export function registerListUnenrolledFilesTool(
       }),
       annotations: {
         readOnlyHint: true,
+        destructiveHint: false,
         openWorldHint: false,
-      },
+      } satisfies ToolAnnotations,
     },
     async ({ limit, cursor }) => {
       try {
