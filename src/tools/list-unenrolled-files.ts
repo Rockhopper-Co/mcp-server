@@ -104,7 +104,9 @@ export function registerListUnenrolledFilesTool(
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
-        openWorldHint: false,
+        // Rows come from storage, but every call starts a Graph/Drive refresh:
+        // backend user-drive-inventory.service.ts!list → refresh.trigger.
+        openWorldHint: true,
       } satisfies ToolAnnotations,
     },
     async ({ limit, cursor }) => {

@@ -38,7 +38,9 @@ export function registerGetCommentsTool(
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
-        openWorldHint: false,
+        // Every read starts a native-comment import from Graph or Drive:
+        // backend file-chat.service.ts!triggerNativeCommentImport.
+        openWorldHint: true,
       } satisfies ToolAnnotations,
     },
     async ({ fileMsId }) => {

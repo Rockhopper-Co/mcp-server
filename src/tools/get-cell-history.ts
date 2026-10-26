@@ -134,7 +134,9 @@ export function registerGetCellHistoryTool(
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
-        openWorldHint: false,
+        // An empty answer on a native Google Sheet checks the sheet against
+        // the Sheets API (sheet-catalogue.ts!assertSheetExists).
+        openWorldHint: true,
       } satisfies ToolAnnotations,
     },
     async ({ fileMsId, sheetName, cellAddress, anchorId }) => {

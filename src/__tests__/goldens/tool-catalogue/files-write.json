@@ -135,7 +135,7 @@
     },
     "annotations": {
       "destructiveHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": true
     }
   },
@@ -158,7 +158,7 @@
     },
     "annotations": {
       "destructiveHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": true
     }
   },
@@ -236,7 +236,7 @@
     },
     "annotations": {
       "destructiveHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": true
     }
   },
@@ -297,7 +297,7 @@
     },
     "annotations": {
       "destructiveHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": true
     }
   },

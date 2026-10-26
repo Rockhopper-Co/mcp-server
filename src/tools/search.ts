@@ -172,7 +172,7 @@ export function registerSearchTool(
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
-        openWorldHint: false,
+        openWorldHint: true,
       } satisfies ToolAnnotations,
     },
     async ({ fileMsId, sheetName, cursor }) => {
