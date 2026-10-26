@@ -7,6 +7,7 @@ import {
   isNotReady,
   notReadyToolResult,
 } from '../not-ready.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 export function registerGetVersionsTool(
   server: McpServer,
@@ -30,8 +31,9 @@ export function registerGetVersionsTool(
       }),
       annotations: {
         readOnlyHint: true,
+        destructiveHint: false,
         openWorldHint: false,
-      },
+      } satisfies ToolAnnotations,
     },
     async ({ fileMsId }) => {
       try {

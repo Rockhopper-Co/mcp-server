@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 
 import { registerEnrollFileTool } from './enroll-file.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 export function registerWriteFileTool(
   server: McpServer,
@@ -27,7 +28,10 @@ export function registerWriteFileTool(
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: true,
-      },
+        // The display name is a Rockhopper field; the file in OneDrive,
+        // SharePoint or Google Drive keeps its own name.
+        openWorldHint: false,
+      } satisfies ToolAnnotations,
     },
     async ({ fileMsId, name }) => {
       try {

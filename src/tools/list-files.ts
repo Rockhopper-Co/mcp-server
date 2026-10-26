@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import type { ToolAnnotations } from './tool-annotations.js';
 
 /**
  * ENG-3402 (plan 28 / REVIEW F20) — what this list is NOT.
@@ -74,8 +75,9 @@ export function registerListFilesTool(
       }),
       annotations: {
         readOnlyHint: true,
+        destructiveHint: false,
         openWorldHint: false,
-      },
+      } satisfies ToolAnnotations,
     },
     async ({ search }) => {
       try {
