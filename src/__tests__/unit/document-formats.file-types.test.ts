@@ -112,6 +112,14 @@ const TEXT_ROW = {
   toValue: { v: 'Revenue grows 6%' },
 };
 
+const PDF_ROW = {
+  ...TEXT_ROW,
+  eventId: '90003',
+  anchorProviderId: 'pdf-block-7',
+  fromValue: { v: 'Quorum: 4 members' },
+  toValue: { v: 'Quorum: 5 members' },
+};
+
 function served(rows: unknown[]) {
   return {
     rows,
@@ -151,21 +159,23 @@ describe('get_unattributed_changes on the new formats', () => {
     expect(result.isError).toBeFalsy();
   });
 
-  it('REFUSES a PDF by name instead of serving an empty window as "no changes"', async () => {
+  it('returns a PDF’s block rows from the document lane, like any document', async () => {
     const api = createMockApiClient();
     enrolled(api, 'microsoft_pdf', 'minutes.pdf');
-    // The backend would serve an empty window: PDF change rows are not
-    // recorded. Rendering it would read as "nothing changed".
-    api.getDocumentChanges.mockResolvedValue(served([]));
+    // Plan 38's PDF lane records paragraph rows with both values, so the
+    // client must render them; any refusal belongs to the backend's
+    // `declineReason`, never to a table compiled into this client.
+    api.getDocumentChanges.mockResolvedValue(served([PDF_ROW]));
 
     const result = await changesHandler(api)({ fileMsId: 'file-new' });
     const text = result.content[0].text as string;
 
-    // Pinned to the REASON, so `unknown_file_type` cannot satisfy it.
-    expect(text).toContain('DOCUMENT_CHANGES_UNAVAILABLE');
-    expect(text).toContain('"reason":"change_list_not_recorded"');
-    expect(text).not.toContain('No changes recorded');
-    expect(result.isError).toBe(true);
+    expect(api.getDocumentChanges).toHaveBeenCalledWith('file-new');
+    expect(text).toContain('pdf-block-7');
+    expect(text).toContain('Quorum: 4 members');
+    expect(text).toContain('Quorum: 5 members');
+    expect(text).not.toContain('DOCUMENT_CHANGES_UNAVAILABLE');
+    expect(result.isError).toBeFalsy();
   });
 
   it('positive control: an unknown type is refused for a DIFFERENT reason, naming the new kinds', async () => {
@@ -176,7 +186,7 @@ describe('get_unattributed_changes on the new formats', () => {
     const text = result.content[0].text as string;
 
     expect(text).toContain('"reason":"unknown_file_type"');
-    expect(text).not.toContain('change_list_not_recorded');
+    expect(text).toContain('PDFs');
     expect(text).toContain('JSON and XML files');
     expect(api.getDocumentChanges).not.toHaveBeenCalled();
   });

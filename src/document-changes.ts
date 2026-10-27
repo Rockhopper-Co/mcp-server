@@ -45,13 +45,7 @@ export type DocumentChangesUnavailableReason =
   /** A worksheet filter was passed for a file that has no worksheets. */
   | 'sheet_filter_not_applicable'
   /** The backend withheld the window rather than serving it. */
-  | 'window_withheld'
-  /**
-   * The file's versions are kept but its individual changes are not listed
-   * (a PDF: the backend records no change rows for it), so a served window
-   * would be empty by construction and read as "nothing changed".
-   */
-  | 'change_list_not_recorded';
+  | 'window_withheld';
 
 /** Grep marker; also the first token of every refusal an assistant sees. */
 export const DOCUMENT_CHANGES_UNAVAILABLE_MARKER = 'DOCUMENT_CHANGES_UNAVAILABLE';
@@ -81,10 +75,6 @@ const NEXT_STEP: Record<DocumentChangesUnavailableReason, string> = {
   window_withheld:
     'Tell the user the change list for this file is not available right now ' +
     'and offer to compare two versions instead.',
-  change_list_not_recorded:
-    'Tell the user Rockhopper keeps saved versions of this file but does ' +
-    'not list its individual changes, and that they can compare two saved ' +
-    'versions of it in Rockhopper.',
 };
 
 /**

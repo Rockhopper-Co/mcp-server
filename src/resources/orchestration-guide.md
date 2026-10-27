@@ -100,7 +100,7 @@ Standard sequence to inspect a file:
    - File contents at a specific version → `get_cell_history(fileMsId, sheet, cellAddress)`.
    - Comments → `get_file_comments(fileMsId)`. Filters to the latest live version by default.
    - Reviews → `get_reviews(versionId)`. Pass a `versionId` from step 2.
-   - Uncommitted changes → `get_unattributed_changes(fileMsId)` (only useful if `hasUncommittedChanges === true`). Answers cell changes for a workbook, paragraph changes for a Word document, a Markdown or text file, shape changes for a deck, and field changes for a JSON or XML file. A PDF is refused with `change_list_not_recorded`.
+   - Uncommitted changes → `get_unattributed_changes(fileMsId)` (only useful if `hasUncommittedChanges === true`). Answers cell changes for a workbook, paragraph changes for a Word document, a PDF, a Markdown or text file, shape changes for a deck, and field changes for a JSON or XML file.
 
 ### `DOCUMENT_CHANGES_UNAVAILABLE` — also never report it as "no changes"
 
@@ -115,7 +115,6 @@ The `reason` says what to do next:
 |---|---|---|
 | `sheet_filter_not_applicable` | A `sheetName` was passed for a file with no worksheets. | Call again without `sheetName`. |
 | `window_withheld` | The change list is not available for this file right now. | Offer a version comparison instead. |
-| `change_list_not_recorded` | Rockhopper keeps this file's versions (a PDF) but does not list its individual changes. | Say the user can compare two saved versions in Rockhopper. |
 | `unknown_file_type` | This connection does not recognise the file's type. | Ask the user what the file is. |
 
 Say the change list is unavailable. Never say the file is unchanged, has no changes, or

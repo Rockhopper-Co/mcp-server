@@ -120,8 +120,8 @@ export function registerSearchTool(
       title: 'Get Unattributed Changes',
       description:
         'Get the changes made since the last saved version. Works on ' +
-        'workbooks, Word documents, PowerPoint decks, Markdown and text ' +
-        'files, and JSON and XML files; a PDF is refused by name. ' +
+        'workbooks, Word documents, PowerPoint decks, PDFs, Markdown and ' +
+        'text files, and JSON and XML files. ' +
         // ENG-5397 — the shape of the answer differs by file kind, and a
         // caller that assumes cells will mis-describe a document.
         'A workbook answers with cell changes; a Word document answers with ' +
