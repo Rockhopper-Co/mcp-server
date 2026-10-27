@@ -100,7 +100,7 @@ Standard sequence to inspect a file:
    - File contents at a specific version → `get_cell_history(fileMsId, sheet, cellAddress)`.
    - Comments → `get_file_comments(fileMsId)`. Filters to the latest live version by default.
    - Reviews → `get_reviews(versionId)`. Pass a `versionId` from step 2.
-   - Uncommitted changes → `get_unattributed_changes(fileMsId)` (only useful if `hasUncommittedChanges === true`). Answers cell changes for a workbook, paragraph changes for a Word document, and shape changes for a deck.
+   - Uncommitted changes → `get_unattributed_changes(fileMsId)` (only useful if `hasUncommittedChanges === true`). Answers cell changes for a workbook, paragraph changes for a Word document, a PDF, a Markdown or text file, shape changes for a deck, and field changes for a JSON or XML file.
 
 ### `DOCUMENT_CHANGES_UNAVAILABLE` — also never report it as "no changes"
 
@@ -188,7 +188,7 @@ Rules:
 Two distinct concepts. Tools work with one or the other; do not mix.
 
 - **Committed history** — version snapshots created by `create_version`. Surfaced by `get_file_versions`, `get_cell_history`. Immutable.
-- **Uncommitted changes** — edits the user has made since the last `create_version`: cells in a workbook, paragraphs in a Word document, shapes in a deck. Surfaced by `get_unattributed_changes`. Mutable; consumed by the next `create_version` or `discard_changes` call.
+- **Uncommitted changes** — edits the user has made since the last `create_version`: cells in a workbook, paragraphs in a Word document or a Markdown or text file, shapes in a deck, fields in a JSON or XML file. Surfaced by `get_unattributed_changes`. Mutable; consumed by the next `create_version` or `discard_changes` call.
 
 Note: on files served from the change ledger (most Microsoft files), `get_cell_history` also includes live edits not yet captured by a committed version — those entries carry the literal versionId `uncommitted`. On files still served from the legacy store, only committed values appear; use `get_unattributed_changes` for pending edits there.
 
@@ -198,7 +198,7 @@ Rockhopper supports both Microsoft files (M365 / OneDrive, SharePoint) and Googl
 
 | Field | Microsoft | Google |
 |-------|------------------|----------------|
-| `fileType` | `microsoft_xlsx`, `microsoft_xlsm`, `microsoft_pptx`, `microsoft_docx` | `gdrive_xlsx` (a workbook stored in Drive), `gsheet_native` (a Google Sheet), `google_doc`, `google_slides` |
+| `fileType` | `microsoft_xlsx`, `microsoft_xlsm`, `microsoft_pptx`, `microsoft_docx`, `microsoft_pdf`, `microsoft_md`, `microsoft_txt`, `microsoft_json`, `microsoft_xml` | `gdrive_xlsx` (a workbook stored in Drive), `gsheet_native` (a Google Sheet), `google_doc`, `google_slides`, `gdrive_pdf`, `gdrive_md`, `gdrive_txt`, `gdrive_json`, `gdrive_xml` (each an uploaded file in Drive) |
 | `driveMsId` | OneDrive / SharePoint drive ID | **always `null`** — Drive has no drive-ID concept |
 | `platformId` (= `fileMsId`) | Microsoft graph file ID | Google Drive file ID |
 
