@@ -92,7 +92,8 @@ export const DRIVE_SEARCH_INPUT_SCHEMA = z.object({
 export const DRIVE_SEARCH_DESCRIPTION =
   "Find a file in the user's own file storage — their OneDrive and " +
   'SharePoint, or their Google Drive — including files Rockhopper has never ' +
-  'seen. Workbooks, Word documents and PowerPoint decks. ' +
+  'seen. Workbooks, Word documents, PowerPoint decks, PDFs, Markdown and ' +
+  'text files, and JSON and XML files. ' +
   'Set `provider` to say which; ask the user rather than guessing. ' +
   'Each candidate comes back marked as already in Rockhopper or not. ' +
   'Use this tool when the user names a file that `search_files` and ' +
