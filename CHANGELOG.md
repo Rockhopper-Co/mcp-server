@@ -6,15 +6,6 @@ All notable changes to this project are documented here. Follows
 
 ## [Unreleased]
 
-### Breaking
-
-- **`engines.node` moved from `>=20.0.0` to `>=24.0.0`** (ENG-8080). Node 20
-  reached end of life on 2026-04-30, and the test tooling this package builds
-  with already declares `node >=22`. An install on Node 20 or 22 now prints an
-  `EBADENGINE` warning, or fails where `engine-strict` is set; upgrade to Node 24
-  before taking this release. Under the compatibility promise this requires the
-  next release to raise the major version.
-
 ### Added
 
 - **`connect_google`, `google_link_status` and `disconnect_google`** (ENG-6414).
