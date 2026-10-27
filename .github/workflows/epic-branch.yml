@@ -74,8 +74,8 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          # .nvmrc is the source of truth here (20); `engines` says >=20.0.0.
-          # Do not copy another repo's pin — backend needs 22.
+          # .nvmrc is the source of truth here (24); `engines` says >=24.0.0.
+          # Keep it on the same major as backend and identity (24).
           node-version-file: .nvmrc
           cache: npm
 
