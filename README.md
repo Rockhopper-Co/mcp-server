@@ -4,7 +4,7 @@ MCP (Model Context Protocol) server for Rockhopper. Lets AI tools like Claude, C
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 24+
 - A Rockhopper account with at least one enrolled file
 - (Optional) A Personal Access Token — only required for headless / CI / scripted setups
 
