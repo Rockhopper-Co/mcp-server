@@ -8,6 +8,12 @@ All notable changes to this project are documented here. Follows
 
 ### Added
 
+- **PDF, Markdown, plain text, JSON and XML files** (ENG-8069). The ten new
+  `fileType` values (`microsoft_pdf` … `gdrive_xml`) are known, so
+  `get_unattributed_changes` reads a Markdown, text, JSON or XML file's changes
+  instead of refusing it as `unknown_file_type`. A PDF is refused by name with
+  `change_list_not_recorded`: its versions are kept, its changes are not listed.
+
 - **`connect_google`, `google_link_status` and `disconnect_google`** (ENG-6414).
   The Google Drive counterparts of the three Microsoft account-link tools,
   registered by the same code on the same read floor. `connect_google` relays

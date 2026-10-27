@@ -81,6 +81,17 @@ export async function readFileChanges(
         declineReason: null,
       };
     }
+    // ENG-8069 — a PDF's change rows are not recorded, so its window is empty
+    // by construction. Refuse by name rather than render that as "no changes".
+    if (model === 'pdf') {
+      return {
+        kind: 'unavailable',
+        file,
+        fileMsId,
+        reason: 'change_list_not_recorded',
+        declineReason: null,
+      };
+    }
     // ENG-2824 — a file whose first read has not landed has no versions, and
     // an empty window over it is a premature absence.
     assertEnrollmentComplete(fileMsId, await api.getFileVersions(fileMsId));
