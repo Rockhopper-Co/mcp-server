@@ -120,12 +120,14 @@ export function registerSearchTool(
       title: 'Get Unattributed Changes',
       description:
         'Get the changes made since the last saved version. Works on ' +
-        'workbooks, Word documents and PowerPoint decks. ' +
+        'workbooks, Word documents, PowerPoint decks, PDFs, Markdown and ' +
+        'text files, and JSON and XML files. ' +
         // ENG-5397 — the shape of the answer differs by file kind, and a
         // caller that assumes cells will mis-describe a document.
         'A workbook answers with cell changes; a Word document answers with ' +
         'paragraph changes; a deck answers with shape changes, each naming ' +
-        'the slide it is on. ' +
+        'the slide it is on; a Markdown or text file answers with paragraph ' +
+        'changes; a JSON or XML file answers with field changes. ' +
         'Two modes for a workbook: (1) provide `sheetName` to get ' +
         'every change on a single worksheet (no pagination — bounded by ' +
         'sheet size); (2) omit `sheetName` for the file-wide cursor-paginated ' +
