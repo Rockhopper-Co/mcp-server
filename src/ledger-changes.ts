@@ -51,6 +51,7 @@ const row = (
   byUserName: item.byUserName ?? null,
   processingStatus: item.processingStatus ?? null,
   attributionConfidence: item.attributionConfidence ?? null,
+  aiLinks: item.aiLinks ?? [],
 });
 
 /** The sheet-level changes, one row each, as the legacy table held them. */

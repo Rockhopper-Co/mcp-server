@@ -3,9 +3,12 @@
  * Mirrored, not imported: this package ships on npm and cannot depend on the
  * backend tree. Each type names the backend shape it copies.
  */
+import type { AiLink } from './types.js';
 
 /** The fields every served change carries for its author and state. */
 export interface ServedAuthor {
+  /** ENG-8331 — absent on an older backend; the row mapping reads it as `[]`. */
+  aiLinks?: AiLink[];
   byUserName?: string | null;
   byUserPlatformType?: string | null;
   processingStatus?: string | null;

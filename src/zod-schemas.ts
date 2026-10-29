@@ -55,11 +55,24 @@ export const EnrolledFileSchema = z
  * returns the normalized projection added by KI-096. The mcp-server
  * formatter reads all four fields.
  */
+/**
+ * ENG-8331 — one AI prompt linked to a change. Defaulted to `[]` on every row
+ * schema so a client on this version parses an older backend that omits it.
+ */
+export const AiLinkSchema = z.object({
+  vendor: z.string(),
+  evidenceKind: z.string(),
+  promptId: z.string(),
+});
+const AiLinksSchema = z.array(AiLinkSchema).default([]);
+
 export const CellHistoryEntrySchema = z.object({
   versionId: z.string(),
   value: z.unknown(),
   changedBy: z.string().nullable(),
+  changedByName: z.string().nullable().optional(),
   changedAt: z.string(),
+  aiLinks: AiLinksSchema,
   // ENG-1638 (P3-2) remainder: the widened ledger-served projection. Optional —
   // an older backend carries only the four core fields.
   formula: z.string().nullable().optional(),
@@ -105,6 +118,7 @@ export const DocumentChangeRowSchema = z
     fromValue: z.record(z.string(), z.unknown()).nullable().default(null),
     toValue: z.record(z.string(), z.unknown()).nullable().default(null),
     truncated: z.boolean().default(false),
+    aiLinks: AiLinksSchema,
   })
   .passthrough();
 

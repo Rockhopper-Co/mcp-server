@@ -26,6 +26,7 @@
  */
 
 import {
+  aiLinksClause,
   documentChangeLabel,
   documentChangeWord,
   documentSide,
@@ -156,7 +157,7 @@ export function formatDocumentRow(row: DocumentChangeRow): string {
   return (
     `- **${where}**${label ? ` (${label})` : ''}: ` +
     `${rowSides(row, documentChangeWord(row.changeKind))}` +
-    `${editor} — ${when}${capped}`
+    `${editor}${aiLinksClause(row.aiLinks)} — ${when}${capped}`
   );
 }
 
