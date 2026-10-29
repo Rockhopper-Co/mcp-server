@@ -251,6 +251,16 @@ export function sheetCatalogueRouteFor(
     case 'google_doc':
     case 'microsoft_pptx':
     case 'google_slides':
+    case 'microsoft_pdf':
+    case 'microsoft_md':
+    case 'microsoft_txt':
+    case 'microsoft_json':
+    case 'microsoft_xml':
+    case 'gdrive_pdf':
+    case 'gdrive_md':
+    case 'gdrive_txt':
+    case 'gdrive_json':
+    case 'gdrive_xml':
       // Not addressed by sheet, so there is no sheet name to validate.
       return null;
   }

@@ -32,74 +32,11 @@ import {
 } from './change-row-vocabulary.js';
 import type { DocumentChangeRow, DocumentChangesResponse } from './types.js';
 
-/** The three change models Rockhopper tracks, mirroring the backend's
- * `DocumentType` (`enrolled-file.entity.ts`). */
-export type ChangeModel = 'spreadsheet' | 'text' | 'presentation';
-
-/**
- * Every `fileType` the backend can put on the wire.
- *
- * A LOCAL UNION, deliberately, and it is what makes the switch below TOTAL: add
- * a member here without an arm in {@link changeModelForFileType} and the build
- * fails. The backend's own `documentTypeFromFileType` is exhaustive for exactly
- * this reason and ENG-3251 deleted its `default:` arm after a deck was silently
- * recorded as a spreadsheet by one.
- *
- * Mirrors `EnrolledFileType` in
- * `backend/src/resources/enrolled-files/entities/enrolled-file.entity.ts`.
- */
-export type KnownFileType =
-  | 'microsoft_xlsx'
-  | 'microsoft_xlsm'
-  | 'gdrive_xlsx'
-  | 'gsheet_native'
-  | 'microsoft_pptx'
-  | 'microsoft_docx'
-  | 'google_doc'
-  | 'google_slides';
-
-const KNOWN_FILE_TYPES: ReadonlySet<string> = new Set<KnownFileType>([
-  'microsoft_xlsx',
-  'microsoft_xlsm',
-  'gdrive_xlsx',
-  'gsheet_native',
-  'microsoft_pptx',
-  'microsoft_docx',
-  'google_doc',
-  'google_slides',
-]);
-
-/**
- * The change model a file type has, or `null` for a type this build does not
- * know.
- *
- * NULL IS NOT A DEFAULT, it is a refusal. The backend stores `fileType` in a
- * plain text column with no database enum, and this server ships to customers
- * on npm — so it is routinely OLDER than the backend it is talking to and will
- * meet a type it was compiled before. Guessing "spreadsheet" there is how the
- * defect above was built in the first place; the caller refuses instead.
- */
-export function changeModelForFileType(fileType: string): ChangeModel | null {
-  if (!KNOWN_FILE_TYPES.has(fileType)) return null;
-  const known = fileType as KnownFileType;
-  switch (known) {
-    case 'microsoft_xlsx':
-    case 'microsoft_xlsm':
-    case 'gdrive_xlsx':
-    case 'gsheet_native':
-      return 'spreadsheet';
-    case 'microsoft_docx':
-    case 'google_doc':
-      return 'text';
-    case 'microsoft_pptx':
-    case 'google_slides':
-      return 'presentation';
-  }
-  // Compile-time exhaustiveness: a new `KnownFileType` with no arm above
-  // narrows to `never` here and fails the build.
-  const unmapped: never = known;
-  return unmapped;
-}
+export {
+  changeModelForFileType,
+  type ChangeModel,
+  type KnownFileType,
+} from './file-type-model.js';
 
 /** Why a document-change answer is being refused. */
 export type DocumentChangesUnavailableReason =
@@ -130,8 +67,9 @@ export interface DocumentChangesUnavailableResult {
 const NEXT_STEP: Record<DocumentChangesUnavailableReason, string> = {
   unknown_file_type:
     'Ask the user what kind of file this is. Rockhopper tracks changes for ' +
-    'workbooks, Word documents and PowerPoint decks; this file is none of ' +
-    'those as far as this connection can tell.',
+    'workbooks, Word documents, PowerPoint decks, PDFs, Markdown and text ' +
+    'files, and JSON and XML files; this file is none of those as far as ' +
+    'this connection can tell.',
   sheet_filter_not_applicable:
     'Call this tool again without `sheetName` to get the whole file.',
   window_withheld:
