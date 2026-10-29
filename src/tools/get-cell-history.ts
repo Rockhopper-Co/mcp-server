@@ -2,6 +2,10 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import {
+  aiLinksClause,
+  aiLinksUnavailableSuffix,
+} from '../change-row-vocabulary.js';
+import {
   cellHistoryUnavailableToolResult,
   isCellHistoryUnavailable,
 } from '../cell-history-unavailable.js';
@@ -190,9 +194,14 @@ export function registerGetCellHistoryTool(
         // backend's `X-Ledger-Freshness` answer to the capability header.
         const fold = await foldFreshness(api, fileMsId);
         let served: ReadFreshness = CURRENT;
+        // ENG-8332 — the backend's `X-AI-Links-Available`; true when absent.
+        let linksChecked = true;
         const history = await api.getCellHistory(fileMsId, sheetName, cell, {
           onFreshness: (f) => {
             served = f;
+          },
+          onAiLinksAvailable: (available) => {
+            linksChecked = available;
           },
         });
         const freshness = mergeFreshness(fold, served);
@@ -215,14 +224,18 @@ export function registerGetCellHistoryTool(
         // `formatted` line — 'vX.Y.Z: <value> — <provenance> (driven by
         // <human>) — <ts>' — print it verbatim. An older backend's entry has
         // only the four core fields; keep the original rendering for it.
+        // ENG-8331 — the AI clause follows either form; the display name wins.
         const summary = history
-          .map((h) =>
-            h.formatted
-              ? `- ${h.formatted}`
-              : `- Version ${h.versionId}: **${JSON.stringify(h.value)}**` +
-                (h.changedBy ? ` — by ${h.changedBy}` : '') +
-                ` — ${h.changedAt}`,
-          )
+          .map((h) => {
+            const ai = aiLinksClause(h.aiLinks);
+            if (h.formatted) return `- ${h.formatted}${ai}`;
+            const actor = h.changedByName ?? h.changedBy;
+            return (
+              `- Version ${h.versionId}: **${JSON.stringify(h.value)}**` +
+              (actor ? ` — by ${actor}` : '') +
+              `${ai} — ${h.changedAt}`
+            );
+          })
           .join('\n');
 
         // Render the normalized cell, so the qualified and bare forms of one
@@ -237,7 +250,11 @@ export function registerGetCellHistoryTool(
             : history.length
               ? `${listed}:\n\n${summary}`
               : `No history found for ${cell} on "${sheetName}".`;
-        return { content: [{ type: 'text', text }] };
+        return {
+          content: [
+            { type: 'text', text: text + aiLinksUnavailableSuffix(linksChecked) },
+          ],
+        };
       } catch (error) {
         // A not-ready answer is a refusal, never an error string: the generic
         // branch below hands the model prose it may read as "the tool is

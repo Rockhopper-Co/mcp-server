@@ -3,7 +3,10 @@ import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { isNotReady, notReadyToolResult } from '../not-ready.js';
 import { formatDocumentChanges } from '../document-changes.js';
-import { formatSpreadsheetChangeRows } from '../change-row-vocabulary.js';
+import {
+  aiLinksUnavailableSuffix,
+  formatSpreadsheetChangeRows,
+} from '../change-row-vocabulary.js';
 import { fileChangesUnavailableText, readFileChanges } from '../file-changes.js';
 import { isUnknownSheet, unknownSheetToolResult } from '../sheet-catalogue.js';
 import type { ToolAnnotations } from './tool-annotations.js';
@@ -208,13 +211,16 @@ export function registerSearchTool(
           // Sheet-filtered mode: bounded by sheet size, no pagination needed.
           const { changes } = read;
           const body = formatSpreadsheetChangeRows(changes);
+          // ENG-8332 — one note when the backend could not check AI links.
+          const note = aiLinksUnavailableSuffix(read.aiLinksAvailable);
           return {
             content: [
               {
                 type: 'text',
-                text: changes.length
-                  ? `${changes.length} unattributed change(s) on sheet "${sheetName}":\n\n${body}`
-                  : `No unattributed changes on sheet "${sheetName}".`,
+                text:
+                  (changes.length
+                    ? `${changes.length} unattributed change(s) on sheet "${sheetName}":\n\n${body}`
+                    : `No unattributed changes on sheet "${sheetName}".`) + note,
               },
             ],
           };
@@ -226,15 +232,19 @@ export function registerSearchTool(
         // rows on the unpaginated route — KI-097).
         const MAX_DISPLAYED = 200;
         const { page } = read;
+        // ENG-8332 — one note when the backend could not check AI links.
+        const note = aiLinksUnavailableSuffix(page.aiLinksAvailable);
 
         if (page.changes.length === 0) {
           return {
             content: [
               {
                 type: 'text',
-                text: page.totalCount === 0
-                  ? 'No unattributed changes found for this file.'
-                  : `End of pages reached (${describeRemainingCount(page.totalCount, cursor)}).`,
+                text:
+                  (page.totalCount === 0
+                    ? 'No unattributed changes found for this file.'
+                    : `End of pages reached (${describeRemainingCount(page.totalCount, cursor)}).`) +
+                  note,
               },
             ],
           };
@@ -281,7 +291,7 @@ export function registerSearchTool(
           content: [
             {
               type: 'text',
-              text: lines.join('\n'),
+              text: lines.join('\n') + note,
             },
           ],
         };

@@ -26,6 +26,8 @@
  */
 
 import {
+  aiLinksClause,
+  aiLinksUnavailableSuffix,
   documentChangeLabel,
   documentChangeWord,
   documentSide,
@@ -149,14 +151,16 @@ export function formatDocumentRow(row: DocumentChangeRow): string {
     row.containerProviderId !== null
       ? `slide ${row.containerProviderId} / ${unit}`
       : unit;
-  const editor = row.editorPlatformId ? ` — by ${row.editorPlatformId}` : '';
+  // ENG-8332 — the served display name first, the editor's id as fallback.
+  const editorShown = row.editorName ?? row.editorPlatformId;
+  const editor = editorShown ? ` — by ${editorShown}` : '';
   const when = row.occurredAt ?? row.firstObservedAt;
   const capped = row.truncated ? ' [text shortened]' : '';
   const label = documentChangeLabel(row.changeKind, row.anchorProviderId);
   return (
     `- **${where}**${label ? ` (${label})` : ''}: ` +
     `${rowSides(row, documentChangeWord(row.changeKind))}` +
-    `${editor} — ${when}${capped}`
+    `${editor}${aiLinksClause(row.aiLinks)} — ${when}${capped}`
   );
 }
 
@@ -169,9 +173,11 @@ export function formatDocumentRow(row: DocumentChangeRow): string {
  * be described as an empty one.
  */
 export function formatDocumentChanges(
-  response: DocumentChangesResponse,
+  response: DocumentChangesResponse & { aiLinksAvailable?: boolean },
   fileName: string,
 ): string {
+  // ENG-8332 — only an explicit false is "not checked"; absent is checked.
+  const note = aiLinksUnavailableSuffix(response.aiLinksAvailable !== false);
   const scope =
     `Changes to "${fileName}" since the last saved version ` +
     `(${response.windowStart}).`;
@@ -179,7 +185,7 @@ export function formatDocumentChanges(
     // An honest zero: the window WAS served, and it was empty. The window is
     // named so the caller can see what the answer covers — which a reader that
     // could not see the rows at all was never able to say.
-    return `${scope}\nNo changes recorded in this window.`;
+    return `${scope}\nNo changes recorded in this window.${note}`;
   }
   const lines = [
     `${response.rows.length} change(s). ${scope}`,
@@ -196,5 +202,5 @@ export function formatDocumentChanges(
         'see all of them.',
     );
   }
-  return lines.join('\n');
+  return lines.join('\n') + note;
 }
