@@ -106,6 +106,8 @@ describe('ENG-6757 — the changes resource serves the ledger rows', () => {
     newValue: { v: to },
     editType: 'value',
     createdAt: at(cellAddress),
+    // ENG-8331 — the golden predates aiLinks: an older backend's row reads [].
+    aiLinks: [],
   });
   const structural = (changeType: string, sheetName: string, cellAddress: string) => ({
     changeType,
@@ -116,6 +118,7 @@ describe('ENG-6757 — the changes resource serves the ledger rows', () => {
     newValue: null,
     editType: null,
     createdAt: null,
+    aiLinks: [],
   });
 
   it('carries every row by value, `unresolved` where no editor is named', async () => {
@@ -149,6 +152,8 @@ describe('ENG-6757 — the changes resource serves the ledger rows', () => {
       // 3 cells + 1 band on Sheet1, 1 cell on Sheet2, 1 sheet added.
       totalCount: 6,
       snapshotId: snapshot,
+      // ENG-8332 — the golden predates the field, so it parses as checked.
+      aiLinksAvailable: true,
     });
   });
 });

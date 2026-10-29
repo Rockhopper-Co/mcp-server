@@ -531,6 +531,17 @@ export interface ReviewRecord {
   reviewer?: UserSummary;
 }
 
+/**
+ * ENG-8331 — one AI prompt the backend linked to a change: the assistant, the
+ * evidence that made the link, and the prompt's id. Served on every change
+ * row; `[]` when none, and on an older backend that omits the field.
+ */
+export interface AiLink {
+  vendor: string;
+  evidenceKind: string;
+  promptId: string;
+}
+
 /** ENG-6757 — one change since the last saved version, from the ledger
  * compare routes (`ledger-changes.ts`, which says what is not carried). */
 export interface UnattributedChange {
@@ -563,6 +574,8 @@ export interface UnattributedChange {
   attributionConfidence: string | null;
   /** When Rockhopper first saw the change; null where the route serves no such clock. */
   createdAt: string | null;
+  /** ENG-8331 — the AI prompts linked to this change; `[]` when none. */
+  aiLinks: AiLink[];
 }
 
 /** One page of a workbook's changes (`ledger-changes.ts!readLedgerPage`):
@@ -572,6 +585,8 @@ export interface PaginatedUnattributedResponse {
   nextCursor: string | null;
   totalCount: number;
   snapshotId: string;
+  /** ENG-8332 — false when the summary or any page read could not check AI links. */
+  aiLinksAvailable: boolean;
 }
 
 /**
@@ -623,6 +638,10 @@ export interface DocumentChangeRow {
   toValue: { v?: unknown; f?: unknown } | null;
   /** True when THIS ROW's text was capped; the list's own cap is on the envelope. */
   truncated: boolean;
+  /** ENG-8331 — the AI prompts linked to this change; the schema defaults it to `[]`. */
+  aiLinks?: AiLink[];
+  /** ENG-8332 — the editor's display name; printed in place of the id when set. */
+  editorName?: string | null;
 }
 
 /**
@@ -688,7 +707,11 @@ export interface CellHistoryEntry {
   versionId: string;
   value: unknown;
   changedBy: string | null;
+  /** ENG-8331 — the actor's display name; preferred over `changedBy` when set. */
+  changedByName?: string | null;
   changedAt: string;
+  /** ENG-8331 — the AI prompts linked to this change; the schema defaults it to `[]`. */
+  aiLinks?: AiLink[];
   // ENG-1638 (P3-2) remainder — widened fields served when the backend's
   // read decision routes the MCP read to the Model-B ledger. All optional:
   // an older backend omits them entirely.
@@ -723,4 +746,15 @@ export interface FoldStatus {
   /** Version the pending fold will rewrite the window for; null when none. */
   foldTargetVersionId: number | null;
   checkedAt?: string;
+}
+
+/**
+ * ENG-8332 — the document-changes envelope as this client parses it: the
+ * route adds `aiLinksAvailable` beside the shared envelope (false when the
+ * backend could not check AI links), and the schema defaults it to `true` for
+ * an older backend. Kept apart from {@link DocumentChangesResponse}, whose
+ * keys are pinned to the backend's served-window golden.
+ */
+export interface LinkCheckedDocumentChanges extends DocumentChangesResponse {
+  aiLinksAvailable: boolean;
 }
