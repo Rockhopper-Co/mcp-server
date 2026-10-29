@@ -60,6 +60,19 @@ function retryAfter(headers: { get(name: string): string | null }): number {
  * `current` (the backend's contract); a present header that does not parse as
  * `current` is `updating` — the backend only writes it when not current.
  */
+/**
+ * ENG-8332 — the cell-history route's `X-AI-Links-Available` header (its body
+ * is a bare array). Only an explicit `false` reads as "not checked": an older
+ * backend sends no header, and its links are what it served.
+ */
+export const AI_LINKS_AVAILABLE_HEADER = 'X-AI-Links-Available';
+
+export function aiLinksAvailableFromHeaders(
+  headers: { get(name: string): string | null } | undefined,
+): boolean {
+  return headers?.get(AI_LINKS_AVAILABLE_HEADER)?.trim() !== 'false';
+}
+
 export function freshnessFromHeaders(
   headers: { get(name: string): string | null } | undefined,
 ): ReadFreshness {

@@ -6,6 +6,7 @@ import {
   type LedgerChangeReader,
   type LedgerSheetItem,
   type ServedAuthor,
+  linksChecked,
 } from './ledger-wire.js';
 
 /**
@@ -118,15 +119,19 @@ export function sheetPageRows(page: CompareSheetPage): UnattributedChange[] {
  * Every change on one sheet: all of its `compare-sheet` pages. Empty when the
  * summary lists no sheet of that EXACT name, which is the same case-sensitive
  * equality the sheet catalogue then checks.
+ *
+ * ENG-8332 — and whether every read checked its AI links: false when the
+ * summary or any page says it could not.
  */
 export async function readLedgerSheet(
   api: LedgerChangeReader,
   enrolledFileInternalId: number,
   sheetName: string,
-): Promise<UnattributedChange[]> {
+): Promise<{ changes: UnattributedChange[]; aiLinksAvailable: boolean }> {
   const summary = await api.getCompareSummary(enrolledFileInternalId);
+  let aiLinksAvailable = linksChecked(summary);
   const sheet = summary.sheets.find((s) => s.sheetName === sheetName);
-  if (!sheet) return [];
+  if (!sheet) return { changes: [], aiLinksAvailable };
   const rows: UnattributedChange[] = [];
   let cursor: string | undefined;
   do {
@@ -137,9 +142,10 @@ export async function readLedgerSheet(
       cursor,
     );
     rows.push(...sheetPageRows(page));
+    aiLinksAvailable &&= linksChecked(page);
     cursor = page.nextCursor ?? undefined;
   } while (cursor);
-  return rows;
+  return { changes: rows, aiLinksAvailable };
 }
 
 /**
@@ -187,6 +193,9 @@ function decode(cursor: string): WalkState {
  * `totalCount` keeps the legacy meaning: rows from this page onward. On the
  * first page that is the FILE total, counted the way the summary counts:
  * each sheet's cells and bands plus every sheet-level change.
+ *
+ * ENG-8332 — `aiLinksAvailable` covers the reads THIS call made: the summary
+ * on a first page, and every sheet page.
  */
 export async function readLedgerPage(
   api: LedgerChangeReader,
@@ -195,10 +204,12 @@ export async function readLedgerPage(
 ): Promise<PaginatedUnattributedResponse> {
   let state: WalkState;
   const rows: UnattributedChange[] = [];
+  let aiLinksAvailable = true;
   if (cursor) {
     state = decode(cursor);
   } else {
     const summary = await api.getCompareSummary(enrolledFileInternalId);
+    aiLinksAvailable = linksChecked(summary);
     const sheets = summary.sheets.filter(
       (s) => s.cellChangeCount + s.rowColumnChangeCount > 0,
     );
@@ -223,6 +234,7 @@ export async function readLedgerPage(
       state.c ?? undefined,
     );
     rows.push(...sheetPageRows(page));
+    aiLinksAvailable &&= linksChecked(page);
     state = page.nextCursor
       ? { ...state, c: page.nextCursor }
       : { ...state, q: state.q.slice(1), c: null };
@@ -233,5 +245,6 @@ export async function readLedgerPage(
       state.q.length > 0 ? encode({ ...state, n: state.n + rows.length }) : null,
     totalCount,
     snapshotId: state.s,
+    aiLinksAvailable,
   };
 }
