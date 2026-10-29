@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
+import { aiLinksClause } from '../change-row-vocabulary.js';
 import {
   cellHistoryUnavailableToolResult,
   isCellHistoryUnavailable,
@@ -215,14 +216,18 @@ export function registerGetCellHistoryTool(
         // `formatted` line — 'vX.Y.Z: <value> — <provenance> (driven by
         // <human>) — <ts>' — print it verbatim. An older backend's entry has
         // only the four core fields; keep the original rendering for it.
+        // ENG-8331 — the AI clause follows either form; the display name wins.
         const summary = history
-          .map((h) =>
-            h.formatted
-              ? `- ${h.formatted}`
-              : `- Version ${h.versionId}: **${JSON.stringify(h.value)}**` +
-                (h.changedBy ? ` — by ${h.changedBy}` : '') +
-                ` — ${h.changedAt}`,
-          )
+          .map((h) => {
+            const ai = aiLinksClause(h.aiLinks);
+            if (h.formatted) return `- ${h.formatted}${ai}`;
+            const actor = h.changedByName ?? h.changedBy;
+            return (
+              `- Version ${h.versionId}: **${JSON.stringify(h.value)}**` +
+              (actor ? ` — by ${actor}` : '') +
+              `${ai} — ${h.changedAt}`
+            );
+          })
           .join('\n');
 
         // Render the normalized cell, so the qualified and bare forms of one

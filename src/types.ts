@@ -531,6 +531,17 @@ export interface ReviewRecord {
   reviewer?: UserSummary;
 }
 
+/**
+ * ENG-8331 — one AI prompt the backend linked to a change: the assistant, the
+ * evidence that made the link, and the prompt's id. Served on every change
+ * row; `[]` when none, and on an older backend that omits the field.
+ */
+export interface AiLink {
+  vendor: string;
+  evidenceKind: string;
+  promptId: string;
+}
+
 /** ENG-6757 — one change since the last saved version, from the ledger
  * compare routes (`ledger-changes.ts`, which says what is not carried). */
 export interface UnattributedChange {
@@ -563,6 +574,8 @@ export interface UnattributedChange {
   attributionConfidence: string | null;
   /** When Rockhopper first saw the change; null where the route serves no such clock. */
   createdAt: string | null;
+  /** ENG-8331 — the AI prompts linked to this change; `[]` when none. */
+  aiLinks: AiLink[];
 }
 
 /** One page of a workbook's changes (`ledger-changes.ts!readLedgerPage`):
@@ -623,6 +636,8 @@ export interface DocumentChangeRow {
   toValue: { v?: unknown; f?: unknown } | null;
   /** True when THIS ROW's text was capped; the list's own cap is on the envelope. */
   truncated: boolean;
+  /** ENG-8331 — the AI prompts linked to this change; the schema defaults it to `[]`. */
+  aiLinks?: AiLink[];
 }
 
 /**
@@ -688,7 +703,11 @@ export interface CellHistoryEntry {
   versionId: string;
   value: unknown;
   changedBy: string | null;
+  /** ENG-8331 — the actor's display name; preferred over `changedBy` when set. */
+  changedByName?: string | null;
   changedAt: string;
+  /** ENG-8331 — the AI prompts linked to this change; the schema defaults it to `[]`. */
+  aiLinks?: AiLink[];
   // ENG-1638 (P3-2) remainder — widened fields served when the backend's
   // read decision routes the MCP read to the Model-B ledger. All optional:
   // an older backend omits them entirely.
