@@ -13,6 +13,7 @@
  * cannot read prints NO word — the change log draws no chip for it — rather
  * than the raw event type.
  */
+import type { AiLink } from './types.js';
 
 /**
  * A side that exists and renders to nothing: an emptied paragraph, a blank
@@ -179,6 +180,30 @@ export function cellSide(value: unknown): string {
   return shown.every(rendersToNothing) ? EMPTY_SIDE : JSON.stringify(value);
 }
 
+/**
+ * ENG-8331 — the AI clause a linked row carries: ` — AI: <vendor>
+ * (<evidenceKind>, prompt <promptId>)`, several links comma-joined. Empty for
+ * a row with no links, which then prints exactly what it printed before.
+ */
+export function aiLinksClause(links: ReadonlyArray<AiLink> | undefined): string {
+  if (!links?.length) return '';
+  const each = links.map((l) => `${l.vendor} (${l.evidenceKind}, prompt ${l.promptId})`);
+  return ` — AI: ${each.join(', ')}`;
+}
+
+/**
+ * ENG-8332 — the one line a tool output carries when the backend could not
+ * check its AI links (`aiLinksAvailable: false`: the link read failed, or the
+ * caller has no user id). Without it an empty AI clause reads as "no AI".
+ */
+export const AI_LINKS_UNAVAILABLE_NOTE =
+  'AI credits could not be checked for this read.';
+
+/** The note as an appended paragraph, or nothing when the links were checked. */
+export function aiLinksUnavailableSuffix(available: boolean): string {
+  return available ? '' : `\n\n${AI_LINKS_UNAVAILABLE_NOTE}`;
+}
+
 /** The fields a spreadsheet change row renders (`UnattributedChange`). */
 export interface SpreadsheetChangeRowInput {
   sheetName: string;
@@ -193,6 +218,8 @@ export interface SpreadsheetChangeRowInput {
   byUserName?: string | null;
   /** ENG-6757 — null where the route serves no first-seen clock (a band, a tab). */
   createdAt: string | null;
+  /** ENG-8331 — absent on a caller that never read the field. */
+  aiLinks?: ReadonlyArray<AiLink>;
 }
 
 /**
@@ -265,7 +292,8 @@ export function formatSpreadsheetChangeRows(
       const author = c.byUserName ?? c.byUserPlatformId;
       const by = author ? ` — by ${author}` : '';
       const at = c.createdAt ? ` — ${c.createdAt}` : '';
-      return `- **${c.sheetName}!${c.cellAddress}**${label}${tail}${by}${at}`;
+      const ai = aiLinksClause(c.aiLinks);
+      return `- **${c.sheetName}!${c.cellAddress}**${label}${tail}${by}${ai}${at}`;
     })
     .join('\n');
 }

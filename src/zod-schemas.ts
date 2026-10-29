@@ -55,11 +55,24 @@ export const EnrolledFileSchema = z
  * returns the normalized projection added by KI-096. The mcp-server
  * formatter reads all four fields.
  */
+/**
+ * ENG-8331 — one AI prompt linked to a change. Defaulted to `[]` on every row
+ * schema so a client on this version parses an older backend that omits it.
+ */
+export const AiLinkSchema = z.object({
+  vendor: z.string(),
+  evidenceKind: z.string(),
+  promptId: z.string(),
+});
+const AiLinksSchema = z.array(AiLinkSchema).default([]);
+
 export const CellHistoryEntrySchema = z.object({
   versionId: z.string(),
   value: z.unknown(),
   changedBy: z.string().nullable(),
+  changedByName: z.string().nullable().optional(),
   changedAt: z.string(),
+  aiLinks: AiLinksSchema,
   // ENG-1638 (P3-2) remainder: the widened ledger-served projection. Optional —
   // an older backend carries only the four core fields.
   formula: z.string().nullable().optional(),
@@ -100,11 +113,14 @@ export const DocumentChangeRowSchema = z
     anchorLabel: z.string().nullable().default(null),
     changeKind: z.string(),
     editorPlatformId: z.string().nullable().default(null),
+    // ENG-8332 — the editor's display name; absent on an older backend.
+    editorName: z.string().nullable().optional(),
     occurredAt: z.string().nullable().default(null),
     firstObservedAt: z.string(),
     fromValue: z.record(z.string(), z.unknown()).nullable().default(null),
     toValue: z.record(z.string(), z.unknown()).nullable().default(null),
     truncated: z.boolean().default(false),
+    aiLinks: AiLinksSchema,
   })
   .passthrough();
 
@@ -125,6 +141,8 @@ export const DocumentChangesResponseSchema = z
     truncated: z.boolean(),
     declineReason: z.string().nullable(),
     windowStart: z.string(),
+    // ENG-8332 — absent on an older backend, whose links are what it served.
+    aiLinksAvailable: z.boolean().default(true),
   })
   .passthrough();
 

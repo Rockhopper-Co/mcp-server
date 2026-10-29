@@ -3,9 +3,12 @@
  * Mirrored, not imported: this package ships on npm and cannot depend on the
  * backend tree. Each type names the backend shape it copies.
  */
+import type { AiLink } from './types.js';
 
 /** The fields every served change carries for its author and state. */
 export interface ServedAuthor {
+  /** ENG-8331 — absent on an older backend; the row mapping reads it as `[]`. */
+  aiLinks?: AiLink[];
   byUserName?: string | null;
   byUserPlatformType?: string | null;
   processingStatus?: string | null;
@@ -63,6 +66,8 @@ export interface CompareSummary {
     reordered?: LedgerSheetReorder[];
   } | null;
   snapshotId: string;
+  /** ENG-8332 — false when the backend could not check AI links; absent ⇒ true. */
+  aiLinksAvailable?: boolean;
 }
 
 /** A `rowColumnChanges` bucket → the legacy row's `changeType`. */
@@ -79,7 +84,17 @@ export interface CompareSheetPage {
   cellChanges: LedgerCell[];
   rowColumnChanges: Partial<Record<keyof typeof BAND_KINDS, LedgerBand[]>>;
   nextCursor: string | null;
+  /** ENG-8332 — as {@link CompareSummary.aiLinksAvailable}. */
+  aiLinksAvailable?: boolean;
 }
+
+/**
+ * ENG-8332 — a compare body's `aiLinksAvailable`, parsed: only an explicit
+ * `false` reads as "not checked", so an older backend that omits the field
+ * parses as `true`.
+ */
+export const linksChecked = (body: { aiLinksAvailable?: unknown }): boolean =>
+  body.aiLinksAvailable !== false;
 
 /** The two ledger reads, as `ApiClient` serves them. */
 export interface LedgerChangeReader {

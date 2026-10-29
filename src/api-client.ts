@@ -10,12 +10,12 @@ import {
 import type {
   CellHistoryEntry,
   DocumentAnchorHistory,
-  DocumentChangesResponse,
   EnrolledFile,
   CommentAnchorInput,
   FileChat,
   FileVersion,
   FoldStatus,
+  LinkCheckedDocumentChanges,
   ReviewActivity,
   ReviewRequest,
   RockhopperId,
@@ -52,6 +52,7 @@ import {
 import {
   CLIENT_CAPABILITIES_HEADER,
   CLIENT_CAPABILITIES_VALUE,
+  aiLinksAvailableFromHeaders,
   freshnessFromHeaders,
   type ReadFreshness,
 } from './ledger-freshness.js';
@@ -59,6 +60,8 @@ import {
 /** ENG-7243 — opt-in freshness return for the cell-history reads. */
 export interface CellHistoryReadOptions {
   onFreshness?: (freshness: ReadFreshness) => void;
+  /** ENG-8332 — the `X-AI-Links-Available` answer; `true` when absent. */
+  onAiLinksAvailable?: (available: boolean) => void;
 }
 
 /**
@@ -966,7 +969,11 @@ export class ApiClient {
       `/file-versions/file/${fileMsId}/cell-history?${query}`,
       { headers: { [CLIENT_CAPABILITIES_HEADER]: CLIENT_CAPABILITIES_VALUE } },
       CellHistoryEntryArraySchema as unknown as ZodType<CellHistoryEntry[]>,
-      (headers) => opts?.onFreshness?.(freshnessFromHeaders(headers)),
+      (headers) => {
+        opts?.onFreshness?.(freshnessFromHeaders(headers));
+        // ENG-8332 — the body is a bare array, so the flag is a header.
+        opts?.onAiLinksAvailable?.(aiLinksAvailableFromHeaders(headers));
+      },
     );
   }
 
@@ -1170,14 +1177,14 @@ export class ApiClient {
    * than calling both lanes and merging: an empty answer from the wrong lane is
    * exactly the defect this method exists to remove.
    */
-  async getDocumentChanges(fileMsId: string): Promise<DocumentChangesResponse> {
+  async getDocumentChanges(fileMsId: string): Promise<LinkCheckedDocumentChanges> {
     const path = `/cell-change-events/document-changes?fileMsId=${encodeURIComponent(
       fileMsId,
     )}`;
-    return this.request<DocumentChangesResponse>(
+    return this.request<LinkCheckedDocumentChanges>(
       path,
       undefined,
-      DocumentChangesResponseSchema as unknown as ZodType<DocumentChangesResponse>,
+      DocumentChangesResponseSchema as unknown as ZodType<LinkCheckedDocumentChanges>,
     );
   }
 
