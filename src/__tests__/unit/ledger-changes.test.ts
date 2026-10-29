@@ -152,6 +152,8 @@ describe('ENG-6757 — the changes resource serves the ledger rows', () => {
       // 3 cells + 1 band on Sheet1, 1 cell on Sheet2, 1 sheet added.
       totalCount: 6,
       snapshotId: snapshot,
+      // ENG-8332 — the golden predates the field, so it parses as checked.
+      aiLinksAvailable: true,
     });
   });
 });
