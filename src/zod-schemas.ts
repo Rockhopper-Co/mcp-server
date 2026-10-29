@@ -113,6 +113,8 @@ export const DocumentChangeRowSchema = z
     anchorLabel: z.string().nullable().default(null),
     changeKind: z.string(),
     editorPlatformId: z.string().nullable().default(null),
+    // ENG-8332 — the editor's display name; absent on an older backend.
+    editorName: z.string().nullable().optional(),
     occurredAt: z.string().nullable().default(null),
     firstObservedAt: z.string(),
     fromValue: z.record(z.string(), z.unknown()).nullable().default(null),
@@ -139,6 +141,8 @@ export const DocumentChangesResponseSchema = z
     truncated: z.boolean(),
     declineReason: z.string().nullable(),
     windowStart: z.string(),
+    // ENG-8332 — absent on an older backend, whose links are what it served.
+    aiLinksAvailable: z.boolean().default(true),
   })
   .passthrough();
 

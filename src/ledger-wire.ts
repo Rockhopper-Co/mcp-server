@@ -66,6 +66,8 @@ export interface CompareSummary {
     reordered?: LedgerSheetReorder[];
   } | null;
   snapshotId: string;
+  /** ENG-8332 — false when the backend could not check AI links; absent ⇒ true. */
+  aiLinksAvailable?: boolean;
 }
 
 /** A `rowColumnChanges` bucket → the legacy row's `changeType`. */
@@ -82,7 +84,17 @@ export interface CompareSheetPage {
   cellChanges: LedgerCell[];
   rowColumnChanges: Partial<Record<keyof typeof BAND_KINDS, LedgerBand[]>>;
   nextCursor: string | null;
+  /** ENG-8332 — as {@link CompareSummary.aiLinksAvailable}. */
+  aiLinksAvailable?: boolean;
 }
+
+/**
+ * ENG-8332 — a compare body's `aiLinksAvailable`, parsed: only an explicit
+ * `false` reads as "not checked", so an older backend that omits the field
+ * parses as `true`.
+ */
+export const linksChecked = (body: { aiLinksAvailable?: unknown }): boolean =>
+  body.aiLinksAvailable !== false;
 
 /** The two ledger reads, as `ApiClient` serves them. */
 export interface LedgerChangeReader {

@@ -191,6 +191,19 @@ export function aiLinksClause(links: ReadonlyArray<AiLink> | undefined): string 
   return ` — AI: ${each.join(', ')}`;
 }
 
+/**
+ * ENG-8332 — the one line a tool output carries when the backend could not
+ * check its AI links (`aiLinksAvailable: false`: the link read failed, or the
+ * caller has no user id). Without it an empty AI clause reads as "no AI".
+ */
+export const AI_LINKS_UNAVAILABLE_NOTE =
+  'AI credits could not be checked for this read.';
+
+/** The note as an appended paragraph, or nothing when the links were checked. */
+export function aiLinksUnavailableSuffix(available: boolean): string {
+  return available ? '' : `\n\n${AI_LINKS_UNAVAILABLE_NOTE}`;
+}
+
 /** The fields a spreadsheet change row renders (`UnattributedChange`). */
 export interface SpreadsheetChangeRowInput {
   sheetName: string;

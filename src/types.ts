@@ -585,6 +585,8 @@ export interface PaginatedUnattributedResponse {
   nextCursor: string | null;
   totalCount: number;
   snapshotId: string;
+  /** ENG-8332 — false when the summary or any page read could not check AI links. */
+  aiLinksAvailable: boolean;
 }
 
 /**
@@ -638,6 +640,8 @@ export interface DocumentChangeRow {
   truncated: boolean;
   /** ENG-8331 — the AI prompts linked to this change; the schema defaults it to `[]`. */
   aiLinks?: AiLink[];
+  /** ENG-8332 — the editor's display name; printed in place of the id when set. */
+  editorName?: string | null;
 }
 
 /**
@@ -742,4 +746,15 @@ export interface FoldStatus {
   /** Version the pending fold will rewrite the window for; null when none. */
   foldTargetVersionId: number | null;
   checkedAt?: string;
+}
+
+/**
+ * ENG-8332 — the document-changes envelope as this client parses it: the
+ * route adds `aiLinksAvailable` beside the shared envelope (false when the
+ * backend could not check AI links), and the schema defaults it to `true` for
+ * an older backend. Kept apart from {@link DocumentChangesResponse}, whose
+ * keys are pinned to the backend's served-window golden.
+ */
+export interface LinkCheckedDocumentChanges extends DocumentChangesResponse {
+  aiLinksAvailable: boolean;
 }
