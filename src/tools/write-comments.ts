@@ -69,7 +69,10 @@ export function registerWriteCommentTools(
       description:
         'Add a new comment to an enrolled file. Every comment is scoped to a ' +
         'specific file version — typically the latest (live) version unless ' +
-        'the user explicitly wants to comment on a historical version.',
+        'the user explicitly wants to comment on a historical version. On a ' +
+        'Smartsheet sheet a comment attaches to a row: send a cell reference ' +
+        'in that row (for example "A5" for row 5), or omit it to comment on ' +
+        'the whole sheet.',
       inputSchema: z.object({
         fileMsId: z.string().describe('Platform ID of the enrolled file'),
         message: z.string().min(1).max(5000).describe('Comment text'),

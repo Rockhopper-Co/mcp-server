@@ -41,11 +41,13 @@ export const DRIVE_SEARCH_INPUT_SCHEMA = z.object({
         'remember the name.',
     ),
   provider: z
-    .enum(['microsoft', 'google'])
+    .enum(['microsoft', 'google', 'smartsheet'])
     .optional()
     .describe(
       'Where to look: "microsoft" (default) searches the user\'s OneDrive ' +
-        'and SharePoint, "google" searches their Google Drive. Ask the user ' +
+        'and SharePoint, "google" searches their Google Drive, "smartsheet" ' +
+        'searches their Smartsheet sheets by name (it needs a `query` of at ' +
+        'least two characters and has no "recent" list). Ask the user ' +
         'which one their file is in rather than guessing — searching the ' +
         'wrong one returns an empty list that reads exactly like "no such ' +
         'file". A person may have both.',
@@ -112,7 +114,9 @@ export const DRIVE_SEARCH_DESCRIPTION =
   '`enroll_file` as `url` on its own. ' +
   'Searching is capped per session, so search deliberately rather than ' +
   'browsing. Each provider needs its own connected account — if the one you ' +
-  'asked for is not connected, this returns the link the user must open.';
+  'asked for is not connected, this returns the link the user must open. ' +
+  'For Smartsheet, `provider` "smartsheet" lists sheets only: reports and ' +
+  'dashboards are not tracked.';
 
 export const DRIVE_SEARCH_ANNOTATIONS = {
   readOnlyHint: true,
@@ -311,6 +315,26 @@ export const DECLINE_CHOICE = 'none';
  * start to differ.
  */
 export function confirmedAnswer(candidate: Candidate) {
+  // A Smartsheet sheet is added by its sheet id, which is what the candidate
+  // carries as `msId`. It has no drive id and no link is needed. Decided on
+  // the SEALED provider, before the Microsoft fall-through below can read a
+  // missing drive id as a refusal.
+  if (candidate.provider === 'smartsheet') {
+    return toolResult({
+      outcome: 'confirmed',
+      text:
+        `The user confirmed "${candidate.name}" (${candidateNote(candidate)}). ` +
+        'Now call `enroll_file` with `provider` "smartsheet" and the `msId` ' +
+        'below (the sheet id). `enroll_file` will ask who may see the file — ' +
+        'put that question to the user too, and never answer it yourself.',
+      detail: {
+        name: candidate.name,
+        provider: 'smartsheet',
+        msId: candidate.msId,
+        enrollmentState: candidate.enrollmentState,
+      },
+    });
+  }
   // ENG-4958 — a Google file is added by LINK, because Drive has no drive-id
   // concept and the backend's Google branch takes the Drive id under a
   // different field. Branched on the SEALED `provider`, never on

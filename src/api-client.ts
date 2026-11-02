@@ -36,6 +36,14 @@ import type {
   FileProvider,
 } from './types.js';
 import {
+  SMARTSHEET_REGION,
+  type SmartsheetBrowseListing,
+  type SmartsheetBrowseParent,
+  type SmartsheetCellHistory,
+  type SmartsheetLinkStatusResponse,
+  type SmartsheetSearchListing,
+} from './smartsheet-types.js';
+import {
   CellHistoryEntryArraySchema,
   DocumentAnchorHistorySchema,
   DocumentChangesResponseSchema,
@@ -208,24 +216,38 @@ const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * enrolls through one route and is refused through another.
  */
 function enrollmentBody(file: EnrollmentTarget): Record<string, unknown> {
-  if (file.provider === 'google') {
-    // `platformId`, never `msId`: the backend's Google branch requires it, and
-    // the DTO's own note says an `@IsNotEmpty()` on `msId` would 400 every
-    // Google enroll. `fileType` is deliberately NOT sent — the backend derives
-    // it from the Drive mime type on the caller's own access probe, so a
-    // client cannot assert what a file is.
-    return {
-      platformId: file.fileId,
-      name: file.name,
-      accountType: 'google',
-    };
+  switch (file.provider) {
+    case 'google':
+      // `platformId`, never `msId`: the backend's Google branch requires it, and
+      // the DTO's own note says an `@IsNotEmpty()` on `msId` would 400 every
+      // Google enroll. `fileType` is deliberately NOT sent — the backend derives
+      // it from the Drive mime type on the caller's own access probe, so a
+      // client cannot assert what a file is.
+      return {
+        platformId: file.fileId,
+        name: file.name,
+        accountType: 'google',
+      };
+    case 'smartsheet':
+      // The sheet id travels as `platformId`. Name, file type and link are
+      // stamped by the backend from what Smartsheet says about the sheet.
+      return {
+        platformId: file.fileId,
+        name: file.name,
+        accountType: 'smartsheet',
+      };
+    case 'microsoft':
+      return {
+        msId: file.fileId,
+        driveMsId: file.driveMsId ?? '',
+        name: file.name,
+        accountType: 'microsoft',
+      };
+    default: {
+      const unhandled: never = file.provider;
+      throw new Error(`Unknown file provider: ${String(unhandled)}`);
+    }
   }
-  return {
-    msId: file.fileId,
-    driveMsId: file.driveMsId ?? '',
-    name: file.name,
-    accountType: 'microsoft',
-  };
 }
 
 /**
@@ -608,6 +630,70 @@ export class ApiClient {
     );
   }
 
+  // --- Smartsheet link and discovery ---
+  // The same rule as the other providers: the backend builds the consent URL,
+  // and the only thing this client sends is the region.
+
+  async beginSmartsheetConnect(): Promise<AccountConnectHandoff> {
+    return this.request<AccountConnectHandoff>('/auth/smartsheet/connect', {
+      method: 'POST',
+      body: JSON.stringify({ region: SMARTSHEET_REGION }),
+    });
+  }
+
+  async getSmartsheetLink(): Promise<SmartsheetLinkStatusResponse> {
+    return this.request<SmartsheetLinkStatusResponse>('/auth/smartsheet/link');
+  }
+
+  async unlinkSmartsheet(): Promise<{ linked: boolean; removed: boolean }> {
+    return this.request<{ linked: boolean; removed: boolean }>(
+      `/auth/smartsheet/link?region=${SMARTSHEET_REGION}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  /** The caller's own workspaces, folders and sheets, one level at a time. */
+  async browseSmartsheet(
+    parent: SmartsheetBrowseParent = {},
+  ): Promise<SmartsheetBrowseListing> {
+    const query = new URLSearchParams();
+    if (parent.parentType) query.set('parentType', parent.parentType);
+    if (parent.parentId) query.set('parentId', parent.parentId);
+    const qs = query.toString();
+    return this.request<SmartsheetBrowseListing>(
+      `/smartsheet-drive/browse${qs ? `?${qs}` : ''}`,
+    );
+  }
+
+  async searchSmartsheet(q: string): Promise<SmartsheetSearchListing> {
+    const query = new URLSearchParams({ q });
+    return this.request<SmartsheetSearchListing>(
+      `/smartsheet-drive/search?${query.toString()}`,
+    );
+  }
+
+  /**
+   * One Smartsheet cell's history, addressed by its row and column anchors.
+   * A Smartsheet cell has no A1 address in the change record, so the
+   * file-versions route (A1 only) cannot serve it; this one can. Keyed by the
+   * file's internal id because the route resolves a message id, not the
+   * platform id this package carries.
+   */
+  async getSmartsheetCellHistory(
+    enrolledFileInternalId: number,
+    rowAnchorId: string,
+    columnAnchorId: string,
+  ): Promise<SmartsheetCellHistory> {
+    const query = new URLSearchParams({
+      enrolledFileInternalId: String(enrolledFileInternalId),
+      rowAnchorId,
+      columnAnchorId,
+    });
+    return this.request<SmartsheetCellHistory>(
+      `/cell-change-events/cell-history?${query.toString()}`,
+    );
+  }
+
   // --- Teams ---
 
   /**
@@ -840,7 +926,7 @@ export class ApiClient {
      * id under `microsoft` matches no row and answers `not_enrolled` for a
      * file the tenant already tracks.
      */
-    provider: FileProvider = 'microsoft',
+    provider: Exclude<FileProvider, 'smartsheet'> = 'microsoft',
   ): Promise<EnrollmentInfo[]> {
     return this.request<EnrollmentInfo[]>('/enrolled-files/info/bulk', {
       method: 'POST',

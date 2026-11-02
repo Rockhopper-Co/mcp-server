@@ -50,6 +50,7 @@ const WRITE_TOOL_ARGS: Record<string, Record<string, unknown>> = {
   },
   disconnect_microsoft: {},
   disconnect_google: {},
+  disconnect_smartsheet: {},
 };
 
 interface SeenRequest {

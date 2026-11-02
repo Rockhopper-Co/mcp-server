@@ -109,7 +109,7 @@ export interface ResolvedFileUrl {
 }
 
 /** Which storage a file lives in. */
-export type FileProvider = 'microsoft' | 'google';
+export type FileProvider = 'microsoft' | 'google' | 'smartsheet';
 
 /**
  * ENG-4958 — one file to enroll, in whichever id space its provider uses.

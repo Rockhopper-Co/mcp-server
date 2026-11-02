@@ -2,6 +2,10 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { renderEmpty, renderFound } from './list-unenrolled-render.js';
+import {
+  listUnenrolledSmartsheet,
+  smartsheetParentProblem,
+} from './list-unenrolled-smartsheet.js';
 import type { ToolAnnotations } from './tool-annotations.js';
 
 /**
@@ -78,8 +82,34 @@ export function registerListUnenrolledFilesTool(
         'calling with the cursor until no cursor is returned before saying ' +
         'anything about what the user does or does not have. A cursor stops ' +
         'working 30 minutes after the first page; if one is refused as ' +
-        'SNAPSHOT_EXPIRED, RESTART from the first page instead of retrying it.',
+        'SNAPSHOT_EXPIRED, RESTART from the first page instead of retrying it. ' +
+        'For Smartsheet pass `provider` "smartsheet": that reads the user\'s ' +
+        'own workspaces, folders and sheets live, one level at a time (open a ' +
+        'workspace or folder with `parentType` and `parentId`), and has no ' +
+        'cursor.',
       inputSchema: z.object({
+        provider: z
+          .enum(['smartsheet'])
+          .optional()
+          .describe(
+            'Set to "smartsheet" to browse the user\'s Smartsheet account ' +
+              'instead of the stored OneDrive, SharePoint and Google Drive ' +
+              'list. Leave unset for those.',
+          ),
+        parentType: z
+          .enum(['workspace', 'folder'])
+          .optional()
+          .describe(
+            'Smartsheet only: what kind of container `parentId` names. Omit ' +
+              'both to start at the top level of the account.',
+          ),
+        parentId: z
+          .string()
+          .optional()
+          .describe(
+            'Smartsheet only: the id of the workspace or folder to open, ' +
+              'from an earlier listing.',
+          ),
         limit: z
           .number()
           .int()
@@ -109,7 +139,14 @@ export function registerListUnenrolledFilesTool(
         openWorldHint: true,
       } satisfies ToolAnnotations,
     },
-    async ({ limit, cursor }) => {
+    async ({ limit, cursor, provider, parentType, parentId }) => {
+      if (provider === 'smartsheet') {
+        const problem = smartsheetParentProblem(parentType, parentId);
+        if (problem) {
+          return { content: [{ type: 'text', text: problem }], isError: true };
+        }
+        return listUnenrolledSmartsheet(api, { parentType, parentId });
+      }
       try {
         const { items, freshness, nextCursor } = await api.listDriveInventory({
           enrollment: 'not_enrolled',

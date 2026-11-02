@@ -16,6 +16,12 @@ export interface MockApiClient {
   beginGoogleConnect: Mock;
   getGoogleLink: Mock;
   unlinkGoogle: Mock;
+  beginSmartsheetConnect: Mock;
+  getSmartsheetLink: Mock;
+  unlinkSmartsheet: Mock;
+  browseSmartsheet: Mock;
+  searchSmartsheet: Mock;
+  getSmartsheetCellHistory: Mock;
   listEnrolledFiles: Mock;
   listDriveInventory: Mock;
   searchDriveFiles: Mock;
@@ -106,6 +112,30 @@ export function createMockApiClient(): MockApiClient {
       .fn()
       .mockResolvedValue({ linked: false, googleAccountLabel: null }),
     unlinkGoogle: vi.fn().mockResolvedValue({ linked: false, removed: true }),
+    // The Smartsheet link and discovery calls. Not connected by default.
+    beginSmartsheetConnect: vi.fn().mockResolvedValue({
+      authorizeUrl: 'https://app.smartsheet.com/b/authorize?client_id=real-ss',
+      expiresAt: '2026-11-01T21:00:00.000Z',
+    }),
+    getSmartsheetLink: vi
+      .fn()
+      .mockResolvedValue({ linked: false, links: [] }),
+    unlinkSmartsheet: vi
+      .fn()
+      .mockResolvedValue({ linked: false, removed: true }),
+    browseSmartsheet: vi.fn().mockResolvedValue({
+      parent: { parentType: 'home', parentId: null },
+      items: [],
+    }),
+    searchSmartsheet: vi
+      .fn()
+      .mockResolvedValue({ query: '', totalCount: 0, items: [] }),
+    getSmartsheetCellHistory: vi.fn().mockResolvedValue({
+      rowAnchorId: 'row',
+      columnAnchorId: 'col',
+      history: [],
+      truncated: false,
+    }),
     listEnrolledFiles: vi.fn().mockResolvedValue([
       {
         internalId: 11,

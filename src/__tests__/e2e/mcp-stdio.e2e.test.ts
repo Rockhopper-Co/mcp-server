@@ -196,8 +196,11 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
           'disconnect_microsoft',
           'microsoft_link_status',
           'connect_google',
+          'connect_smartsheet',
           'disconnect_google',
+          'disconnect_smartsheet',
           'google_link_status',
+          'smartsheet_link_status',
           'get_cell_history',
           'get_file_comments',
           'get_file_versions',
@@ -220,7 +223,7 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
     'falls back to the coarse scope when the backend serves no families',
     async () => {
       // A backend older than ENG-2211 omits `patScopes` entirely.
-      expect(await toolNames('read-write', null)).toHaveLength(25);
+      expect(await toolNames('read-write', null)).toHaveLength(28);
     },
     30_000,
   );
