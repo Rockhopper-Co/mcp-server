@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiClient } from '../../api-client.js';
 import { changeModelForFileType } from '../../file-type-model.js';
 import { sheetCatalogueRouteFor } from '../../sheet-catalogue.js';
 import { commentLocation } from '../../comment-location.js';
@@ -121,7 +122,7 @@ describe('get_cell_history by row and column id', () => {
     changedAt: '2026-11-01T10:00:00.000Z',
   };
 
-  it('reads the Smartsheet route by the file internal id and prints the rows', async () => {
+  it('reads the row and column route by the file id and prints the rows', async () => {
     const api = createMockApiClient();
     api.getEnrolledFile.mockResolvedValue(SHEET_FILE);
     api.getSmartsheetCellHistory.mockResolvedValue({
@@ -136,7 +137,11 @@ describe('get_cell_history by row and column id', () => {
       rowAnchorId: ROW,
       columnAnchorId: COLUMN,
     })) as Result;
-    expect(api.getSmartsheetCellHistory).toHaveBeenCalledWith(21, ROW, COLUMN);
+    expect(api.getSmartsheetCellHistory).toHaveBeenCalledWith(
+      SHEET_FILE.platformId,
+      ROW,
+      COLUMN,
+    );
     expect(api.getCellHistory).not.toHaveBeenCalled();
     const text = result.content[0].text;
     expect(text).toContain('2 change(s), oldest first');
@@ -247,5 +252,46 @@ describe('comment locations', () => {
       .content[0].text;
     expect(text).toContain('**Ana** [row 7]');
     expect(text).toContain('**Ben** [whole sheet]');
+  });
+});
+
+describe('the cell-history requests on the wire', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function wired() {
+    const seen: string[] = [];
+    vi.stubGlobal('fetch', (url: string) => {
+      seen.push(url);
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(),
+        json: () => Promise.resolve([]),
+        text: () => Promise.resolve('[]'),
+      });
+    });
+    const client = new ApiClient({ baseUrl: 'https://api.test', token: 't' });
+    return { seen, client };
+  }
+
+  it('a Smartsheet cell asks the file-versions route with the two anchors only', async () => {
+    const { seen, client } = wired();
+    await client.getSmartsheetCellHistory('4583173393803140', ROW, COLUMN);
+    expect(seen).toEqual([
+      'https://api.test/file-versions/file/4583173393803140/cell-history' +
+        `?rowAnchorId=${ROW}&columnAnchorId=${COLUMN}`,
+    ]);
+  });
+
+  it('positive control: the A1 request is byte-identical to before', async () => {
+    const { seen, client } = wired();
+    await client.getCellHistory('file-1', 'Sheet1', 'B2');
+    expect(seen).toEqual([
+      'https://api.test/file-versions/file/file-1/cell-history' +
+        '?cell=B2&sheetName=Sheet1&format=mcp',
+    ]);
   });
 });

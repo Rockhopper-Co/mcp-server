@@ -116,7 +116,7 @@ export async function readSmartsheetCellHistory(
     }
     const fold = await foldFreshness(api, fileMsId);
     const response = await api.getSmartsheetCellHistory(
-      file.internalId,
+      fileMsId,
       rowAnchorId,
       columnAnchorId,
     );

@@ -673,24 +673,20 @@ export class ApiClient {
   }
 
   /**
-   * One Smartsheet cell's history, addressed by its row and column anchors.
-   * A Smartsheet cell has no A1 address in the change record, so the
-   * file-versions route (A1 only) cannot serve it; this one can. Keyed by the
-   * file's internal id because the route resolves a message id, not the
-   * platform id this package carries.
+   * One Smartsheet cell's history, addressed by its row and column anchors,
+   * from the same route as a cell's (`cell` and `sheetName` are not sent: a
+   * Smartsheet cell has no A1 address in the change record). The route takes
+   * the file id this package already carries and resolves it itself, so no
+   * extra lookup is needed.
    */
   async getSmartsheetCellHistory(
-    enrolledFileInternalId: number,
+    fileMsId: string,
     rowAnchorId: string,
     columnAnchorId: string,
   ): Promise<SmartsheetCellHistory> {
-    const query = new URLSearchParams({
-      enrolledFileInternalId: String(enrolledFileInternalId),
-      rowAnchorId,
-      columnAnchorId,
-    });
+    const query = new URLSearchParams({ rowAnchorId, columnAnchorId });
     return this.request<SmartsheetCellHistory>(
-      `/cell-change-events/cell-history?${query.toString()}`,
+      `/file-versions/file/${fileMsId}/cell-history?${query.toString()}`,
     );
   }
 
