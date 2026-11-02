@@ -5,7 +5,7 @@ import {
   type McpServer,
   type ServerContext,
 } from '@modelcontextprotocol/server';
-import { GOOGLE_LINK, MICROSOFT_LINK } from '../account-link-providers.js';
+import { accountLinkFor } from '../account-link-providers.js';
 import type { ApiClient } from '../api-client.js';
 import type { FileProvider } from '../types.js';
 import {
@@ -17,10 +17,17 @@ import {
   isAdminConsentRequired,
   isNoDelegatedToken,
   googleNotConnectedText,
+  smartsheetNotConnectedText,
   toCandidate,
   type Candidate,
 } from '../drive-search.js';
 import { log } from '../logger.js';
+import {
+  classifySmartsheetFailure,
+  isSmartsheetConnectRequired,
+  searchSmartsheetSheets,
+  smartsheetQueryProblem,
+} from '../smartsheet-discovery.js';
 import {
   BUDGET_EXHAUSTED_TEXT,
   DECLINE_CHOICE,
@@ -209,7 +216,7 @@ export function registerDriveSearchTool(
   server.registerTool(
     'search_drive_files',
     {
-      title: 'Find a File in OneDrive, SharePoint or Google Drive',
+      title: 'Find a File in OneDrive, SharePoint, Google Drive or Smartsheet',
       description: DRIVE_SEARCH_DESCRIPTION,
       inputSchema: DRIVE_SEARCH_INPUT_SCHEMA,
       annotations: DRIVE_SEARCH_ANNOTATIONS,
@@ -240,6 +247,17 @@ export function registerDriveSearchTool(
         );
       }
 
+      if (provider === 'smartsheet') {
+        const problem = smartsheetQueryProblem(query, scope);
+        if (problem) {
+          return toolResult({
+            outcome: 'search_unavailable',
+            isError: true,
+            text: problem,
+          });
+        }
+      }
+
       if (!budget.claim()) {
         log.warn(
           {
@@ -259,17 +277,37 @@ export function registerDriveSearchTool(
 
       let items;
       try {
-        const answer = await api.searchDriveFiles({
-          q: query,
-          scope,
-          limit: limit ?? 10,
-          // ENG-4958: passed through, never defaulted here. The backend
-          // defaults an absent one to Microsoft, which is what every caller
-          // written before the Google lane meant.
-          provider,
-        });
-        items = answer.items;
+        if (provider === 'smartsheet') {
+          const found = await searchSmartsheetSheets(
+            api,
+            (query ?? '').trim(),
+            limit ?? 10,
+          );
+          items = found.items;
+        } else {
+          const answer = await api.searchDriveFiles({
+            q: query,
+            scope,
+            limit: limit ?? 10,
+            // ENG-4958: passed through, never defaulted here. The backend
+            // defaults an absent one to Microsoft, which is what every caller
+            // written before the Google lane meant.
+            provider,
+          });
+          items = answer.items;
+        }
       } catch (error) {
+        if (provider === 'smartsheet') {
+          if (isSmartsheetConnectRequired(error)) {
+            return connectAnswer(api, provider, error);
+          }
+          const failure = classifySmartsheetFailure(error);
+          return toolResult({
+            outcome: failure.outcome,
+            text: failure.message,
+            isError: true,
+          });
+        }
         // ORDER MATTERS. Both refusals arrive as `NO_DELEGATED_TOKEN`, so
         // checking "not connected" first would swallow the administrator
         // case and hand the user a connect link that Microsoft refuses —
@@ -336,31 +374,59 @@ async function connectAnswer(
   provider: FileProvider | undefined,
   error: unknown,
 ) {
-  // ENG-6412 — a Google refusal gets Google's remedy; ENG-6414 made that
-  // remedy `connect_google`'s backend-built link, the same path Microsoft
-  // takes, so the two lanes differ only in which provider row they read.
-  const link = provider === 'google' ? GOOGLE_LINK : MICROSOFT_LINK;
-  const outcome =
-    link === GOOGLE_LINK ? 'google_not_connected' : 'microsoft_not_connected';
+  // Each provider's refusal gets that provider's remedy: its own connect link
+  // and its own outcome name. One lookup, total over the provider union.
+  const link = accountLinkFor(provider ?? 'microsoft');
   try {
     const handoff = await link.begin(api);
     return toolResult({
-      outcome,
+      outcome: notConnectedOutcome(link.key),
       text: connectPrompt(handoff.authorizeUrl, handoff.expiresAt, link),
       detail: { authorizeUrl: handoff.authorizeUrl },
     });
   } catch {
     return toolResult({
-      outcome,
+      outcome: notConnectedOutcome(link.key),
       isError: true,
-      text:
-        link === GOOGLE_LINK
-          ? googleNotConnectedText(error)
-          : 'This user has no connected Microsoft account, and Rockhopper could ' +
-            'not produce a sign-in link just now. Ask them to run ' +
-            '`connect_microsoft`, or to paste the workbook link for `enroll_file`. ' +
-            'Do not compose a Microsoft sign-in link yourself.',
+      text: notConnectedFallbackText(link.key, error),
     });
+  }
+}
+
+type NotConnectedOutcome = `${FileProvider}_not_connected`;
+
+function notConnectedOutcome(key: FileProvider): NotConnectedOutcome {
+  switch (key) {
+    case 'microsoft':
+      return 'microsoft_not_connected';
+    case 'google':
+      return 'google_not_connected';
+    case 'smartsheet':
+      return 'smartsheet_not_connected';
+    default: {
+      const unhandled: never = key;
+      throw new Error(`Unknown file provider: ${String(unhandled)}`);
+    }
+  }
+}
+
+function notConnectedFallbackText(key: FileProvider, error: unknown): string {
+  switch (key) {
+    case 'google':
+      return googleNotConnectedText(error);
+    case 'smartsheet':
+      return smartsheetNotConnectedText();
+    case 'microsoft':
+      return (
+        'This user has no connected Microsoft account, and Rockhopper could ' +
+        'not produce a sign-in link just now. Ask them to run ' +
+        '`connect_microsoft`, or to paste the workbook link for `enroll_file`. ' +
+        'Do not compose a Microsoft sign-in link yourself.'
+      );
+    default: {
+      const unhandled: never = key;
+      throw new Error(`Unknown file provider: ${String(unhandled)}`);
+    }
   }
 }
 

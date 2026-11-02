@@ -148,13 +148,13 @@ npm run generate:postman
 
 | Tool | Description |
 |------|-------------|
-| `list_files` | List the files tracked in Rockhopper — Excel workbooks and Google Sheets — with optional search filter |
+| `list_files` | List the files tracked in Rockhopper — Excel workbooks, Google Sheets and Smartsheet sheets — with optional search filter |
 | `get_file_versions` | Get version history for a specific file |
 | `get_file_comments` | Get comments and threaded discussions on a file |
 | `get_reviews` | Get review requests for a version or file |
 | `get_cell_history` | Get change history for a specific cell across versions |
 | `search_files` | Search files **already enrolled** in Rockhopper, by name |
-| `search_drive_files` | Find a workbook in the user's own OneDrive, SharePoint or Google Drive, including files Rockhopper has never seen; returns candidates to confirm with the user before `enroll_file` |
+| `search_drive_files` | Find a workbook in the user's own OneDrive, SharePoint, Google Drive or Smartsheet, including files Rockhopper has never seen; returns candidates to confirm with the user before `enroll_file` |
 | `get_unattributed_changes` | Get the changes made since the last saved version (cells, paragraphs or shapes) |
 | `list_unenrolled_files` | List files Rockhopper has seen for the user that are not enrolled yet |
 
@@ -168,6 +168,9 @@ npm run generate:postman
 | `connect_google` | Start connecting the user's Google account; returns a sign-in link the user opens |
 | `google_link_status` | Check whether a Google account is connected and which one |
 | `disconnect_google` | Remove the stored Google connection (requires an interactive login, not a PAT) |
+| `connect_smartsheet` | Start connecting the user's Smartsheet account; returns a sign-in link the user opens |
+| `smartsheet_link_status` | Check whether a Smartsheet account is connected, which one, and whether the connection is usable |
+| `disconnect_smartsheet` | Remove the stored Smartsheet connection (requires an interactive login, not a PAT) |
 
 ## Available Resources
 

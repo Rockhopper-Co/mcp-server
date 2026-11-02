@@ -20,6 +20,7 @@ import {
 } from '../sheet-catalogue.js';
 import { readAnchorHistory } from './anchor-history-read.js';
 import { parseCellAddress, sheetNamesAgree } from './cell-address.js';
+import { readSmartsheetCellHistory } from './smartsheet-cell-history.js';
 import type { ToolAnnotations } from './tool-annotations.js';
 
 /**
@@ -56,18 +57,47 @@ export const getCellHistoryInputSchema = z
           'get_unattributed_changes. Send alone, without sheetName or ' +
           'cellAddress.',
       ),
+    rowAnchorId: z
+      .string()
+      .min(1)
+      .max(512)
+      .optional()
+      .describe(
+        'One Smartsheet cell: the id of its row. Send with columnAnchorId ' +
+          'and nothing else.',
+      ),
+    columnAnchorId: z
+      .string()
+      .min(1)
+      .max(512)
+      .optional()
+      .describe(
+        'One Smartsheet cell: the id of its column. Send with rowAnchorId ' +
+          'and nothing else.',
+      ),
   })
   .superRefine((args, ctx) => {
     const cellParts = [args.sheetName, args.cellAddress].filter(
       (v) => v !== undefined,
     ).length;
+    const sheetParts = [args.rowAnchorId, args.columnAnchorId].filter(
+      (v) => v !== undefined,
+    ).length;
     const byAnchor = args.anchorId !== undefined;
-    if (byAnchor ? cellParts === 0 : cellParts === 2) return;
+    if (byAnchor) {
+      if (cellParts === 0 && sheetParts === 0) return;
+    } else if (sheetParts > 0) {
+      if (sheetParts === 2 && cellParts === 0) return;
+    } else if (cellParts === 2) {
+      return;
+    }
     ctx.addIssue({
       code: 'custom',
       message: byAnchor
         ? 'Send anchorId alone, without sheetName or cellAddress.'
-        : 'Send sheetName and cellAddress together, or anchorId alone.',
+        : sheetParts > 0
+          ? 'Send rowAnchorId and columnAnchorId together, and nothing else.'
+          : 'Send sheetName and cellAddress together, or anchorId alone.',
     });
   });
 
@@ -111,6 +141,8 @@ export function registerGetCellHistoryTool(
         'document or slide deck (a Word document, a PowerPoint deck). The ' +
         'anchorId is the `anchorProviderId` a document change carries in ' +
         'get_unattributed_changes (shown in parentheses after each change). ' +
+        'A Smartsheet cell has no A1 address: name it by `rowAnchorId` + ' +
+        '`columnAnchorId` (the ids of its row and its column) instead. ' +
         'A cell address on a document, or an anchorId on a spreadsheet, ' +
         'answers CELL_HISTORY_UNAVAILABLE, never an empty list. For a deck, ' +
         'the answer covers the changes recorded under that one id and says ' +
@@ -139,7 +171,23 @@ export function registerGetCellHistoryTool(
         openWorldHint: true,
       } satisfies ToolAnnotations,
     },
-    async ({ fileMsId, sheetName, cellAddress, anchorId }) => {
+    async ({
+      fileMsId,
+      sheetName,
+      cellAddress,
+      anchorId,
+      rowAnchorId,
+      columnAnchorId,
+    }) => {
+      // The Smartsheet arm: a cell named by its row and column ids.
+      if (rowAnchorId !== undefined && columnAnchorId !== undefined) {
+        return readSmartsheetCellHistory(
+          api,
+          fileMsId,
+          rowAnchorId,
+          columnAnchorId,
+        );
+      }
       // ENG-6433 — the document arm. The schema admits exactly one address
       // form, so an anchorId here arrives with no sheet and no cell.
       if (anchorId !== undefined) {

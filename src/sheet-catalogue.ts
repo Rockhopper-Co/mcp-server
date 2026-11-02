@@ -261,6 +261,7 @@ export function sheetCatalogueRouteFor(
     case 'gdrive_txt':
     case 'gdrive_json':
     case 'gdrive_xml':
+    case 'smartsheet_sheet':
       // Not addressed by sheet, so there is no sheet name to validate.
       return null;
   }

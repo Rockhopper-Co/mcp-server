@@ -68,10 +68,12 @@ describe('MCP in-memory protocol e2e', () => {
         'approve_review',
         'cancel_review',
         'connect_google',
+        'connect_smartsheet',
         'connect_microsoft',
         'create_review_request',
         'create_version',
         'disconnect_google',
+        'disconnect_smartsheet',
         'disconnect_microsoft',
         'discard_changes',
         'enroll_file',
@@ -81,6 +83,7 @@ describe('MCP in-memory protocol e2e', () => {
         'get_reviews',
         'get_unattributed_changes',
         'google_link_status',
+        'smartsheet_link_status',
         'list_files',
         'list_unenrolled_files',
         'microsoft_link_status',
@@ -156,7 +159,9 @@ describe('MCP in-memory protocol e2e', () => {
       'connect_microsoft',
       'microsoft_link_status',
       'connect_google',
+      'connect_smartsheet',
       'google_link_status',
+      'smartsheet_link_status',
       'get_cell_history',
       'get_file_comments',
       'get_file_versions',
@@ -177,6 +182,7 @@ describe('MCP in-memory protocol e2e', () => {
       'cancel_review',
       'disconnect_microsoft',
       'disconnect_google',
+      'disconnect_smartsheet',
     ]) {
       expect(annotationsFor(name).destructiveHint, name).toBe(true);
       expect(annotationsFor(name).readOnlyHint, name).toBe(false);
@@ -1132,8 +1138,11 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     'disconnect_microsoft',
     'microsoft_link_status',
     'connect_google',
+    'connect_smartsheet',
     'disconnect_google',
+    'disconnect_smartsheet',
     'google_link_status',
+    'smartsheet_link_status',
     'get_cell_history',
     'get_file_comments',
     'get_file_versions',
@@ -1174,9 +1183,9 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     }
   }
 
-  it('shows 25 tools to a read-write token', async () => {
+  it('shows 28 tools to a read-write token', async () => {
     const names = await toolNamesForScope('read-write');
-    expect(names).toHaveLength(25);
+    expect(names).toHaveLength(28);
     expect(names).toContain('add_comment');
   });
 
