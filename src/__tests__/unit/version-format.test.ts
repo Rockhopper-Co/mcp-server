@@ -153,12 +153,7 @@ describe('create_version rendering (ENG-2750)', () => {
       hasUncommittedChanges: true,
     });
     api.getFileVersions.mockResolvedValue([base]);
-    api.createVersion.mockResolvedValue({
-      ...base,
-      majorVersion: 2,
-      minorVersion: 1,
-      patchVersion: 0,
-    });
+    // The POST answers a queued envelope; the version named is the one asked for.
     registerTools(server as any, api as any, { scope: 'read-write' });
     const call = server.registerTool.mock.calls.find(
       (c) => c[0] === 'create_version',

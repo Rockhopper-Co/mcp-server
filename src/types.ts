@@ -441,7 +441,33 @@ export interface EnrolledFile {
   driveMsId: string;
   name: string;
   hasUncommittedChanges: boolean | null;
+  /**
+   * The in-flight version-write marker: present while a create-version or
+   * discard runs, cleared when it completes, left `failed` when it fails.
+   * Optional: absent and null both mean no write is in flight.
+   */
+  pendingWrite?: PendingWriteMarker | null;
 }
+
+/** The backend's `PendingWrite` marker, the fields this client reads. */
+export interface PendingWriteMarker {
+  op: string;
+  jobId: string;
+  /** 'processing' | 'retrying' | 'waiting' | 'cancelling' | 'failed'. */
+  status: string;
+  startedAt: string;
+  /** Why it failed, or what a waiting write is waiting out. */
+  reason?: string | null;
+  error?: string | null;
+}
+
+/**
+ * What `POST /file-versions` and `POST /file-versions/file/discard-live/:id`
+ * answer: the queued write, or an explicit no-op with the backend's sentence.
+ */
+export type VersionWriteSubmission =
+  | { status: 'queued'; jobId: string; pendingWrite: PendingWriteMarker }
+  | { noOp: true; reason: string; message: string };
 
 export interface FileVersion {
   internalId: number;

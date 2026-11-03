@@ -2,6 +2,10 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 import { formatVersion } from '../version-format.js';
+import {
+  awaitVersionWrite,
+  versionWriteOutcomeText,
+} from '../version-write-outcome.js';
 import type { ToolAnnotations } from './tool-annotations.js';
 
 function bumpVersion(
@@ -48,8 +52,8 @@ export function registerWriteVersionTools(
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: false,
-        // Committing downloads the live file from Microsoft Graph or Google
-        // Drive into the version snapshot.
+        // Committing reads the live file from Microsoft, Google or Smartsheet
+        // into the version snapshot.
         openWorldHint: true,
       } satisfies ToolAnnotations,
     },
@@ -86,22 +90,21 @@ export function registerWriteVersionTools(
 
         const next = bumpVersion(base.major, base.minor, base.patch, versionType);
 
-        const version = await api.createVersion({
+        const submission = await api.createVersion({
           enrolledFileMsId: fileMsId,
           version: { ...next, description },
         });
-
-        const tag = formatVersion(version);
-        return {
-          content: [
-            {
-              type: 'text',
-              text:
-                `Version ${tag} created for "${file.name}".\n` +
-                `Description: "${description}"`,
-            },
-          ],
-        };
+        // The POST only queues the commit; report what the write did.
+        const outcome = await awaitVersionWrite(api, fileMsId, submission);
+        const { text, isError } = versionWriteOutcomeText(
+          outcome,
+          file.name,
+          `Version ${formatVersion(next)} created`,
+          'version commit',
+        );
+        const note =
+          outcome.kind === 'no_op' ? '' : `\nDescription: "${description}"`;
+        return { content: [{ type: 'text', text: text + note }], isError };
       } catch (error) {
         return {
           content: [
@@ -137,7 +140,7 @@ export function registerWriteVersionTools(
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: false,
-        // Discarding rewrites the live file in Microsoft or Google storage.
+        // Discarding rewrites the live file in Microsoft, Google or Smartsheet.
         openWorldHint: true,
       } satisfies ToolAnnotations,
     },
@@ -156,18 +159,17 @@ export function registerWriteVersionTools(
           };
         }
 
-        await api.discardChanges(fileMsId, { description });
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text:
-                `Changes discarded for "${file.name}".\n` +
-                `Reason: "${description}"`,
-            },
-          ],
-        };
+        const submission = await api.discardChanges(fileMsId, { description });
+        // The POST only queues the discard; report what the write did.
+        const outcome = await awaitVersionWrite(api, fileMsId, submission);
+        const { text, isError } = versionWriteOutcomeText(
+          outcome,
+          file.name,
+          'Changes discarded',
+          'discard',
+        );
+        const note = outcome.kind === 'no_op' ? '' : `\nReason: "${description}"`;
+        return { content: [{ type: 'text', text: text + note }], isError };
       } catch (error) {
         return {
           content: [
