@@ -62,12 +62,16 @@ export function registerListUnenrolledFilesTool(
         // BEFORE it picks the tool. ENG-4283 made this 'MICROSOFT ONLY' and
         // ENG-4958 sent Google callers to `search_drive_files`; ENG-6409 gave
         // the inventory a Google lane, so both are now false.
-        'It covers OneDrive and SharePoint (Microsoft) and Google Drive, for ' +
-        'whichever of those the user has connected, and every row names its ' +
-        'provider. To add a Microsoft row, pass its `msId` and `driveMsId` to ' +
-        '`enroll_file`; to add a Google row, pass its link to `enroll_file` as ' +
-        '`url`. An account with neither connected gets nothing from it, which ' +
-        'is not a statement about what that user has. ' +
+        // The stored list also holds Smartsheet sheets once the user has
+        // connected Smartsheet; each such row prints its own enroll line.
+        'It covers OneDrive and SharePoint (Microsoft), Google Drive and ' +
+        'Smartsheet, for whichever of those the user has connected, and every ' +
+        'row names its provider. To add a Microsoft row, pass its `msId` and ' +
+        '`driveMsId` to `enroll_file`; to add a Google row, pass its link to ' +
+        '`enroll_file` as `url`; to add a Smartsheet row, pass `provider` ' +
+        '"smartsheet" and its sheet id as `msId`. An account with none of them ' +
+        'connected gets nothing from it, which is not a statement about what ' +
+        'that user has. ' +
         // ENG-4271: an organisation's automatic-enrollment scope governs only
         // which files its own background sweep enrolls on its own; it never
         // stops `enroll_file` from adding any file listed here by hand.
@@ -83,8 +87,9 @@ export function registerListUnenrolledFilesTool(
         'anything about what the user does or does not have. A cursor stops ' +
         'working 30 minutes after the first page; if one is refused as ' +
         'SNAPSHOT_EXPIRED, RESTART from the first page instead of retrying it. ' +
-        'For Smartsheet pass `provider` "smartsheet": that reads the user\'s ' +
-        'own workspaces, folders and sheets live, one level at a time (open a ' +
+        'To browse Smartsheet live instead, pass `provider` "smartsheet": that ' +
+        'reads the user\'s own workspaces, folders and sheets one level at a ' +
+        'time, including sheets the stored list has not seen yet (open a ' +
         'workspace or folder with `parentType` and `parentId`), and has no ' +
         'cursor.',
       inputSchema: z.object({
@@ -93,8 +98,8 @@ export function registerListUnenrolledFilesTool(
           .optional()
           .describe(
             'Set to "smartsheet" to browse the user\'s Smartsheet account ' +
-              'instead of the stored OneDrive, SharePoint and Google Drive ' +
-              'list. Leave unset for those.',
+              'live instead of reading the stored list. Leave unset for the ' +
+              'stored list, which covers every connected provider.',
           ),
         parentType: z
           .enum(['workspace', 'folder'])

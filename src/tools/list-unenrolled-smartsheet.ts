@@ -10,12 +10,13 @@ import type {
 import { smartsheetIdentityLine } from './list-unenrolled-render.js';
 
 /**
- * `list_unenrolled_files` for Smartsheet.
+ * `list_unenrolled_files` with `provider` "smartsheet": the live browse.
  *
- * Smartsheet has no stored inventory to list from, so this reads the user's
- * own workspaces, folders and sheets live, one level at a time, and sets the
- * sheets Rockhopper already holds apart from the ones it does not. A listing
- * that cannot be read is a refusal that says so, never an empty one.
+ * The stored list (no `provider`) already carries the Smartsheet sheets the
+ * inventory has recorded. This reads the user's own workspaces, folders and
+ * sheets live instead, one level at a time, and sets the sheets Rockhopper
+ * already holds apart from the ones it does not. A listing that cannot be
+ * read is a refusal that says so, never an empty one.
  */
 
 interface ToolResult {
