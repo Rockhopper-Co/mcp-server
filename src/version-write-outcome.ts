@@ -63,7 +63,6 @@ export async function awaitVersionWrite(
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const intervalMs = opts.intervalMs ?? DEFAULT_INTERVAL_MS;
   const sleep = opts.sleep ?? realSleep;
-  let last: PendingWriteMarker = submission.pendingWrite;
   for (let waited = 0; ; waited += intervalMs) {
     const marker = (await api.getEnrolledFile(fileMsId)).pendingWrite ?? null;
     if (marker === null) return { kind: 'completed' };
@@ -75,11 +74,15 @@ export async function awaitVersionWrite(
         error: marker.error ?? null,
       };
     }
-    last = marker;
-    if (waited >= timeoutMs) break;
+    if (waited >= timeoutMs) {
+      return {
+        kind: 'running',
+        status: marker.status,
+        reason: marker.reason ?? null,
+      };
+    }
     await sleep(intervalMs);
   }
-  return { kind: 'running', status: last.status, reason: last.reason ?? null };
 }
 
 /**
