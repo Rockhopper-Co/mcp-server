@@ -680,10 +680,12 @@ describe('list_unenrolled_files — an account this inventory does not serve (EN
    * OneDrive/SharePoint answer to a Google customer's question and only finds
    * out from the refusal. `enroll_file` already states it this way.
    */
-  it('states the scope in the tool description — ENG-6410 widened it to Google', () => {
+  it('states the scope in the tool description — widened to Google, then Smartsheet', () => {
     const { call } = handlerFor(createMockApiClient());
 
-    expect(call?.[1].description).toMatch(/OneDrive and SharePoint \(Microsoft\) and Google Drive/);
+    expect(call?.[1].description).toMatch(
+      /OneDrive and SharePoint \(Microsoft\), Google Drive and Smartsheet/,
+    );
     expect(call?.[1].description).not.toMatch(/MICROSOFT ONLY/);
   });
 });
