@@ -141,8 +141,11 @@ export function registerGetCellHistoryTool(
         'document or slide deck (a Word document, a PowerPoint deck). The ' +
         'anchorId is the `anchorProviderId` a document change carries in ' +
         'get_unattributed_changes (shown in parentheses after each change). ' +
-        'A Smartsheet cell has no A1 address: name it by `rowAnchorId` + ' +
-        '`columnAnchorId` (the ids of its row and its column) instead. ' +
+        'A Smartsheet cell takes `sheetName` + `cellAddress` too, as the ' +
+        'change list shows it (B5 or Plan!B5). That address is where the ' +
+        'cell sits now, so ask a moved row by its new address. ' +
+        '`rowAnchorId` + `columnAnchorId` (the ids of its row and its ' +
+        'column) also name a Smartsheet cell. ' +
         'A cell address on a document, or an anchorId on a spreadsheet, ' +
         'answers CELL_HISTORY_UNAVAILABLE, never an empty list. For a deck, ' +
         'the answer covers the changes recorded under that one id and says ' +

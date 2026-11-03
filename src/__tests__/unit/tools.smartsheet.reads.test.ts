@@ -198,6 +198,23 @@ describe('get_cell_history by row and column id', () => {
     expect(parse({ anchorId: 'a' })).toBe(true);
   });
 
+  it('a Smartsheet cell is also read by the A1 the change list prints', async () => {
+    const api = createMockApiClient();
+    const [, , handler] = tool(api, 'get_cell_history');
+    await handler({
+      fileMsId: SHEET_FILE.platformId,
+      sheetName: 'Plan',
+      cellAddress: 'Plan!B5',
+    });
+    expect(api.getCellHistory).toHaveBeenCalledWith(
+      SHEET_FILE.platformId,
+      'Plan',
+      'B5',
+      expect.anything(),
+    );
+    expect(api.getSmartsheetCellHistory).not.toHaveBeenCalled();
+  });
+
   it('positive control: a Microsoft cell is still read through the A1 route', async () => {
     const api = createMockApiClient();
     const [, , handler] = tool(api, 'get_cell_history');
@@ -213,6 +230,14 @@ describe('comment locations', () => {
 
   it('a row-level Smartsheet comment reads as its row, a sheet-level one is labelled', () => {
     expect(commentLocation(chat('A5'), 'smartsheet_sheet')).toBe(' [row 5]');
+    // The sheet-qualified form imported comments carry, printed as the next
+    // call accepts it.
+    expect(commentLocation(chat('Plan!A5'), 'smartsheet_sheet')).toBe(
+      ' [row 5, Plan!A5]',
+    );
+    expect(commentLocation(chat('Plan!A1:B2'), 'smartsheet_sheet')).toBe(
+      ' [Plan!A1:B2]',
+    );
     expect(commentLocation(chat(null), 'smartsheet_sheet')).toBe(
       ' [whole sheet]',
     );

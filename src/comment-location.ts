@@ -32,11 +32,17 @@ export function isTaskPanePresentationId(providerAnchorId: string): boolean {
 /**
  * A Smartsheet discussion hangs on a ROW, or on the sheet as a whole. The
  * reference a row-level comment carries is the address of the row's first
- * cell, so the row number is what it says. A sheet-level comment has no
- * reference and gets a label, never a blank location.
+ * cell, so the row number is what it says. A sheet-qualified reference
+ * (`Plan!A5`) is printed beside the row, in the form `add_comment` and
+ * `get_cell_history` accept. A sheet-level comment has no reference and gets
+ * a label, never a blank location.
  */
 function smartsheetCommentLocation(c: FileChat): string {
   if (!c.cellReference) return ' [whole sheet]';
-  const row = /^[A-Za-z]{1,3}([1-9][0-9]*)$/.exec(c.cellReference.trim());
-  return row ? ` [row ${row[1]}]` : ` [${c.cellReference}]`;
+  const reference = c.cellReference.trim();
+  const bang = reference.lastIndexOf('!');
+  const address = bang < 0 ? reference : reference.slice(bang + 1);
+  const row = /^\$?[A-Za-z]{1,3}\$?([1-9][0-9]*)$/.exec(address);
+  if (!row) return ` [${c.cellReference}]`;
+  return bang < 0 ? ` [row ${row[1]}]` : ` [row ${row[1]}, ${reference}]`;
 }
