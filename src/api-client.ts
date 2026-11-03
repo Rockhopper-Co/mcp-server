@@ -21,6 +21,7 @@ import type {
   RockhopperId,
   Team,
   UserSummary,
+  VersionWriteSubmission,
   MicrosoftConnectHandoff,
   MicrosoftLinkStatus,
   GoogleLinkStatus,
@@ -1273,8 +1274,8 @@ export class ApiClient {
       patchVersion: number;
       description: string;
     };
-  }): Promise<FileVersion> {
-    return this.request<FileVersion>('/file-versions', {
+  }): Promise<VersionWriteSubmission> {
+    return this.request<VersionWriteSubmission>('/file-versions', {
       method: 'POST',
       body: JSON.stringify(body),
     });
@@ -1283,8 +1284,8 @@ export class ApiClient {
   async discardChanges(
     fileMsId: string,
     body: { description: string },
-  ): Promise<FileVersion> {
-    return this.request<FileVersion>(
+  ): Promise<VersionWriteSubmission> {
+    return this.request<VersionWriteSubmission>(
       `/file-versions/file/discard-live/${fileMsId}`,
       {
         method: 'POST',

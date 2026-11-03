@@ -61,6 +61,17 @@ export interface MockApiClient {
   cancelReview: Mock;
 }
 
+/** The queued version-write envelope `POST /file-versions` and discard answer. */
+export function queuedWrite(op: string, jobId: string) {
+  const pendingWrite = {
+    op,
+    jobId,
+    status: 'processing',
+    startedAt: '2026-01-02T00:00:00.000Z',
+  };
+  return { status: 'queued' as const, jobId, pendingWrite };
+}
+
 export function createMockApiClient(): MockApiClient {
   const api: MockApiClient = {
     // ENG-2816 — a FIXED key, deliberately. Every mock client derives the same
@@ -369,24 +380,14 @@ export function createMockApiClient(): MockApiClient {
       platformId: 'file-1',
       name: 'Renamed.xlsx',
     }),
-    createVersion: vi.fn().mockResolvedValue({
-      internalId: 102,
-      majorVersion: 1,
-      minorVersion: 1,
-      patchVersion: 0,
-      description: 'New version',
-      createdAt: '2026-01-02T00:00:00Z',
-      wasDiscarded: false,
-      wasReverted: false,
-    }),
-    discardChanges: vi.fn().mockResolvedValue({
-      internalId: 103,
-      majorVersion: 0,
-      minorVersion: 0,
-      patchVersion: 0,
-      description: 'Discarded',
-      wasDiscarded: true,
-    }),
+    // The backend QUEUES both writes. The default `getEnrolledFile` row has
+    // no marker, which is the completed state the tools wait for.
+    createVersion: vi.fn().mockResolvedValue(
+      queuedWrite('create-version', 'create-version:file-1'),
+    ),
+    discardChanges: vi.fn().mockResolvedValue(
+      queuedWrite('discard', 'discard:file-1'),
+    ),
     cancelReview: vi.fn().mockResolvedValue({
       id: 401,
       subject: 'Review Q1',
