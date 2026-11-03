@@ -300,12 +300,14 @@ describe('ApiClient', () => {
 
       const result = await client.getCellHistory('file-1', 'Financing', 'B5');
 
+      // ENG-8331 — an older backend sends no aiLinks; the schema reads [].
       expect(result).toEqual([
         {
           versionId: 'v3.0.0',
           value: '$18,500,000',
           changedBy: 'Sebastian Perez Lawrence',
           changedAt: '2026-05-12T15:42:56.676Z',
+          aiLinks: [],
         },
       ]);
 
@@ -330,7 +332,7 @@ describe('ApiClient', () => {
 
       const result = await client.getCellHistory('file-1', 'Sheet1', 'A1');
 
-      expect(result).toEqual([widened]);
+      expect(result).toEqual([{ ...widened, aiLinks: [] }]);
 
       vi.unstubAllGlobals();
     });

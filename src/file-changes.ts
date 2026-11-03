@@ -11,8 +11,8 @@ import {
 import { readLedgerPage, readLedgerSheet } from './ledger-changes.js';
 import { assertSheetExists } from './sheet-catalogue.js';
 import type {
-  DocumentChangesResponse,
   EnrolledFile,
+  LinkCheckedDocumentChanges,
   PaginatedUnattributedResponse,
   UnattributedChange,
 } from './types.js';
@@ -40,8 +40,10 @@ export type FileChangesRead =
       file: EnrolledFile;
       sheetName: string;
       changes: UnattributedChange[];
+      /** ENG-8332 — false when the backend could not check AI links. */
+      aiLinksAvailable: boolean;
     }
-  | { kind: 'document'; file: EnrolledFile; response: DocumentChangesResponse }
+  | { kind: 'document'; file: EnrolledFile; response: LinkCheckedDocumentChanges }
   | {
       kind: 'unavailable';
       file: EnrolledFile;
@@ -104,14 +106,24 @@ export async function readFileChanges(
 
   // ENG-6757 — both spreadsheet modes read the ledger compare routes.
   if (opts.sheetName) {
-    const changes = await readLedgerSheet(api, file.internalId, opts.sheetName);
+    const { changes, aiLinksAvailable } = await readLedgerSheet(
+      api,
+      file.internalId,
+      opts.sheetName,
+    );
     // ENG-2824 / ENG-4347 — only an empty answer is ambiguous, so only it pays
     // for the version read and then the sheet-existence check, in that order.
     if (changes.length === 0) {
       assertEnrollmentComplete(fileMsId, await api.getFileVersions(fileMsId));
       await assertSheetExists(api, file, opts.sheetName);
     }
-    return { kind: 'spreadsheet_sheet', file, sheetName: opts.sheetName, changes };
+    return {
+      kind: 'spreadsheet_sheet',
+      file,
+      sheetName: opts.sheetName,
+      changes,
+      aiLinksAvailable,
+    };
   }
 
   // ENG-4346 — `totalCount` is a FILE total only when no cursor is passed;
