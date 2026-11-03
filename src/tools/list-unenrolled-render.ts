@@ -28,6 +28,7 @@ import type {
 const INAPPLICABLE: Readonly<Record<string, { covers: string; lacks: string }>> = {
   NO_MICROSOFT_TENANT: { covers: 'OneDrive and SharePoint', lacks: 'no Microsoft link' },
   NO_GOOGLE_GRANT: { covers: 'Google Drive', lacks: 'no Google connection' },
+  NO_SMARTSHEET_LINK: { covers: 'Smartsheet', lacks: 'no Smartsheet connection' },
 };
 
 /**
@@ -69,10 +70,10 @@ function readerName(provider: FileProvider): string {
 
 /**
  * "workbook" while only Microsoft serves the caller, exactly as before; "file"
- * once a Google lane does, because that lane lists Docs and Slides too.
+ * once a Google or Smartsheet lane does: those list Docs, Slides and sheets.
  */
 function noun(freshness: DriveInventoryFreshness): string {
-  return servedLanes(freshness).some((lane) => lane.provider === 'google')
+  return servedLanes(freshness).some((lane) => lane.provider !== 'microsoft')
     ? 'file'
     : 'workbook';
 }
