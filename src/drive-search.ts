@@ -91,6 +91,8 @@ export type DriveSearchOutcome =
    * Google's: no Microsoft link, and `microsoft_link_status` cannot see it.
    */
   | 'google_not_connected'
+  /** No usable Smartsheet connection; the connect link is in the result. */
+  | 'smartsheet_not_connected'
   /**
    * The tenant has not approved Rockhopper and only an administrator can.
    * Its OWN outcome and not a flavour of `microsoft_not_connected`, because
@@ -333,6 +335,15 @@ export function googleNotConnectedText(error: unknown): string {
   return (
     `${remedy} Ask the user to run \`connect_google\` to connect Google ` +
     'Drive, then search again. Do not compose a sign-in link yourself.'
+  );
+}
+
+/** The no-link fallback when Rockhopper could not build a Smartsheet link. */
+export function smartsheetNotConnectedText(): string {
+  return (
+    'This user has no usable Smartsheet connection, and Rockhopper could not ' +
+    'produce a sign-in link just now. Ask them to run `connect_smartsheet`. ' +
+    'Do not compose a sign-in link yourself.'
   );
 }
 

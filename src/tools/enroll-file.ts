@@ -15,6 +15,10 @@ import type {
   ServerEnrollmentOutcome,
 } from '../types.js';
 import {
+  classifySmartsheetEnrollment,
+  enrolledSheetIds,
+} from '../smartsheet-discovery.js';
+import {
   ENROLL_ANNOTATIONS,
   ENROLL_DESCRIPTION,
   ENROLL_INPUT_SCHEMA,
@@ -61,6 +65,12 @@ interface Target {
   state: EnrollmentState;
 }
 
+function classify(error: unknown, provider: 'smartsheet' | undefined) {
+  const sheet =
+    provider === 'smartsheet' ? classifySmartsheetEnrollment(error) : null;
+  return sheet ?? classifyEnrollmentFailure(error);
+}
+
 export function registerEnrollFileTool(server: McpServer, api: ApiClient): void {
   /**
    * Turn whichever input arrived into `(identity, current state)`.
@@ -73,7 +83,22 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
     url?: string;
     driveMsId?: string;
     msId?: string;
+    provider?: 'smartsheet';
   }): Promise<Target> {
+    if (args.provider === 'smartsheet') {
+      // A sheet is named by its id alone. For a sheet not yet added the
+      // backend stamps the real name from Smartsheet during the enroll, so
+      // the empty name here is a placeholder that never reaches a user.
+      const sheetId = (args.msId as string).trim();
+      const enrolled = await enrolledSheetIds(api);
+      return {
+        provider: 'smartsheet',
+        fileId: sheetId,
+        driveMsId: '',
+        name: enrolled.get(sheetId) ?? '',
+        state: enrolled.has(sheetId) ? 'enrolled' : 'not_enrolled',
+      };
+    }
     if (args.url) {
       const resolved = await api.resolveEnrollmentUrl(args.url);
       return {
@@ -174,9 +199,21 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
       inputSchema: ENROLL_INPUT_SCHEMA,
       annotations: ENROLL_ANNOTATIONS,
     },
-    async ({ url, driveMsId, msId, share_with, confirm_restore }) => {
+    async ({ url, driveMsId, msId, provider, share_with, confirm_restore }) => {
       const hasUrl = !!url?.trim();
-      const hasIds = !!msId?.trim() && !!driveMsId?.trim();
+      const isSheet = provider === 'smartsheet';
+      if (isSheet && (hasUrl || !!driveMsId?.trim() || !msId?.trim())) {
+        return toolResult({
+          outcome: 'unresolvable',
+          isError: true,
+          text:
+            'A Smartsheet sheet is added with `provider` "smartsheet" and the ' +
+            'sheet id as `msId` — nothing else. Find the id with ' +
+            '`search_drive_files` or `list_unenrolled_files`. Nothing was ' +
+            'changed.',
+        });
+      }
+      const hasIds = isSheet || (!!msId?.trim() && !!driveMsId?.trim());
 
       if (hasUrl && hasIds) {
         return toolResult({
@@ -209,9 +246,9 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
 
       let target: Target;
       try {
-        target = await resolveTarget({ url, driveMsId, msId });
+        target = await resolveTarget({ url, driveMsId, msId, provider });
       } catch (error) {
-        const { outcome, message } = classifyEnrollmentFailure(error);
+        const { outcome, message } = classify(error, provider);
         return toolResult({
           outcome: outcome === 'error' ? 'unresolvable' : outcome,
           text:
@@ -297,7 +334,7 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
             isError: true,
           });
         }
-        const { outcome, message } = classifyEnrollmentFailure(error);
+        const { outcome, message } = classify(error, provider);
         return toolResult({
           outcome: outcome === 'error' ? 'unresolvable' : outcome,
           text:

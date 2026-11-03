@@ -40,6 +40,15 @@ export const ENROLL_INPUT_SCHEMA = z.object({
       'Microsoft drive-item id. Must be sent together with `driveMsId`, and ' +
         'never alongside `url`.',
     ),
+  provider: z
+    .enum(['smartsheet'])
+    .optional()
+    .describe(
+      'Set to "smartsheet" to add a Smartsheet sheet: send it with `msId` ' +
+        'set to the sheet id from `search_drive_files` or ' +
+        '`list_unenrolled_files`, and no `driveMsId` and no `url`. Leave it ' +
+        'unset for every other file.',
+    ),
   /**
    * Optional in the SCHEMA and required by the HANDLER, deliberately.
    *
@@ -106,7 +115,9 @@ export const ENROLL_DESCRIPTION =
   'them confirm which candidate they meant, and pass back exactly what that ' +
   'confirmation returned — the `driveMsId` + `msId` pair for a Microsoft ' +
   'file, or the `url` for a Google one. Never enroll a file the user has not ' +
-  'named.';
+  'named. ' +
+  'A Smartsheet sheet is added with `provider` "smartsheet" and its sheet id ' +
+  'as `msId`; Smartsheet reports and dashboards are not tracked.';
 
 export const ENROLL_ANNOTATIONS = {
   readOnlyHint: false,

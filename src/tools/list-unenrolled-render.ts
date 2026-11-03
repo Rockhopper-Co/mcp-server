@@ -28,6 +28,7 @@ import type {
 const INAPPLICABLE: Readonly<Record<string, { covers: string; lacks: string }>> = {
   NO_MICROSOFT_TENANT: { covers: 'OneDrive and SharePoint', lacks: 'no Microsoft link' },
   NO_GOOGLE_GRANT: { covers: 'Google Drive', lacks: 'no Google connection' },
+  NO_SMARTSHEET_LINK: { covers: 'Smartsheet', lacks: 'no Smartsheet connection' },
 };
 
 /**
@@ -58,6 +59,8 @@ function readerName(provider: FileProvider): string {
       return 'Microsoft';
     case 'google':
       return 'Google';
+    case 'smartsheet':
+      return 'Smartsheet';
     default: {
       const unhandled: never = provider;
       return String(unhandled);
@@ -67,10 +70,10 @@ function readerName(provider: FileProvider): string {
 
 /**
  * "workbook" while only Microsoft serves the caller, exactly as before; "file"
- * once a Google lane does, because that lane lists Docs and Slides too.
+ * once a Google or Smartsheet lane does: those list Docs, Slides and sheets.
  */
 function noun(freshness: DriveInventoryFreshness): string {
-  return servedLanes(freshness).some((lane) => lane.provider === 'google')
+  return servedLanes(freshness).some((lane) => lane.provider !== 'microsoft')
     ? 'file'
     : 'workbook';
 }
@@ -108,11 +111,21 @@ function identityLine(item: DriveInventoryItem): string {
         ? `  provider: google, fileId: ${item.msId} — enroll with url: ${item.webUrl}`
         : `  provider: google, fileId: ${item.msId} — no link recorded; ask ` +
             'the user for its link and pass that to `enroll_file` as `url`';
+    case 'smartsheet':
+      return smartsheetIdentityLine(item.msId);
     default: {
       const unhandled: never = provider;
       return `  provider: ${String(unhandled)}, fileId: ${item.msId}`;
     }
   }
+}
+
+/** The line `enroll_file` acts on for a Smartsheet sheet. */
+export function smartsheetIdentityLine(sheetId: string): string {
+  return (
+    `  provider: smartsheet, sheetId: ${sheetId} — enroll with ` +
+    `provider="smartsheet" and msId="${sheetId}"`
+  );
 }
 
 export function renderFound(
@@ -177,6 +190,13 @@ const GOOGLE_LINK_FAILURE_TEXT =
   'yourself. This list will stay empty until that is done, which is NOT the ' +
   'same as having nothing to add.';
 
+/** A Smartsheet lane whose refresh could not use the user's connection. */
+const SMARTSHEET_LINK_FAILURE_TEXT =
+  'Rockhopper cannot see this user\'s Smartsheet sheets: their Smartsheet ' +
+  'account is not connected, or its connection needs to be made again. Ask ' +
+  'the user to run `connect_smartsheet`. This list will stay empty until ' +
+  'that is done, which is NOT the same as having nothing to add.';
+
 /** The first serving lane whose last refresh failed on its link, as text. */
 function linkFailureText(freshness: DriveInventoryFreshness): string | null {
   for (const lane of servedLanes(freshness)) {
@@ -187,6 +207,8 @@ function linkFailureText(freshness: DriveInventoryFreshness): string | null {
         return GRAPH_LINK_FAILURE_TEXT[failure];
       case 'google':
         return GOOGLE_LINK_FAILURE_TEXT;
+      case 'smartsheet':
+        return SMARTSHEET_LINK_FAILURE_TEXT;
       default: {
         const unhandled: never = lane.provider;
         return String(unhandled);
