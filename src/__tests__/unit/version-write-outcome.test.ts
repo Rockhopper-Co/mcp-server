@@ -50,7 +50,7 @@ describe('awaitVersionWrite', () => {
       sleep,
       intervalMs: 10,
     });
-    expect(outcome).toEqual({ kind: 'completed' });
+    expect(outcome).toEqual({ kind: 'completed', refused: [] });
     // It read the row three times: the queued envelope alone decided nothing.
     expect(api.getEnrolledFile).toHaveBeenCalledTimes(3);
     expect(sleep).toHaveBeenCalledTimes(2);
