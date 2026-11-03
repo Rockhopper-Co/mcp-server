@@ -1,8 +1,9 @@
 import type {
   EnrolledFile,
-  PendingWriteMarker,
   VersionWriteSubmission,
+  WriteRefusedKey,
 } from './types.js';
+import { refusedBy, refusedSentence, sameEpisode } from './write-refusals.js';
 
 /**
  * A version write (create-version or discard) is QUEUED by the backend: the
@@ -15,13 +16,14 @@ import type {
  * So a tool reports what it OBSERVED on that marker within a bounded wait,
  * never the submission as if it were the outcome.
  *
- * Not covered: which cells a Smartsheet write refused. The backend serves
- * them on no record this client can read, so a completed write here says
- * nothing about them either way.
+ * A write can complete while some items stay unchanged (a locked Smartsheet
+ * cell). The row that clears the marker carries `lastWrite`, and when its
+ * episode is this write's, a completed outcome names those items.
  */
 export type VersionWriteOutcome =
   | { kind: 'no_op'; message: string }
-  | { kind: 'completed' }
+  /** `refused`: the items this write reported it could not change. */
+  | { kind: 'completed'; refused: WriteRefusedKey[] }
   | { kind: 'failed'; reason: string | null; error: string | null }
   /** Another write on the file has started since this one ended. */
   | { kind: 'superseded' }
@@ -44,13 +46,6 @@ const DEFAULT_INTERVAL_MS = 1_000;
 const realSleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/**
- * The job id is deterministic per op and file, so it repeats across writes;
- * `startedAt` is what tells this write's marker from a later one's.
- */
-const isOurs = (marker: PendingWriteMarker, submitted: PendingWriteMarker) =>
-  marker.jobId === submitted.jobId && marker.startedAt === submitted.startedAt;
-
 export async function awaitVersionWrite(
   api: OutcomeReader,
   fileMsId: string,
@@ -64,9 +59,16 @@ export async function awaitVersionWrite(
   const intervalMs = opts.intervalMs ?? DEFAULT_INTERVAL_MS;
   const sleep = opts.sleep ?? realSleep;
   for (let waited = 0; ; waited += intervalMs) {
-    const marker = (await api.getEnrolledFile(fileMsId)).pendingWrite ?? null;
-    if (marker === null) return { kind: 'completed' };
-    if (!isOurs(marker, submission.pendingWrite)) return { kind: 'superseded' };
+    const file = await api.getEnrolledFile(fileMsId);
+    const marker = file.pendingWrite ?? null;
+    if (marker === null) {
+      const refused = refusedBy(file.lastWrite, submission.pendingWrite);
+      return { kind: 'completed', refused };
+    }
+    // The job id repeats across writes; `startedAt` tells ours from a later one.
+    if (!sameEpisode(marker, submission.pendingWrite)) {
+      return { kind: 'superseded' };
+    }
     if (marker.status === 'failed') {
       return {
         kind: 'failed',
@@ -98,8 +100,13 @@ export function versionWriteOutcomeText(
   switch (outcome.kind) {
     case 'no_op':
       return { text: outcome.message, isError: true };
-    case 'completed':
-      return { text: `${done} for "${fileName}".`, isError: false };
+    case 'completed': {
+      const refused = refusedSentence(outcome.refused);
+      return {
+        text: `${done} for "${fileName}".${refused ? ` ${refused}` : ''}`,
+        isError: false,
+      };
+    }
     case 'failed': {
       const why = [outcome.reason, outcome.error].filter(Boolean).join(': ');
       return {
