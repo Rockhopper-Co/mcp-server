@@ -16,6 +16,10 @@ import {
   queuedWrite,
 } from './test-helpers.js';
 
+// ENG-8566: `hasUncommittedChanges` is the flag the backend's Smartsheet
+// ledger writer sets when an edit lands (and a commit or full discard clears).
+// Before that fix no lane set it for a sheet, so `true` here described a state
+// production never reached; the refusal below pins what `false` does.
 const sheet: EnrolledFile = {
   internalId: 7,
   platformId: 'sheet-1',
@@ -113,6 +117,26 @@ async function call(api: Api, tool: 'create_version' | 'discard_changes') {
       : { fileMsId: 'sheet-1', description: 'why' },
   );
 }
+
+describe('a Smartsheet sheet with no uncommitted changes (ENG-8566)', () => {
+  const clean: EnrolledFile = { ...sheet, hasUncommittedChanges: false };
+
+  it.each(['create_version', 'discard_changes'] as const)(
+    '%s refuses before asking the backend, naming the sheet',
+    async (tool) => {
+      const api = createMockApiClient();
+      api.getEnrolledFile.mockResolvedValue(clean);
+      const result = await call(api, tool);
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain(
+        'File "Close Tracker" has no uncommitted changes',
+      );
+      // The refusal is the flag gate, not a backend answer.
+      expect(api.createVersion).not.toHaveBeenCalled();
+      expect(api.discardChanges).not.toHaveBeenCalled();
+    },
+  );
+});
 
 describe('discard_changes on a Smartsheet sheet', () => {
   it('says the discard failed when the write fails after it was queued', async () => {
