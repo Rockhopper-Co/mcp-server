@@ -21,9 +21,9 @@ import type {
  * row and the id of its column.
  *
  * A Smartsheet cell has no A1 address in the change record, and a row that is
- * moved keeps its id, so the row and column ids are the only stable name it
- * has. Every exit is rows, an empty answer about this one cell, or a named
- * refusal.
+ * moved keeps its id, so the row and column ids are its stable name. The
+ * sheetName + cellAddress arm asks by the cell's current address instead.
+ * Every exit is rows, an empty answer about this one cell, or a named refusal.
  */
 
 interface ToolResult {
