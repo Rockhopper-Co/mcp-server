@@ -6,17 +6,17 @@ import { renderMentions } from '../mentions.js';
 import { commentLocation } from '../comment-location.js';
 import type { ToolAnnotations } from './tool-annotations.js';
 
-function formatComment(c: FileChat, indent = 0): string {
+function formatComment(c: FileChat, indent = 0, fileType?: string): string {
   const prefix = '  '.repeat(indent);
   const author = c.authorName || c.authorEmail || 'Unknown';
-  const cell = commentLocation(c);
+  const cell = commentLocation(c, fileType);
   const resolved = c.resolved ? ' (resolved)' : '';
   // ENG-4345 — `reply_to_comment` and `resolve_comment` take this id as their
   // `chatId`, and this is the only place a caller can read one for a thread it
   // did not create itself. Same `(id: N)` shape `add_comment` answers with.
   let line = `${prefix}- **${author}**${cell}${resolved}: ${renderMentions(c.message)} — ${c.createdAt} (id: ${c.internalId})`;
   if (c.replies?.length) {
-    line += '\n' + c.replies.map((r) => formatComment(r, indent + 1)).join('\n');
+    line += '\n' + c.replies.map((r) => formatComment(r, indent + 1, fileType)).join('\n');
   }
   return line;
 }
@@ -46,7 +46,15 @@ export function registerGetCommentsTool(
     async ({ fileMsId }) => {
       try {
         const comments = await api.getFileComments(fileMsId);
-        const summary = comments.map((c) => formatComment(c)).join('\n');
+        // The file type decides how a location reads (a Smartsheet comment
+        // sits on a row). Best effort: without it the generic label is used.
+        const fileType = await api
+          .getEnrolledFile(fileMsId)
+          .then((f) => f.fileType)
+          .catch(() => undefined);
+        const summary = comments
+          .map((c) => formatComment(c, 0, fileType))
+          .join('\n');
 
         return {
           content: [

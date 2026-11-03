@@ -16,6 +16,12 @@ export interface MockApiClient {
   beginGoogleConnect: Mock;
   getGoogleLink: Mock;
   unlinkGoogle: Mock;
+  beginSmartsheetConnect: Mock;
+  getSmartsheetLink: Mock;
+  unlinkSmartsheet: Mock;
+  browseSmartsheet: Mock;
+  searchSmartsheet: Mock;
+  getSmartsheetCellHistory: Mock;
   listEnrolledFiles: Mock;
   listDriveInventory: Mock;
   searchDriveFiles: Mock;
@@ -53,6 +59,17 @@ export interface MockApiClient {
   createVersion: Mock;
   discardChanges: Mock;
   cancelReview: Mock;
+}
+
+/** The queued version-write envelope `POST /file-versions` and discard answer. */
+export function queuedWrite(op: string, jobId: string) {
+  const pendingWrite = {
+    op,
+    jobId,
+    status: 'processing',
+    startedAt: '2026-01-02T00:00:00.000Z',
+  };
+  return { status: 'queued' as const, jobId, pendingWrite };
 }
 
 export function createMockApiClient(): MockApiClient {
@@ -106,6 +123,30 @@ export function createMockApiClient(): MockApiClient {
       .fn()
       .mockResolvedValue({ linked: false, googleAccountLabel: null }),
     unlinkGoogle: vi.fn().mockResolvedValue({ linked: false, removed: true }),
+    // The Smartsheet link and discovery calls. Not connected by default.
+    beginSmartsheetConnect: vi.fn().mockResolvedValue({
+      authorizeUrl: 'https://app.smartsheet.com/b/authorize?client_id=real-ss',
+      expiresAt: '2026-11-01T21:00:00.000Z',
+    }),
+    getSmartsheetLink: vi
+      .fn()
+      .mockResolvedValue({ linked: false, links: [] }),
+    unlinkSmartsheet: vi
+      .fn()
+      .mockResolvedValue({ linked: false, removed: true }),
+    browseSmartsheet: vi.fn().mockResolvedValue({
+      parent: { parentType: 'home', parentId: null },
+      items: [],
+    }),
+    searchSmartsheet: vi
+      .fn()
+      .mockResolvedValue({ query: '', totalCount: 0, items: [] }),
+    getSmartsheetCellHistory: vi.fn().mockResolvedValue({
+      rowAnchorId: 'row',
+      columnAnchorId: 'col',
+      history: [],
+      truncated: false,
+    }),
     listEnrolledFiles: vi.fn().mockResolvedValue([
       {
         internalId: 11,
@@ -339,24 +380,14 @@ export function createMockApiClient(): MockApiClient {
       platformId: 'file-1',
       name: 'Renamed.xlsx',
     }),
-    createVersion: vi.fn().mockResolvedValue({
-      internalId: 102,
-      majorVersion: 1,
-      minorVersion: 1,
-      patchVersion: 0,
-      description: 'New version',
-      createdAt: '2026-01-02T00:00:00Z',
-      wasDiscarded: false,
-      wasReverted: false,
-    }),
-    discardChanges: vi.fn().mockResolvedValue({
-      internalId: 103,
-      majorVersion: 0,
-      minorVersion: 0,
-      patchVersion: 0,
-      description: 'Discarded',
-      wasDiscarded: true,
-    }),
+    // The backend QUEUES both writes. The default `getEnrolledFile` row has
+    // no marker, which is the completed state the tools wait for.
+    createVersion: vi.fn().mockResolvedValue(
+      queuedWrite('create-version', 'create-version:file-1'),
+    ),
+    discardChanges: vi.fn().mockResolvedValue(
+      queuedWrite('discard', 'discard:file-1'),
+    ),
     cancelReview: vi.fn().mockResolvedValue({
       id: 401,
       subject: 'Review Q1',

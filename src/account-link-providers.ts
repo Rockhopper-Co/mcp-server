@@ -1,5 +1,5 @@
 import type { ApiClient } from './api-client.js';
-import type { AccountConnectHandoff } from './types.js';
+import type { AccountConnectHandoff, FileProvider } from './types.js';
 
 /**
  * ENG-6414 — the ONLY per-provider part of the account-link tools.
@@ -15,13 +15,18 @@ export interface AccountLinkSummary {
   account: string | null;
   grantedScopes: string[];
   linkedAt: string | null;
+  /**
+   * Set when the stored connection exists but is not usable, with the one next
+   * step that applies. Replaces the plain "not connected" line.
+   */
+  note?: string;
 }
 
 export interface AccountLinkProvider {
   /** Tool-name stem: `connect_<key>`, `<key>_link_status`, `disconnect_<key>`. */
-  key: 'microsoft' | 'google';
+  key: 'microsoft' | 'google' | 'smartsheet';
   /** The noun a user reads: "your Microsoft account". */
-  label: 'Microsoft' | 'Google';
+  label: 'Microsoft' | 'Google' | 'Smartsheet';
   /** What connecting lets Rockhopper do, for the connect tool's description. */
   purpose: string;
   statusDescription: string;
@@ -79,10 +84,92 @@ export const GOOGLE_LINK: AccountLinkProvider = {
   unlink: (api) => api.unlinkGoogle(),
 };
 
+/**
+ * What a stored Smartsheet connection that is not `connected` means to the
+ * user. Matched exactly: a status this build does not know reads as plainly
+ * connected-but-unclear, never as a guess.
+ */
+function smartsheetNote(status: string): string | undefined {
+  switch (status) {
+    case 'needs_reconnect':
+      return (
+        'A Smartsheet account is on file but Rockhopper can no longer use it. ' +
+        'Run `connect_smartsheet` to connect it again.'
+      );
+    case 'scopes_insufficient':
+      return (
+        'A Smartsheet account is on file but it did not grant the access ' +
+        'Rockhopper needs. Run `connect_smartsheet` and approve every item ' +
+        'on the consent screen.'
+      );
+    case 'plan_lacks_api_access':
+      return (
+        'The connected Smartsheet account is on a plan without API access, ' +
+        'so Rockhopper cannot read its sheets. Connecting again will not ' +
+        'change that; the account needs a plan that includes the API.'
+      );
+    default:
+      return undefined;
+  }
+}
+
+export const SMARTSHEET_LINK: AccountLinkProvider = {
+  key: 'smartsheet',
+  label: 'Smartsheet',
+  purpose: 'search and read their Smartsheet sheets',
+  statusDescription:
+    'Check whether the user has connected a Smartsheet account, which ' +
+    'account it is, and whether the connection is usable. Never returns any ' +
+    'token.',
+  readOnlyConsent: false,
+  begin: (api) => api.beginSmartsheetConnect(),
+  status: async (api) => {
+    const s = await api.getSmartsheetLink();
+    const link = s.links.find((l) => l.status === 'connected') ?? s.links[0];
+    if (!link) {
+      return {
+        linked: false,
+        account: null,
+        grantedScopes: [],
+        linkedAt: null,
+      };
+    }
+    const note = smartsheetNote(link.status);
+    return {
+      linked: note === undefined,
+      account: link.accountLabel,
+      grantedScopes: [],
+      linkedAt: link.linkedAt,
+      ...(note === undefined ? {} : { note }),
+    };
+  },
+  unlink: (api) => api.unlinkSmartsheet(),
+};
+
 export const ACCOUNT_LINK_PROVIDERS: readonly AccountLinkProvider[] = [
   MICROSOFT_LINK,
   GOOGLE_LINK,
+  SMARTSHEET_LINK,
 ];
+
+/**
+ * The link row for a file provider. Total over the union: a provider added
+ * without a row fails to compile here instead of taking another's remedy.
+ */
+export function accountLinkFor(provider: FileProvider): AccountLinkProvider {
+  switch (provider) {
+    case 'microsoft':
+      return MICROSOFT_LINK;
+    case 'google':
+      return GOOGLE_LINK;
+    case 'smartsheet':
+      return SMARTSHEET_LINK;
+    default: {
+      const unhandled: never = provider;
+      throw new Error(`Unknown file provider: ${String(unhandled)}`);
+    }
+  }
+}
 
 export const statusToolName = (p: AccountLinkProvider): string =>
   `${p.key}_link_status`;

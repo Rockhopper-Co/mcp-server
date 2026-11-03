@@ -127,7 +127,7 @@ export function registerPrompts(server: McpServer, api: ApiClient): void {
         ? unresolved
             .map((c) => {
               const author = c.authorName || c.authorEmail || 'Unknown';
-              const cell = commentLocation(c);
+              const cell = commentLocation(c, file.fileType);
               const replyCount = c.replies?.length || 0;
               return (
                 `- **${author}**${cell}: "${renderMentions(c.message)}" (${c.createdAt})` +

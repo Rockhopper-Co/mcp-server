@@ -109,7 +109,7 @@ export interface ResolvedFileUrl {
 }
 
 /** Which storage a file lives in. */
-export type FileProvider = 'microsoft' | 'google';
+export type FileProvider = 'microsoft' | 'google' | 'smartsheet';
 
 /**
  * ENG-4958 — one file to enroll, in whichever id space its provider uses.
@@ -441,7 +441,59 @@ export interface EnrolledFile {
   driveMsId: string;
   name: string;
   hasUncommittedChanges: boolean | null;
+  /**
+   * The in-flight version-write marker: present while a create-version or
+   * discard runs, cleared when it completes, left `failed` when it fails.
+   * Optional: absent and null both mean no write is in flight.
+   */
+  pendingWrite?: PendingWriteMarker | null;
+  /**
+   * The last COMPLETED version write, stored by the same update that clears
+   * `pendingWrite`. Optional: older backends do not serve it.
+   */
+  lastWrite?: LastWrite | null;
 }
+
+/** One item a completed write could not change, and the provider's reason. */
+export interface WriteRefusedKey {
+  /** The item's change key, e.g. `smartsheet:cell:<rowId>:<columnId>`. */
+  key: string;
+  /** e.g. 'locked', 'scopes_insufficient', 'read_only', 'row_gone'. */
+  reason: string;
+}
+
+/**
+ * The backend's `lastWrite`. `jobId` + `startedAt` are the cleared marker's
+ * own, so they tell this write from a later one. `refusedKeys`: `[]` none
+ * refused, `null` not reported.
+ */
+export interface LastWrite {
+  op: string;
+  jobId: string;
+  startedAt: string;
+  completedAt: string;
+  refusedKeys: WriteRefusedKey[] | null;
+}
+
+/** The backend's `PendingWrite` marker, the fields this client reads. */
+export interface PendingWriteMarker {
+  op: string;
+  jobId: string;
+  /** 'processing' | 'retrying' | 'waiting' | 'cancelling' | 'failed'. */
+  status: string;
+  startedAt: string;
+  /** Why it failed, or what a waiting write is waiting out. */
+  reason?: string | null;
+  error?: string | null;
+}
+
+/**
+ * What `POST /file-versions` and `POST /file-versions/file/discard-live/:id`
+ * answer: the queued write, or an explicit no-op with the backend's sentence.
+ */
+export type VersionWriteSubmission =
+  | { status: 'queued'; jobId: string; pendingWrite: PendingWriteMarker }
+  | { noOp: true; reason: string; message: string };
 
 export interface FileVersion {
   internalId: number;
