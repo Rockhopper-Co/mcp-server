@@ -6,7 +6,8 @@ import type { FileChat } from './types.js';
  * paragraph, slide or shape the comment is pinned to. One function so
  * `get_file_comments` and the `unresolved-comments` prompt cannot disagree.
  */
-export function commentLocation(c: FileChat): string {
+export function commentLocation(c: FileChat, fileType?: string): string {
+  if (fileType === 'smartsheet_sheet') return smartsheetCommentLocation(c);
   if (c.cellReference) return ` [${c.cellReference}]`;
   const anchor = c.anchor;
   if (!anchor) return '';
@@ -26,4 +27,22 @@ export function commentLocation(c: FileChat): string {
  */
 export function isTaskPanePresentationId(providerAnchorId: string): boolean {
   return /^oslide:/.test(providerAnchorId);
+}
+
+/**
+ * A Smartsheet discussion hangs on a ROW, or on the sheet as a whole. The
+ * reference a row-level comment carries is the address of the row's first
+ * cell, so the row number is what it says. A sheet-qualified reference
+ * (`Plan!A5`) is printed beside the row, in the form `add_comment` and
+ * `get_cell_history` accept. A sheet-level comment has no reference and gets
+ * a label, never a blank location.
+ */
+function smartsheetCommentLocation(c: FileChat): string {
+  if (!c.cellReference) return ' [whole sheet]';
+  const reference = c.cellReference.trim();
+  const bang = reference.lastIndexOf('!');
+  const address = bang < 0 ? reference : reference.slice(bang + 1);
+  const row = /^\$?[A-Za-z]{1,3}\$?([1-9][0-9]*)$/.exec(address);
+  if (!row) return ` [${c.cellReference}]`;
+  return bang < 0 ? ` [row ${row[1]}]` : ` [row ${row[1]}, ${reference}]`;
 }

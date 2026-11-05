@@ -6,6 +6,7 @@ import {
   connectToolName,
   statusToolName,
   type AccountLinkProvider,
+  type AccountLinkSummary,
 } from '../account-link-providers.js';
 import type { ToolAnnotations } from './tool-annotations.js';
 
@@ -56,6 +57,24 @@ const failure = (text: string) => ({
   content: [{ type: 'text' as const, text }],
   isError: true,
 });
+
+function statusText(
+  p: AccountLinkProvider,
+  status: AccountLinkSummary,
+  connectName: string,
+): string {
+  if (status.note) return status.note;
+  if (!status.linked) {
+    return `No ${p.label} account is connected. Run \`${connectName}\` to connect one.`;
+  }
+  return (
+    `Connected${status.account ? ` as ${status.account}` : ''}.` +
+    (status.grantedScopes.length
+      ? ` Granted: ${status.grantedScopes.join(', ')}.`
+      : '') +
+    (status.linkedAt ? ` Connected on ${status.linkedAt}.` : '')
+  );
+}
 
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
@@ -135,13 +154,7 @@ function registerProviderLinkTools(
           content: [
             {
               type: 'text',
-              text: status.linked
-                ? `Connected${status.account ? ` as ${status.account}` : ''}.` +
-                  (status.grantedScopes.length
-                    ? ` Granted: ${status.grantedScopes.join(', ')}.`
-                    : '') +
-                  (status.linkedAt ? ` Connected on ${status.linkedAt}.` : '')
-                : `No ${p.label} account is connected. Run \`${connectName}\` to connect one.`,
+              text: statusText(p, status, connectName),
             },
           ],
         };

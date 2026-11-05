@@ -42,6 +42,19 @@ const sampleVersion = {
   byUserPlatformType: 'microsoft',
 };
 
+/** The backend's queued version-write envelope (create-version, discard). */
+const queuedWrite = (op: string, jobId: string) => ({
+  status: 'queued',
+  jobId,
+  pendingWrite: {
+    op,
+    jobId,
+    status: 'processing',
+    startedAt: '2026-01-10T00:00:00.000Z',
+    submittedByPlatformId: 'u-1',
+  },
+});
+
 const sampleComment = {
   internalId: 900,
   message: 'Please double-check A1',
@@ -792,26 +805,15 @@ export function handleMockRockhopperRequest(
           description?: string;
         };
       };
-      sendJson(res, 200, {
-        internalId: 102,
-        majorVersion: parsed.version?.majorVersion ?? 1,
-        minorVersion: parsed.version?.minorVersion ?? 0,
-        patchVersion: parsed.version?.patchVersion ?? 0,
-        description: parsed.version?.description ?? 'created',
-        createdAt: '2026-01-10T00:00:00Z',
-        wasDiscarded: false,
-        wasReverted: false,
-      });
+      // The backend QUEUES the commit; the file row's cleared marker (the
+      // GET above serves none) is what says it completed.
+      const jobId = `create-version:${parsed.enrolledFileMsId ?? 'file-1'}`;
+      sendJson(res, 201, queuedWrite('create-version', jobId));
       return;
     }
 
     if (method === 'POST' && path === '/file-versions/file/discard-live/file-1') {
-      sendJson(res, 200, {
-        ...sampleVersion,
-        internalId: 103,
-        wasDiscarded: true,
-        description: 'Discarded',
-      });
+      sendJson(res, 201, queuedWrite('discard', 'discard:file-1'));
       return;
     }
 

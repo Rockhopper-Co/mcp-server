@@ -46,7 +46,8 @@ export type KnownFileType =
   | 'gdrive_md'
   | 'gdrive_txt'
   | 'gdrive_json'
-  | 'gdrive_xml';
+  | 'gdrive_xml'
+  | 'smartsheet_sheet';
 
 const KNOWN_FILE_TYPES: ReadonlySet<string> = new Set<KnownFileType>([
   'microsoft_xlsx',
@@ -67,6 +68,7 @@ const KNOWN_FILE_TYPES: ReadonlySet<string> = new Set<KnownFileType>([
   'gdrive_txt',
   'gdrive_json',
   'gdrive_xml',
+  'smartsheet_sheet',
 ]);
 
 /**
@@ -87,6 +89,7 @@ export function changeModelForFileType(fileType: string): ChangeModel | null {
     case 'microsoft_xlsm':
     case 'gdrive_xlsx':
     case 'gsheet_native':
+    case 'smartsheet_sheet':
       return 'spreadsheet';
     case 'microsoft_docx':
     case 'google_doc':
