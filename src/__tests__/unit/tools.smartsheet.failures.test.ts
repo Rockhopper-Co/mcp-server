@@ -36,6 +36,8 @@ const outcomeOf = (r: Result) =>
 const apiError = (status: number, code: string | null = null) =>
   new RockhopperApiError(status, `Rockhopper API ${status}`, code, null);
 
+const ADMIN_REMEDY = 'An administrator of their organization';
+
 describe('classifySmartsheetFailure', () => {
   it.each([
     [404, 'backend_unsupported', 'cannot reach Smartsheet from an assistant'],
@@ -47,6 +49,19 @@ describe('classifySmartsheetFailure', () => {
     const failure = classifySmartsheetFailure(apiError(status));
     expect(failure.outcome).toBe(outcome);
     expect(failure.message).toContain(phrase);
+  });
+
+  it('a 403 naming the missing organization connector sends the user to an administrator', () => {
+    const failure = classifySmartsheetFailure(
+      apiError(403, 'SMARTSHEET_ORG_CONNECTOR_REQUIRED'),
+    );
+    expect(failure.outcome).toBe('search_refused');
+    expect(failure.message).toContain(ADMIN_REMEDY);
+    expect(failure.message).not.toContain('check their access');
+    // Positive control, same status: a bare 403 keeps the generic remedy.
+    expect(classifySmartsheetFailure(apiError(403)).message).toContain(
+      'check their access',
+    );
   });
 
   it('an error that is not from the API keeps its own message', () => {
@@ -92,6 +107,23 @@ describe('search_drive_files with provider smartsheet, when a call fails', () =>
     });
     expect(outcomeOf(result)).toBe('smartsheet_not_connected');
     expect(result.content[0].text).toContain('app.smartsheet.com');
+    expect(result.content[0].text).not.toContain(ADMIN_REMEDY);
+  });
+
+  it('a missing organization connector names the administrator and mints no link', async () => {
+    const api = createMockApiClient();
+    api.searchSmartsheet.mockRejectedValue(
+      apiError(403, 'SMARTSHEET_ORG_CONNECTOR_REQUIRED'),
+    );
+    const result = await handler(api, 'search_drive_files')({
+      query: 'forecast',
+      provider: 'smartsheet',
+    });
+    expect(result.isError).toBe(true);
+    expect(outcomeOf(result)).toBe('search_refused');
+    expect(result.content[0].text).toContain(ADMIN_REMEDY);
+    expect(result.content[0].text).not.toContain('app.smartsheet.com');
+    expect(api.beginSmartsheetConnect).not.toHaveBeenCalled();
   });
 
   it('no link could be built: the Smartsheet fallback, never a composed link', async () => {
@@ -139,6 +171,21 @@ describe('list_unenrolled_files with provider smartsheet, when a call fails', ()
       'Could not list the Smartsheet sheets: gateway timeout.',
     );
     expect(result.content[0].text).toContain('do not report that they have none');
+  });
+
+  it.each([
+    ['SMARTSHEET_CONNECT_REQUIRED', 'connect_smartsheet', ADMIN_REMEDY],
+    ['SMARTSHEET_ORG_CONNECTOR_REQUIRED', ADMIN_REMEDY, 'connect_smartsheet'],
+  ])('a %s refusal names its own remedy only', async (code, own, other) => {
+    const api = createMockApiClient();
+    api.browseSmartsheet.mockRejectedValue(apiError(403, code));
+    const result = await handler(api, 'list_unenrolled_files')({
+      provider: 'smartsheet',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain(own);
+    expect(result.content[0].text).not.toContain(other);
+    expect(result.content[0].text).not.toContain('Could not list');
   });
 
   it('names the missing half of a parent pair, either way round', () => {
