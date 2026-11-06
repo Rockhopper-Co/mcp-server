@@ -1,7 +1,9 @@
 import type { ApiClient } from '../api-client.js';
 import {
+  SMARTSHEET_ORG_CONNECTOR_TEXT,
   enrolledSheetIds,
   isSmartsheetConnectRequired,
+  isSmartsheetOrgConnectorRequired,
 } from '../smartsheet-discovery.js';
 import type {
   SmartsheetBrowseItem,
@@ -121,6 +123,9 @@ export async function listUnenrolledSmartsheet(
     return text(render(listing.items, enrolled, parent));
   } catch (error) {
     if (isSmartsheetConnectRequired(error)) return text(NOT_CONNECTED, true);
+    if (isSmartsheetOrgConnectorRequired(error)) {
+      return text(SMARTSHEET_ORG_CONNECTOR_TEXT, true);
+    }
     return text(
       'Could not list the Smartsheet sheets: ' +
         `${error instanceof Error ? error.message : String(error)}. ` +
