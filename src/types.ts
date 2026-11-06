@@ -741,11 +741,13 @@ export interface DocumentAnchorHistory {
    */
   anchorLane: 'task_pane' | 'file_bytes' | 'both';
   /** `positional`: matched by position, so the history is of a SLOT. */
-  anchorIdentity: 'provider_id' | 'positional' | null;
+  anchorIdentity: 'lineage' | 'provider_id' | 'positional' | null;
   history: Array<DocumentChangeRow & { boundVersionId: number | null }>;
   truncated: boolean;
   /** ENG-7243 — the freshness answer in body form, when the backend sends it. */
   ledgerFreshness?: { state: 'current' | 'updating' };
+  /** ENG-8763 — false when the AI links could not be checked; schema defaults it to true. */
+  aiLinksAvailable?: boolean;
 }
 
 /**
