@@ -1,4 +1,5 @@
 import type { ApiClient } from '../api-client.js';
+import { aiLinksUnavailableSuffix } from '../change-row-vocabulary.js';
 import {
   anchorHistoryUnavailableToolResult,
   isCellHistoryUnavailable,
@@ -63,9 +64,23 @@ function coverageNotes(response: DocumentAnchorHistory): string[] {
   return notes;
 }
 
+/**
+ * ENG-8763 — the same note the cell arm appends when the backend could not
+ * check AI links, so an empty AI clause never reads as "no AI".
+ */
 export function formatAnchorHistory(
   response: DocumentAnchorHistory,
   freshness: ReadFreshness = CURRENT,
+): string {
+  return (
+    formatAnchorBody(response, freshness) +
+    aiLinksUnavailableSuffix(response.aiLinksAvailable !== false)
+  );
+}
+
+function formatAnchorBody(
+  response: DocumentAnchorHistory,
+  freshness: ReadFreshness,
 ): string {
   const notes = coverageNotes(response);
   // ENG-7243 — an updating answer opens with the marker, and an updating zero

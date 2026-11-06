@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { AI_LINKS_UNAVAILABLE_NOTE } from '../../change-row-vocabulary.js';
 import { formatAnchorHistory } from '../../tools/anchor-history-read.js';
 import { registerTools } from '../../tools/index.js';
+import type { DocumentAnchorHistory } from '../../types.js';
 import { DocumentAnchorHistorySchema } from '../../zod-schemas.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
 
@@ -41,7 +42,7 @@ const row = (eventId: string, to: string, aiLinks: unknown[] = []) => ({
 });
 
 /** The wire body, parsed by the same schema the API client applies. */
-const parsed = (over: Record<string, unknown> = {}) =>
+const parsed = (over: Record<string, unknown> = {}): DocumentAnchorHistory =>
   DocumentAnchorHistorySchema.parse({
     documentType: 'text',
     anchorId: PARAGRAPH,
@@ -50,7 +51,7 @@ const parsed = (over: Record<string, unknown> = {}) =>
     history: [row('48121', 'Net 45 days', [COPILOT]), row('48122', 'Net 60 days')],
     truncated: false,
     ...over,
-  });
+  }) as DocumentAnchorHistory;
 
 describe('anchor history — aiLinksAvailable parsed and printed (ENG-8763)', () => {
   it('a body without the field parses as true; a sent false is kept', () => {
