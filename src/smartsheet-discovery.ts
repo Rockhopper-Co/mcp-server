@@ -19,6 +19,28 @@ export function isSmartsheetConnectRequired(error: unknown): boolean {
 }
 
 /**
+ * The code the backend answers when the user has no usable link of their own
+ * AND their organization has no usable Smartsheet connector (ENG-8726).
+ */
+export const SMARTSHEET_ORG_CONNECTOR_REQUIRED =
+  'SMARTSHEET_ORG_CONNECTOR_REQUIRED';
+
+/** True when the refusal means the organization's connection is missing. */
+export function isSmartsheetOrgConnectorRequired(error: unknown): boolean {
+  return (
+    error instanceof RockhopperApiError &&
+    error.code === SMARTSHEET_ORG_CONNECTOR_REQUIRED
+  );
+}
+
+/** What the assistant is told when the organization's connection is missing. */
+export const SMARTSHEET_ORG_CONNECTOR_TEXT =
+  "This user's organization has no Smartsheet connection in Rockhopper, so " +
+  'their sheets cannot be reached. An administrator of their organization ' +
+  'connects Smartsheet once for everyone; ask the user to contact that ' +
+  'administrator. This is NOT evidence that they have no sheets.';
+
+/**
  * The sheets this user already has in Rockhopper, by sheet id, with names.
  *
  * Read from the enrolled-file list. That list leaves out a file the user
@@ -109,6 +131,14 @@ export interface SmartsheetFailure {
  */
 export function classifySmartsheetFailure(error: unknown): SmartsheetFailure {
   if (error instanceof RockhopperApiError) {
+    // Before the status branches: it arrives as a 403, and the generic
+    // refusal would send the user to check their own access instead.
+    if (error.code === SMARTSHEET_ORG_CONNECTOR_REQUIRED) {
+      return {
+        outcome: 'search_refused',
+        message: SMARTSHEET_ORG_CONNECTOR_TEXT,
+      };
+    }
     if (error.status === 404) {
       return {
         outcome: 'backend_unsupported',
