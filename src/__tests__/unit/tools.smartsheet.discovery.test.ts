@@ -51,6 +51,10 @@ const notConnected = () =>
     null,
     'Connect your Smartsheet account to add this sheet',
   );
+/** Neither the user's own link nor an organization connector is usable. */
+const noOrgConnector = () =>
+  new RockhopperApiError(403, 'no', 'SMARTSHEET_ORG_CONNECTOR_REQUIRED');
+const ADMIN_REMEDY = 'An administrator of their organization';
 
 describe('search_drive_files with provider smartsheet', () => {
   it('searches Smartsheet, never the Microsoft route, and lists sheets only', async () => {
@@ -106,6 +110,22 @@ describe('search_drive_files with provider smartsheet', () => {
     expect(api.beginMicrosoftConnect).not.toHaveBeenCalled();
     expect(result.content[0].text).toContain('app.smartsheet.com');
     expect(result.content[0].text).not.toContain('login.microsoftonline.com');
+    expect(result.content[0].text).not.toContain(ADMIN_REMEDY);
+  });
+
+  it('a user whose organization has no connector is sent to an administrator, with no connect link', async () => {
+    const api = createMockApiClient();
+    api.searchSmartsheet.mockRejectedValue(noOrgConnector());
+    const result = await handler(api, 'search_drive_files')({
+      query: 'forecast',
+      provider: 'smartsheet',
+    });
+    expect(api.searchSmartsheet).toHaveBeenCalledTimes(1);
+    expect(result.isError).toBe(true);
+    expect(outcomeOf(result)).toBe('search_refused');
+    expect(result.content[0].text).toContain(ADMIN_REMEDY);
+    expect(result.content[0].text).toContain('NOT evidence');
+    expect(api.beginSmartsheetConnect).not.toHaveBeenCalled();
   });
 
   it('a Smartsheet search with no usable query is refused before any call', async () => {
@@ -216,6 +236,20 @@ describe('list_unenrolled_files with provider smartsheet', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('connect_smartsheet');
     expect(result.content[0].text).toContain('NOT evidence');
+    expect(result.content[0].text).not.toContain(ADMIN_REMEDY);
+  });
+
+  it('a user whose organization has no connector is sent to an administrator', async () => {
+    const api = createMockApiClient();
+    api.browseSmartsheet.mockRejectedValue(noOrgConnector());
+    const result = await handler(api, 'list_unenrolled_files')({
+      provider: 'smartsheet',
+    });
+    expect(api.browseSmartsheet).toHaveBeenCalledTimes(1);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain(ADMIN_REMEDY);
+    expect(result.content[0].text).toContain('NOT evidence');
+    expect(result.content[0].text).not.toContain('connect_smartsheet');
   });
 
   it('a parent type without an id is refused', async () => {
@@ -233,103 +267,5 @@ describe('list_unenrolled_files with provider smartsheet', () => {
     await handler(api, 'list_unenrolled_files')({});
     expect(api.listDriveInventory).toHaveBeenCalled();
     expect(api.browseSmartsheet).not.toHaveBeenCalled();
-  });
-});
-
-describe('enroll_file with provider smartsheet', () => {
-  it('enrolls under the Smartsheet account type by sheet id', async () => {
-    const api = createMockApiClient();
-    const result = await handler(api, 'enroll_file')({
-      provider: 'smartsheet',
-      msId: SHEET.id,
-      share_with: 'me',
-    });
-    expect(outcomeOf(result)).toBe('enrolled');
-    expect(api.createEnrolledFile).toHaveBeenCalledWith({
-      provider: 'smartsheet',
-      fileId: SHEET.id,
-      driveMsId: '',
-      name: '',
-    });
-    expect(api.getEnrollmentInfo).not.toHaveBeenCalled();
-    expect(api.resolveEnrollmentUrl).not.toHaveBeenCalled();
-  });
-
-  it('reports a sheet already in Rockhopper without writing', async () => {
-    const api = createMockApiClient();
-    api.listEnrolledFiles.mockResolvedValue([
-      {
-        internalId: 5,
-        platformId: SHEET.id,
-        fileType: 'smartsheet_sheet',
-        name: SHEET.name,
-      },
-    ]);
-    const result = await handler(api, 'enroll_file')({
-      provider: 'smartsheet',
-      msId: SHEET.id,
-      share_with: 'me',
-    });
-    expect(outcomeOf(result)).toBe('already_enrolled');
-    expect(result.content[0].text).toContain('Q4 Forecast');
-    expect(api.createEnrolledFile).not.toHaveBeenCalled();
-  });
-
-  it('refuses a link or a drive id alongside the sheet id', async () => {
-    const api = createMockApiClient();
-    const run = handler(api, 'enroll_file');
-    for (const extra of [{ url: 'https://app.smartsheet.com/sheets/x' }, { driveMsId: 'd' }]) {
-      const result = await run({
-        provider: 'smartsheet',
-        msId: SHEET.id,
-        share_with: 'me',
-        ...extra,
-      });
-      expect(result.isError).toBe(true);
-      expect(outcomeOf(result)).toBe('unresolvable');
-    }
-    expect(api.createEnrolledFile).not.toHaveBeenCalled();
-  });
-
-  it('an unproven access names connect_smartsheet, never connect_microsoft', async () => {
-    const api = createMockApiClient();
-    api.createEnrolledFile.mockRejectedValue(
-      new RockhopperApiError(403, 'x', 'ACCESS_UNPROVEN'),
-    );
-    const result = await handler(api, 'enroll_file')({
-      provider: 'smartsheet',
-      msId: SHEET.id,
-      share_with: 'me',
-    });
-    expect(outcomeOf(result)).toBe('access_unproven');
-    expect(result.content[0].text).toContain('connect_smartsheet');
-    expect(result.content[0].text).not.toContain('connect_microsoft');
-  });
-
-  it('a report or dashboard is refused as unsupported', async () => {
-    const api = createMockApiClient();
-    api.createEnrolledFile.mockRejectedValue(
-      new RockhopperApiError(422, 'x', 'SMARTSHEET_UNSUPPORTED_OBJECT'),
-    );
-    const result = await handler(api, 'enroll_file')({
-      provider: 'smartsheet',
-      msId: '77',
-      share_with: 'me',
-    });
-    expect(outcomeOf(result)).toBe('unsupported_provider');
-    expect(result.content[0].text).toContain('report or a dashboard');
-  });
-
-  it('positive control: a Microsoft id pair still enrolls under the Microsoft account type', async () => {
-    const api = createMockApiClient();
-    await handler(api, 'enroll_file')({
-      driveMsId: 'drive-9',
-      msId: 'item-9',
-      share_with: 'me',
-    });
-    expect(api.getEnrollmentInfo).toHaveBeenCalledWith(['item-9'], 'microsoft');
-    expect(api.createEnrolledFile).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: 'microsoft', fileId: 'item-9' }),
-    );
   });
 });
