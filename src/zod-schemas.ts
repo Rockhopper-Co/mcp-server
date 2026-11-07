@@ -196,7 +196,8 @@ export const DocumentAnchorHistorySchema = z
     documentType: z.string(),
     anchorId: z.string(),
     anchorLane: z.enum(['task_pane', 'file_bytes', 'both']),
-    anchorIdentity: z.enum(['provider_id', 'positional']).nullable(),
+    // ENG-8763 — `lineage`: matched through the element's recorded lineage.
+    anchorIdentity: z.enum(['lineage', 'provider_id', 'positional']).nullable(),
     history: z.array(
       DocumentChangeRowSchema.extend({
         boundVersionId: z.number().int().nullable().default(null),
@@ -209,5 +210,8 @@ export const DocumentAnchorHistorySchema = z
       .object({ state: z.enum(['current', 'updating']) })
       .passthrough()
       .optional(),
+    // ENG-8763 — false when the backend could not check the rows' AI links;
+    // absent (an older backend) reads as checked.
+    aiLinksAvailable: z.boolean().default(true),
   })
   .passthrough();
