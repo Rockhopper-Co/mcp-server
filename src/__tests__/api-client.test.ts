@@ -515,3 +515,26 @@ describe('ApiClient correlation id (Phase 1.1 / KI-226)', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('ApiClient X-MCP-Tool (ENG-8848)', () => {
+  const makeClient = (): ApiClient =>
+    new ApiClient({ baseUrl: 'https://api.rockhopper.co', token: 'rh_pat_test' });
+
+  it('sends the tool name from the tool-call scope on the request', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+    await runWithCorrelationId(() => makeClient().listEnrolledFiles(), undefined, 'list_files');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0][1].headers['X-MCP-Tool']).toBe('list_files');
+    vi.unstubAllGlobals();
+  });
+
+  it('sends no X-MCP-Tool outside a tool-call scope', async () => {
+    const fetchSpy = mockFetch([]);
+    vi.stubGlobal('fetch', fetchSpy);
+    await makeClient().listEnrolledFiles();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0][1].headers).not.toHaveProperty('X-MCP-Tool');
+    vi.unstubAllGlobals();
+  });
+});

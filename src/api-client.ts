@@ -1,6 +1,6 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
-import { getCorrelationId } from './correlation.js';
+import { getCorrelationId, getToolName } from './correlation.js';
 import { log } from './logger.js';
 import {
   compareSurfaceHeaders,
@@ -451,6 +451,11 @@ export class ApiClient {
           //
           // Placed before the spread so a per-call header still wins.
           'X-Rockhopper-Surface': this.surface,
+          // ENG-8848: the MCP tool name, so the backend writes its per-call
+          // audit row for stdio calls as it does for mcp-gateway. Absent
+          // outside a tool-call scope. Before the spread: a per-call header
+          // (the gateway's own X-MCP-Tool) still wins.
+          ...(getToolName() ? { 'X-MCP-Tool': getToolName() } : {}),
           // ENG-1756 (decision 15), unchanged: the two admission-bearing
           // headers stay on writes, because the admission only fires there.
           ...(WRITE_METHODS.has(method)
