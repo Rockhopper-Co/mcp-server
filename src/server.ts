@@ -79,7 +79,7 @@ function installCorrelationScope(
           });
           throw err;
         }
-      });
+      }, undefined, name);
     return (
       baseRegisterTool as (
         name: string,
