@@ -14,7 +14,6 @@
 
 import { RockhopperApiError } from './api-client.js';
 import type {
-  EnrollmentState,
   RockhopperId,
   ServerEnrollmentOutcome,
   Team,
@@ -42,6 +41,11 @@ import type {
  *   a second, explicit call.
  * - `backend_unsupported` — this Rockhopper deployment has no enrollment API
  *   yet. Published separately from the backend, so this is reachable.
+ *
+ * Two CONVERSION answers (ENG-9660), for an Office file in Google Drive that
+ * Rockhopper converts to Google format, see `enrollment-conversion.ts`:
+ * - `conversion_pending` — being converted; nothing to do but check back.
+ * - `conversion_refused` — Google cannot convert it; nothing was created.
  */
 export type EnrollOutcome =
   | 'enrolled'
@@ -53,7 +57,9 @@ export type EnrollOutcome =
   | 'unsupported_provider'
   | 'share_with_required'
   | 'restore_confirmation_required'
-  | 'backend_unsupported';
+  | 'backend_unsupported'
+  | 'conversion_pending'
+  | 'conversion_refused';
 
 /** Who may see the file. Asked EVERY time; never defaulted (D5/D6). */
 export type ShareWith = 'me' | 'team';
@@ -90,14 +96,8 @@ const FILE_ACCESS_DENIED = 'FILE_ACCESS_DENIED';
  * one place; {@link classifyEnrollmentFailure} maps what it says.
  */
 
-/** The outcome an already-known enrollment state implies, before any write. */
-export function outcomeForState(
-  state: EnrollmentState,
-): 'already_enrolled' | 'restore_confirmation_required' | null {
-  if (state === 'enrolled') return 'already_enrolled';
-  if (state === 'hidden') return 'restore_confirmation_required';
-  return null;
-}
+// ENG-9660 — reads the conversion state too; lives beside its vocabulary.
+export { outcomeForState } from './enrollment-conversion.js';
 
 /**
  * ENG-2536 — turn the outcome the SERVER reported into what the user is told.

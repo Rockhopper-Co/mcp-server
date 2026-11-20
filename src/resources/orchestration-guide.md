@@ -198,13 +198,15 @@ Rockhopper supports both Microsoft files (M365 / OneDrive, SharePoint) and Googl
 
 | Field | Microsoft | Google |
 |-------|------------------|----------------|
-| `fileType` | `microsoft_xlsx`, `microsoft_xlsm`, `microsoft_pptx`, `microsoft_docx`, `microsoft_pdf`, `microsoft_md`, `microsoft_txt`, `microsoft_json`, `microsoft_xml` | `gdrive_xlsx` (a workbook stored in Drive), `gsheet_native` (a Google Sheet), `google_doc`, `google_slides`, `gdrive_pdf`, `gdrive_md`, `gdrive_txt`, `gdrive_json`, `gdrive_xml` (each an uploaded file in Drive) |
+| `fileType` | `microsoft_xlsx`, `microsoft_xlsm`, `microsoft_pptx`, `microsoft_docx`, `microsoft_pdf`, `microsoft_md`, `microsoft_txt`, `microsoft_json`, `microsoft_xml` | `gsheet_native` (a Google Sheet), `google_doc` (a Google Doc), `google_slides` (a Google Slides deck): also how an Excel, Word or PowerPoint file in Drive is tracked, as its converted Google file; `gdrive_xlsx` (an Excel workbook in Drive not yet converted, or one Google could not convert); `gdrive_pdf`, `gdrive_md`, `gdrive_txt`, `gdrive_json`, `gdrive_xml` (each an uploaded file in Drive) |
 | `driveMsId` | OneDrive / SharePoint drive ID | **always `null`** — Drive has no drive-ID concept |
 | `platformId` (= `fileMsId`) | Microsoft graph file ID | Google Drive file ID |
 
 If you need to know which cloud a file is in, inspect `fileType`, or read `provider` where a tool answer carries one.
 
 **Adding a file differs by cloud, and it is the one place it matters.** A Microsoft file can be added by link or by the `driveMsId` + `msId` pair `search_drive_files` returns. A Google file is added **by link only** — there is no id pair to pass. `search_drive_files` returns the link for a confirmed Google candidate; hand it to `enroll_file` as `url`.
+
+**An Office file in Google Drive is tracked as its Google version.** Rockhopper converts an Excel, Word or PowerPoint file added from Google Drive to Google Sheets, Docs or Slides and tracks the converted Google file; the original stays untouched in Drive and is not tracked. `enroll_file` answers with the converted record's `fileMsId` and name, and a `conversion` field whose `state` is `pending`, `converted`, `waiting_for_member`, `refused` or `kept_as_office` (Google could not convert it, so it is tracked as the Office file). Use the id `enroll_file` returns with every other tool. A tool given an id you stored for the original before it was converted answers with the Google file's id instead: call again with that id.
 
 `search_drive_files` takes a `provider` argument (`microsoft` or `google`). Each needs its own connected account: `connect_microsoft` / `microsoft_link_status` / `disconnect_microsoft` for Microsoft, `connect_google` / `google_link_status` / `disconnect_google` for Google Drive. Ask the user which cloud their file is in rather than guessing: searching the wrong one returns an empty list that reads exactly like "no such file".
 

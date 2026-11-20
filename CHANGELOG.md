@@ -23,6 +23,17 @@ All notable changes to this project are documented here. Follows
 
 ### Changed
 
+- **`enroll_file` answers for the Google file an Office file in Drive became**
+  (ENG-9660). Rockhopper converts an Excel, Word or PowerPoint file added from
+  Google Drive to Google Sheets, Docs or Slides and tracks the converted file.
+  `enroll_file` now hands back the record's own id (`fileMsId`, which survives
+  the conversion) and the converted file's name, carries a `conversion` field
+  (`pending`, `converted`, `waiting_for_member`, `refused`, `kept_as_office`),
+  and answers two new outcomes, `conversion_pending` and `conversion_refused`,
+  without writing anything. A file tool given an id stored for an original
+  before its conversion now answers with the Google file's id instead of a bare
+  403.
+
 - **`get_cell_history` says when a history is still updating** (ENG-7243).
   Cell-history reads now send `X-Rockhopper-Client-Capabilities:
   ledger-freshness`, so a backend still recording a file's changes serves the
