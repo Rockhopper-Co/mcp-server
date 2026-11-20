@@ -14,6 +14,12 @@ All notable changes to this project are documented here. Follows
 
 ### Added
 
+- **`list_erp_links`, `link_erp_record` and `unlink_erp_record`** (ENG-8441).
+  A file's links to JD Edwards records (billing batches, leases, expense
+  participation calculations, properties), each with its latest known status.
+  Listing rides the read floor; linking and unlinking need `files:write`, as
+  the backend's `/integrations/erp-links` routes demand.
+
 - **PDF, Markdown, plain text, JSON and XML files** (ENG-8069). The ten new
   `fileType` values (`microsoft_pdf` … `gdrive_xml`) are known, so
   `get_unattributed_changes` reads a PDF, Markdown, text, JSON or XML file's
