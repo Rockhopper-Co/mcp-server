@@ -55,9 +55,6 @@ const WRITE_TOOL_ARGS: Record<string, Record<string, unknown>> = {
     businessUnit: 'BU100',
   },
   unlink_erp_record: { fileMsId: 'file-1', linkId: '12' },
-  disconnect_microsoft: {},
-  disconnect_google: {},
-  disconnect_smartsheet: {},
 };
 
 interface SeenRequest {

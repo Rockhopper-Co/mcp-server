@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { RockhopperApiError, type ApiClient } from '../api-client.js';
+import type { ApiClient } from '../api-client.js';
 import {
   ACCOUNT_LINK_PROVIDERS,
   connectToolName,
@@ -11,8 +11,8 @@ import {
 import type { ToolAnnotations } from './tool-annotations.js';
 
 /**
- * The account-link tools — `connect_<provider>`, `<provider>_link_status` and
- * `disconnect_<provider>` — registered ONCE per row of
+ * The account-link tools — `connect_<provider>` and `<provider>_link_status`
+ * (no disconnect: connections are permanent, ENG-9682) — registered ONCE per row of
  * `ACCOUNT_LINK_PROVIDERS` (ENG-6414 widened this from Microsoft alone to
  * Microsoft and Google). Everything below is written about Microsoft, where it
  * started; every word of it holds for Google too.
@@ -27,8 +27,6 @@ import type { ToolAnnotations } from './tool-annotations.js';
  * it in Microsoft, the handover at sign-in failed, or the session is a
  * local stdio one with a personal access token, which carries no Microsoft
  * sign-in of its own and therefore still needs this.
- *
- * Deleting it would have left `disconnect_microsoft` as a one-way door.
  *
  * WHAT THIS TOOL DELIBERATELY CANNOT DO, and why the shape matters more than
  * the feature. It takes NO authorize URL, no redirect URI, no client id and no
@@ -162,53 +160,6 @@ function registerProviderLinkTools(
         return failure(
           `Failed to read the ${p.label} connection: ${errorText(error)}`,
         );
-      }
-    },
-  );
-
-  server.registerTool(
-    `disconnect_${p.key}`,
-    {
-      title: `Disconnect ${p.label} Account`,
-      description:
-        `Remove the stored ${p.label} connection, deleting the credential Rockhopper ` +
-        'holds for this user. Requires an interactive login; a personal access token ' +
-        'cannot sever a connection it did not create.',
-      inputSchema: z.object({}),
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-        openWorldHint: false,
-      } satisfies ToolAnnotations,
-    },
-    async () => {
-      try {
-        const result = await p.unlink(api);
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: result.removed
-                ? `${p.label} account disconnected. The stored credential has been deleted.`
-                : `No ${p.label} account was connected.`,
-            },
-          ],
-        };
-      } catch (error) {
-        // The backend refuses a disconnect from a personal access token or API
-        // key with a 403 (`requireInteractiveAuth`). Said plainly, so the
-        // model does not relay a raw HTTP body or report a success.
-        if (error instanceof RockhopperApiError && error.status === 403) {
-          return failure(
-            `Nothing was disconnected. Rockhopper removes a ${p.label} ` +
-              'connection only for someone signed in interactively, and this ' +
-              'session uses a personal access token. Ask the user to ' +
-              `disconnect ${p.label} from Rockhopper in their browser.`,
-          );
-        }
-        return failure(`Failed to disconnect: ${errorText(error)}`);
       }
     },
   );

@@ -165,13 +165,10 @@ npm run generate:postman
 |------|-------------|
 | `connect_microsoft` | Start connecting the user's Microsoft account; returns a sign-in link the user opens |
 | `microsoft_link_status` | Check whether a Microsoft account is connected and which one |
-| `disconnect_microsoft` | Remove the stored Microsoft connection (requires an interactive login, not a PAT) |
 | `connect_google` | Start connecting the user's Google account; returns a sign-in link the user opens |
 | `google_link_status` | Check whether a Google account is connected and which one |
-| `disconnect_google` | Remove the stored Google connection (requires an interactive login, not a PAT) |
 | `connect_smartsheet` | Start connecting the user's Smartsheet account; returns a sign-in link the user opens |
 | `smartsheet_link_status` | Check whether a Smartsheet account is connected, which one, and whether the connection is usable |
-| `disconnect_smartsheet` | Remove the stored Smartsheet connection (requires an interactive login, not a PAT) |
 
 ## Available Resources
 

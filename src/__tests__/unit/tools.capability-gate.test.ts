@@ -19,21 +19,18 @@ import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
  */
 
 /**
- * The eighteen tools every token gets, whatever it was granted: the nine reads,
- * plus the three Microsoft, three Google and three Smartsheet account-link tools, which ride the read floor
+ * The fifteen tools every token gets, whatever it was granted: the nine reads,
+ * plus the two Microsoft, two Google and two Smartsheet account-link tools, which ride the read floor
  * because connecting an account is not a write to Rockhopper data (ENG-2198).
  */
 const READ_TOOL_NAMES = [
   'connect_microsoft',
   'microsoft_link_status',
-  'disconnect_microsoft',
   // ENG-6414 — the Google Drive link, same floor.
   'connect_google',
   'google_link_status',
-  'disconnect_google',
   'connect_smartsheet',
   'smartsheet_link_status',
-  'disconnect_smartsheet',
   'list_files',
   'get_file_versions',
   'get_file_comments',
@@ -100,9 +97,9 @@ describe('per-capability tool registration (ENG-2212)', () => {
     // A backend older than ENG-2211 serves `patScope` and no `patScopes`.
     // 13 floor (7 read + 3 Microsoft + 3 Google link) + 10 write, enroll_file included
     // since ENG-2200 registered it and emptied PENDING_WRITE_TOOLS.
-    expect(registeredToolNames({ scope: 'read-write' })).toHaveLength(31);
-    expect(registeredToolNames({ scope: 'read-only' })).toHaveLength(19);
-    expect(registeredToolNames()).toHaveLength(19);
+    expect(registeredToolNames({ scope: 'read-write' })).toHaveLength(28);
+    expect(registeredToolNames({ scope: 'read-only' })).toHaveLength(16);
+    expect(registeredToolNames()).toHaveLength(16);
   });
 
   it('collapses duplicates rather than registering a tool twice', () => {

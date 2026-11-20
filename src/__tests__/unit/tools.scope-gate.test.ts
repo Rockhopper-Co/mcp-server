@@ -30,14 +30,11 @@ const WRITE_TOOL_NAMES = [
 const READ_TOOL_NAMES = [
   'connect_microsoft',
   'microsoft_link_status',
-  'disconnect_microsoft',
   // ENG-6414 — the Google Drive link, same floor.
   'connect_google',
   'google_link_status',
-  'disconnect_google',
   'connect_smartsheet',
   'smartsheet_link_status',
-  'disconnect_smartsheet',
   'list_files',
   'get_file_versions',
   'get_file_comments',
@@ -68,33 +65,33 @@ describe('write-tool scope gate (ENG-2208)', () => {
     expect(grantsWriteTools('read-write-plus')).toBe(false);
   });
 
-  it('registers 31 tools for a read-write scope', () => {
+  it('registers 28 tools for a read-write scope', () => {
     const names = registeredToolNames('read-write');
-    expect(names).toHaveLength(31);
+    expect(names).toHaveLength(28);
     for (const name of [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES]) {
       expect(names).toContain(name);
     }
   });
 
-  it('registers 19 tools for a read-only scope', () => {
+  it('registers 16 tools for a read-only scope', () => {
     const names = registeredToolNames('read-only');
-    expect(names).toHaveLength(19);
+    expect(names).toHaveLength(16);
     expect(names.sort()).toEqual([...READ_TOOL_NAMES].sort());
   });
 
   // The polarity flip. Pre-ENG-2208 each of these registered all 16.
-  it('registers 19 tools for an UNRECOGNISED scope', () => {
+  it('registers 16 tools for an UNRECOGNISED scope', () => {
     for (const scope of ['admin', 'write', 'read-write-plus', '']) {
       const names = registeredToolNames(scope);
-      expect(names, `scope=${JSON.stringify(scope)}`).toHaveLength(19);
+      expect(names, `scope=${JSON.stringify(scope)}`).toHaveLength(16);
       for (const name of WRITE_TOOL_NAMES) {
         expect(names, `scope=${JSON.stringify(scope)}`).not.toContain(name);
       }
     }
   });
 
-  it('registers 19 tools when no scope is supplied at all', () => {
-    expect(registeredToolNames()).toHaveLength(19);
+  it('registers 16 tools when no scope is supplied at all', () => {
+    expect(registeredToolNames()).toHaveLength(16);
     for (const name of WRITE_TOOL_NAMES) {
       expect(registeredToolNames()).not.toContain(name);
     }

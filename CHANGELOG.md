@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Follows
 
 ## [Unreleased]
 
+### Removed
+
+- **`disconnect_microsoft`, `disconnect_google` and `disconnect_smartsheet`** (ENG-9682).
+  A connection, once made, cannot be removed in the product, so no tool removes it.
+  `connect_*` and `*_link_status` stay.
+
 ### Added
 
 - **`list_erp_links`, `link_erp_record` and `unlink_erp_record`** (ENG-8441).
@@ -19,13 +25,12 @@ All notable changes to this project are documented here. Follows
   `get_unattributed_changes` reads a PDF, Markdown, text, JSON or XML file's
   changes instead of refusing it as `unknown_file_type`.
 
-- **`connect_google`, `google_link_status` and `disconnect_google`** (ENG-6414).
-  The Google Drive counterparts of the three Microsoft account-link tools,
+- **`connect_google` and `google_link_status`** (ENG-6414).
+  The Google Drive counterparts of the Microsoft account-link tools,
   registered by the same code on the same read floor. `connect_google` relays
   the sign-in link the backend builds (`POST /auth/google/connect`) and takes no
   input. A Google `search_drive_files` caller with no connected account now gets
-  that link instead of being sent to Settings. `disconnect_microsoft` and
-  `disconnect_google` now say plainly when a personal access token is refused.
+  that link instead of being sent to Settings.
 
 ### Changed
 
