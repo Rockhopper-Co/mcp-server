@@ -48,9 +48,6 @@ const WRITE_TOOL_ARGS: Record<string, Record<string, unknown>> = {
     url: 'https://contoso.sharepoint.com/:x:/r/sites/finance/Doc.aspx',
     share_with: 'me',
   },
-  disconnect_microsoft: {},
-  disconnect_google: {},
-  disconnect_smartsheet: {},
 };
 
 interface SeenRequest {
