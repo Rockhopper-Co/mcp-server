@@ -165,21 +165,22 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
     }
   }
 
-  // The read floor is 18: the seven read tools, the two discovery tools, and
-  // connect / status / disconnect for each of the three account-link
-  // providers (Microsoft, Google, Smartsheet), which `registerTools` registers
-  // for every scope. Read-write adds the ten write tools.
+  // The read floor is 19: the seven read tools, the two discovery tools,
+  // `list_erp_links` (ENG-8441), and connect / status / disconnect for each
+  // of the three account-link providers (Microsoft, Google, Smartsheet),
+  // which `registerTools` registers for every scope. Read-write adds the
+  // twelve write tools.
   it.each([
-    ['read-write', 28],
-    ['read-only', 18],
+    ['read-write', 31],
+    ['read-only', 19],
     // An unrecognised scope value, and a backend too old to serve the field
     // at all (`null` omits it) — both deny, where both used to grant.
-    ['some-future-scope', 18],
-    [null, 18],
+    ['some-future-scope', 19],
+    [null, 19],
   ])('serves %s a tools/list of %i tools', async (patScope, expected) => {
     const names = await toolNames(patScope);
     expect(names).toHaveLength(expected);
-    expect(names.includes('add_comment')).toBe(expected === 28);
+    expect(names.includes('add_comment')).toBe(expected === 31);
     expect(names).toContain('list_files');
     expect(names).toContain('connect_smartsheet');
     expect(names).toContain('smartsheet_link_status');
@@ -213,6 +214,7 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
           'get_file_versions',
           'get_reviews',
           'get_unattributed_changes',
+          'list_erp_links',
           'list_files',
           'list_unenrolled_files',
           'reply_to_comment',
@@ -230,7 +232,7 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
     'falls back to the coarse scope when the backend serves no families',
     async () => {
       // A backend older than ENG-2211 omits `patScopes` entirely.
-      expect(await toolNames('read-write', null)).toHaveLength(28);
+      expect(await toolNames('read-write', null)).toHaveLength(31);
     },
     30_000,
   );

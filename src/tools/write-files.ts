@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
 
 import { registerEnrollFileTool } from './enroll-file.js';
+import { registerErpLinkWriteTools } from './erp-links.js';
 import type { ToolAnnotations } from './tool-annotations.js';
 
 export function registerWriteFileTool(
@@ -13,6 +14,9 @@ export function registerWriteFileTool(
   // `rename_file`: both are file-lifecycle operations, and a token narrowed to
   // comments must not be able to add a workbook to the workspace.
   registerEnrollFileTool(server, api);
+  // ENG-8441 — linking a file to a JD Edwards record changes what the file
+  // carries; the backend demands `files:write` for both routes.
+  registerErpLinkWriteTools(server, api);
 
   server.registerTool(
     'rename_file',
