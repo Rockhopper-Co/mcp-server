@@ -4,11 +4,11 @@ import type { AccountConnectHandoff, FileProvider } from './types.js';
 /**
  * ENG-6414 — the ONLY per-provider part of the account-link tools.
  *
- * `tools/account-link.ts` registers connect / status / disconnect once, from
+ * `tools/account-link.ts` registers connect / status once, from
  * this table. The link text, the never-compose-a-link rule, the expiry
- * wording and the disconnect wording are shared; what varies is the API call
+ * wording are shared; what varies is the API call
  * at the end and a few nouns. The Microsoft row reproduces the wording the
- * three Microsoft tools carried before this table existed, byte for byte.
+ * two Microsoft tools carried before this table existed, byte for byte.
  */
 export interface AccountLinkSummary {
   linked: boolean;
@@ -23,7 +23,7 @@ export interface AccountLinkSummary {
 }
 
 export interface AccountLinkProvider {
-  /** Tool-name stem: `connect_<key>`, `<key>_link_status`, `disconnect_<key>`. */
+  /** Tool-name stem: `connect_<key>`, `<key>_link_status`. */
   key: 'microsoft' | 'google' | 'smartsheet';
   /** The noun a user reads: "your Microsoft account". */
   label: 'Microsoft' | 'Google' | 'Smartsheet';
@@ -37,7 +37,6 @@ export interface AccountLinkProvider {
   readOnlyConsent: boolean;
   begin(api: ApiClient): Promise<AccountConnectHandoff>;
   status(api: ApiClient): Promise<AccountLinkSummary>;
-  unlink(api: ApiClient): Promise<{ removed: boolean }>;
 }
 
 export const MICROSOFT_LINK: AccountLinkProvider = {
@@ -58,7 +57,6 @@ export const MICROSOFT_LINK: AccountLinkProvider = {
       linkedAt: s.linkedAt,
     };
   },
-  unlink: (api) => api.unlinkMicrosoft(),
 };
 
 export const GOOGLE_LINK: AccountLinkProvider = {
@@ -81,7 +79,6 @@ export const GOOGLE_LINK: AccountLinkProvider = {
       linkedAt: null,
     };
   },
-  unlink: (api) => api.unlinkGoogle(),
 };
 
 /**
@@ -143,7 +140,6 @@ export const SMARTSHEET_LINK: AccountLinkProvider = {
       ...(note === undefined ? {} : { note }),
     };
   },
-  unlink: (api) => api.unlinkSmartsheet(),
 };
 
 export const ACCOUNT_LINK_PROVIDERS: readonly AccountLinkProvider[] = [

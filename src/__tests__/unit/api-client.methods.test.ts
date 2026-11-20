@@ -444,14 +444,6 @@ describe('Microsoft account-link methods (ENG-2198)', () => {
     );
     vi.unstubAllGlobals();
   });
-
-  it('deletes the link', async () => {
-    const fetchSpy = mockFetch({ linked: false, removed: true });
-    vi.stubGlobal('fetch', fetchSpy);
-    await client.unlinkMicrosoft();
-    expect(fetchSpy.mock.calls[0][1].method).toBe('DELETE');
-    vi.unstubAllGlobals();
-  });
 });
 
 /**

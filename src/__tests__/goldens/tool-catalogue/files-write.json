@@ -45,54 +45,6 @@
     }
   },
   {
-    "name": "disconnect_google",
-    "title": "Disconnect Google Account",
-    "description": "Remove the stored Google connection, deleting the credential Rockhopper holds for this user. Requires an interactive login; a personal access token cannot sever a connection it did not create.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {},
-      "$schema": "https://json-schema.org/draft/2020-12/schema"
-    },
-    "annotations": {
-      "destructiveHint": true,
-      "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": false
-    }
-  },
-  {
-    "name": "disconnect_microsoft",
-    "title": "Disconnect Microsoft Account",
-    "description": "Remove the stored Microsoft connection, deleting the credential Rockhopper holds for this user. Requires an interactive login; a personal access token cannot sever a connection it did not create.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {},
-      "$schema": "https://json-schema.org/draft/2020-12/schema"
-    },
-    "annotations": {
-      "destructiveHint": true,
-      "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": false
-    }
-  },
-  {
-    "name": "disconnect_smartsheet",
-    "title": "Disconnect Smartsheet Account",
-    "description": "Remove the stored Smartsheet connection, deleting the credential Rockhopper holds for this user. Requires an interactive login; a personal access token cannot sever a connection it did not create.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {},
-      "$schema": "https://json-schema.org/draft/2020-12/schema"
-    },
-    "annotations": {
-      "destructiveHint": true,
-      "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": false
-    }
-  },
-  {
     "name": "enroll_file",
     "title": "Add a File to Rockhopper",
     "description": "Add a file to Rockhopper so it can be versioned, reviewed and tracked. Takes the file's link (best) — SharePoint, OneDrive, Google Sheets or Google Drive — or, for a Microsoft file, a `driveMsId` + `msId` pair. Excel workbooks, Google Sheets, Word documents, PowerPoint decks, Google Docs, Google Slides, PDFs, Markdown and text files, and JSON and XML files are all added the same way. Another kind of Drive file is reported as untracked. You MUST ask the user who may see the file and pass their answer as `share_with` (\"me\" or \"team\"); calling without it returns the question instead of enrolling. If the file was previously removed from Rockhopper, this reports `restore_confirmation_required` and changes nothing — ask the user, then call again with `confirm_restore: true`. Safe to call again if you lose the answer: a file that is already there reports `already_enrolled` and is not duplicated. Use this whenever `search_files` or `list_files` cannot find a file the user is asking about — a file Rockhopper does not know about is not a missing file, it is an un-enrolled one. This always enrolls the file you name. An organisation's automatic-enrollment rules only govern which files its own background sweep finds on its own; they never stop you from adding any file by hand here. If the user cannot produce a link, call `search_drive_files` first, have them confirm which candidate they meant, and pass back exactly what that confirmation returned — the `driveMsId` + `msId` pair for a Microsoft file, or the `url` for a Google one. Never enroll a file the user has not named. A Smartsheet sheet is added with `provider` \"smartsheet\" and its sheet id as `msId`; Smartsheet reports and dashboards are not tracked.",

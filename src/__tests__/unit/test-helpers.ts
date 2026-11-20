@@ -12,13 +12,10 @@ export interface MockApiClient {
   getTeam: Mock;
   beginMicrosoftConnect: Mock;
   getMicrosoftLink: Mock;
-  unlinkMicrosoft: Mock;
   beginGoogleConnect: Mock;
   getGoogleLink: Mock;
-  unlinkGoogle: Mock;
   beginSmartsheetConnect: Mock;
   getSmartsheetLink: Mock;
-  unlinkSmartsheet: Mock;
   browseSmartsheet: Mock;
   searchSmartsheet: Mock;
   getSmartsheetCellHistory: Mock;
@@ -112,7 +109,6 @@ export function createMockApiClient(): MockApiClient {
       linkedAt: null,
       lastUsedAt: null,
     }),
-    unlinkMicrosoft: vi.fn().mockResolvedValue({ linked: false, removed: true }),
     // ENG-6414 — the Google Drive link, same three calls.
     beginGoogleConnect: vi.fn().mockResolvedValue({
       authorizeUrl:
@@ -122,7 +118,6 @@ export function createMockApiClient(): MockApiClient {
     getGoogleLink: vi
       .fn()
       .mockResolvedValue({ linked: false, googleAccountLabel: null }),
-    unlinkGoogle: vi.fn().mockResolvedValue({ linked: false, removed: true }),
     // The Smartsheet link and discovery calls. Not connected by default.
     beginSmartsheetConnect: vi.fn().mockResolvedValue({
       authorizeUrl: 'https://app.smartsheet.com/b/authorize?client_id=real-ss',
@@ -131,9 +126,6 @@ export function createMockApiClient(): MockApiClient {
     getSmartsheetLink: vi
       .fn()
       .mockResolvedValue({ linked: false, links: [] }),
-    unlinkSmartsheet: vi
-      .fn()
-      .mockResolvedValue({ linked: false, removed: true }),
     browseSmartsheet: vi.fn().mockResolvedValue({
       parent: { parentType: 'home', parentId: null },
       items: [],
