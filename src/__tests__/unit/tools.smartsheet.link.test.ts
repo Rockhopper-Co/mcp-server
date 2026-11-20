@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { RockhopperApiError } from '../../api-client.js';
 import { registerTools } from '../../tools/index.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
 
@@ -22,8 +21,8 @@ const handlerOf = (
 const textOf = (result: { content: Array<{ text: string }> }) =>
   result.content[0].text;
 
-describe('connect_smartsheet / smartsheet_link_status / disconnect_smartsheet', () => {
-  it('registers the three on the read floor of a read-only token', () => {
+describe('connect_smartsheet / smartsheet_link_status', () => {
+  it('registers the two on the read floor of a read-only token', () => {
     const server = createMockMcpServer();
     registerTools(server as any, createMockApiClient() as any, {
       scope: 'read-only',
@@ -32,7 +31,6 @@ describe('connect_smartsheet / smartsheet_link_status / disconnect_smartsheet', 
     for (const name of [
       'connect_smartsheet',
       'smartsheet_link_status',
-      'disconnect_smartsheet',
     ]) {
       expect(names).toContain(name);
     }
@@ -109,27 +107,6 @@ describe('connect_smartsheet / smartsheet_link_status / disconnect_smartsheet', 
       expect(text.includes('Run `connect_smartsheet`')).toBe(suggestsReconnect);
     },
   );
-
-  it('disconnect_smartsheet says a personal access token cannot disconnect', async () => {
-    const api = createMockApiClient();
-    api.unlinkSmartsheet.mockRejectedValue(new RockhopperApiError(403, 'no'));
-    const result = await handlerOf(
-      register(api),
-      'disconnect_smartsheet',
-    )({});
-    expect(result.isError).toBe(true);
-    expect(textOf(result)).toContain('Nothing was disconnected');
-    expect(textOf(result)).toContain('Smartsheet');
-  });
-
-  it('disconnect_smartsheet reports the removal', async () => {
-    const text = textOf(
-      await handlerOf(register(createMockApiClient()), 'disconnect_smartsheet')(
-        {},
-      ),
-    );
-    expect(text).toContain('Smartsheet account disconnected.');
-  });
 
   it('positive control: the Google and Microsoft status text is unchanged', async () => {
     const server = register(createMockApiClient());

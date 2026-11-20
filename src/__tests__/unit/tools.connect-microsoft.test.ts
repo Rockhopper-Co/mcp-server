@@ -24,13 +24,12 @@ describe('connect_microsoft', () => {
     name: string,
   ) => server.registerTool.mock.calls.find((c) => c[0] === name)?.[1];
 
-  it('registers the three connection tools on the read floor', () => {
+  it('registers the two connection tools on the read floor', () => {
     const names = register(createMockApiClient()).registerTool.mock.calls.map(
       (c) => c[0],
     );
     expect(names).toContain('connect_microsoft');
     expect(names).toContain('microsoft_link_status');
-    expect(names).toContain('disconnect_microsoft');
   });
 
   describe('the consent URL is not a parameter', () => {
@@ -165,46 +164,6 @@ describe('connect_microsoft', () => {
 
       const result = await handler({});
       expect(result.isError).toBe(true);
-    });
-  });
-
-  describe('disconnect_microsoft', () => {
-    it('confirms the credential was deleted', async () => {
-      const api = createMockApiClient();
-      const handler = handlerFor(register(api), 'disconnect_microsoft');
-
-      const result = await handler({});
-
-      expect(api.unlinkMicrosoft).toHaveBeenCalled();
-      expect(result.content[0].text).toContain('deleted');
-    });
-
-    it('is honest when there was nothing to disconnect', async () => {
-      const api = createMockApiClient();
-      api.unlinkMicrosoft.mockResolvedValue({ linked: false, removed: false });
-      const handler = handlerFor(register(api), 'disconnect_microsoft');
-
-      const result = await handler({});
-      expect(result.content[0].text).toContain('No Microsoft account was connected');
-    });
-
-    it('reports a refusal rather than claiming success', async () => {
-      const api = createMockApiClient();
-      api.unlinkMicrosoft.mockRejectedValue(
-        new Error('requires interactive login (JWT)'),
-      );
-      const handler = handlerFor(register(api), 'disconnect_microsoft');
-
-      const result = await handler({});
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('interactive login');
-    });
-
-    it('is marked destructive so a client can confirm first', () => {
-      const server = register(createMockApiClient());
-      const annotations = specFor(server, 'disconnect_microsoft')?.annotations;
-      expect(annotations.destructiveHint).toBe(true);
     });
   });
 });
