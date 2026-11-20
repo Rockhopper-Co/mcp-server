@@ -1,6 +1,7 @@
 /**
- * ENG-9660 (plan 121 SP31) — what `enroll_file` knows and says about an Office
- * file in Google Drive.
+ * ENG-9660 (plan 121 SP31) — what `enroll_file` knows about an Office file in
+ * Google Drive. The sentences it says about it live in
+ * `enrollment-conversion.text.ts`.
  *
  * Rockhopper converts an Excel, Word or PowerPoint file enrolled from Google
  * Drive to Google Sheets, Docs or Slides and tracks the converted Google file.
@@ -10,13 +11,22 @@
  * other tool resolves once the conversion lands.
  *
  * Mirrored, not imported, for the reason `types.ts` gives: this package ships
- * over npm and cannot depend on the backend tree. The wire shape is the
- * backend's `POST /enrolled-files/info/bulk` answer for a Drive id that has a
- * conversion link row (plan 121 contract W6).
+ * over npm and cannot depend on the backend tree. Two wire shapes:
+ * - `POST /enrolled-files/info/bulk`'s answer for a Drive id that has a
+ *   conversion link row (plan 121 contract W6), read BEFORE any write;
+ * - the DOOR's answer on the 201 of `POST /enrolled-files` and `batch` (plan
+ *   121 D8): each per-file outcome carries `conversion: { state, reason }`
+ *   beside the unchanged outcome word, as backend ENG-9399 (every enrollment
+ *   door converts) produces it (`QueuedEnrollmentFileOutcome extends
+ *   ConversionAnswerFields`, `dto/enrolled-file-conversion-state.dto.ts`).
  */
 
 import type { EnrollOutcome } from './enrollment.js';
-import type { EnrollmentInfo, EnrollmentState } from './types.js';
+import type {
+  EnrollmentInfo,
+  EnrollmentState,
+  QueuedEnrollmentFile,
+} from './types.js';
 
 /**
  * The five states a conversion is SERVED as (W6, W7). The backend stores two
@@ -68,6 +78,24 @@ export function conversionFieldsOf(
     conversion: served?.conversion ?? null,
     convertedFile: served?.convertedFile ?? null,
   };
+}
+
+/** One per-file outcome of an enroll 201, with the door's conversion (D8). */
+export type ServedEnrollmentFile = QueuedEnrollmentFile & {
+  conversion?: EnrollmentConversion | null;
+};
+
+/**
+ * The door's conversion answer, or `undefined` when the door said nothing (a
+ * backend before plan 121, or no per-file outcome at all). `null` is a door
+ * that said "no conversion"; the two are kept apart so that silence falls
+ * back to the lookup taken before the write, as every ENG-2536 field does.
+ */
+export function serverConversionOf(
+  file: QueuedEnrollmentFile | null,
+): EnrollmentConversion | null | undefined {
+  if (!file || !('conversion' in file)) return undefined;
+  return (file as ServedEnrollmentFile).conversion ?? null;
 }
 
 /** What `enroll_file` can answer before it writes anything. */
@@ -124,108 +152,37 @@ export function outcomeForState(
   return null;
 }
 
-const TRACKED_AS: Readonly<Record<string, string>> = {
-  gsheet_native: 'a Google Sheet',
-  google_doc: 'a Google Doc',
-  google_slides: 'a Google Slides deck',
-};
-
-/** What a waiting conversion needs, and from whom (SP04's waiting reasons). */
-const WAITING_FOR: Readonly<Record<string, string>> = {
-  no_write_grant:
-    'nobody who can open it has let Rockhopper create files in their Google ' +
-    'Drive. Ask the user, or a colleague who can open the file, to run ' +
-    '`connect_google` and allow full Drive access',
-  no_member_can_add_to_folder:
-    'nobody linked to Rockhopper can add files to the Drive folder it is in. ' +
-    'Someone who can add files to that folder needs to run `connect_google`',
-  no_owner_domain_member:
-    'nobody from the organisation that owns the file has linked a Google ' +
-    'account to Rockhopper. Someone from that organisation needs to run ' +
-    '`connect_google`',
-};
-
-/** Why a conversion was refused (SP03's `ConversionRefusal`). */
-const REFUSED_BECAUSE: Readonly<Record<string, string>> = {
-  over_size_limit: 'it is larger than Google will convert',
-  over_cell_limit: 'it has more cells than a Google Sheet can hold',
-  encrypted: 'it is password-protected or encrypted, so Google cannot open it',
-  import_format_unsupported: 'Google cannot convert this kind of file',
-  restriction_not_carried:
-    "Google would not carry the original's sharing limits onto a converted " +
-    'copy, and Rockhopper never makes a copy more open than the original',
-};
-
-/** A reason the table knows, in words; one it does not, said verbatim. */
-function said(
-  table: Readonly<Record<string, string>>,
-  reason: string | null | undefined,
-  unheard: (verbatim: string) => string,
-): string {
-  if (reason && table[reason]) return table[reason];
-  return unheard(`"${reason ?? 'none given'}"`);
-}
-
 /**
- * The sentence that says what happened to the file's conversion, or `''` when
- * there is no conversion to speak of. Every state names the next step, or says
- * there is none: no answer ends without one (ENG-1647).
+ * The outcome the DOOR's conversion answer implies after a write, or null when
+ * the server's outcome word decides. Needed because the door keeps the word
+ * (`enrolled` for an original it refused or found pending, ENG-9399
+ * `enrolled-files.service.ts:1208-1215`) and says the conversion beside it: the
+ * race where B's lookup saw no link row and the door then found A's claim.
+ * A file the door answered `already_enrolled` or `restored` for IS a record,
+ * so it stays that, exactly as {@link outcomeForState} keeps a tracked file.
  */
-export function conversionSentence(
-  fields: EnrollmentConversionFields,
-): string {
-  const { conversion, convertedFile } = fields;
-  if (!conversion) return '';
-  switch (conversion.state) {
-    case 'converted':
-      return (
-        'Rockhopper converted this Office file to ' +
-        (convertedFile
-          ? `${TRACKED_AS[convertedFile.fileType] ?? 'a Google file'}, ` +
-            `"${convertedFile.name}" (id ${convertedFile.platformId}), `
-          : 'Google format ') +
-        'and tracks that Google file. The original in Google Drive is ' +
-        "unchanged and is not tracked; use the Google file's id with every " +
-        'other tool.'
-      );
-    case 'kept_as_office':
-      return (
-        'Google could not convert it, so Rockhopper tracks it as the Office ' +
-        'file it is.'
-      );
+export function outcomeAfterWrite(
+  serverOutcome: QueuedEnrollmentFile['outcome'] | undefined,
+  conversion: EnrollmentConversion | null | undefined,
+): Extract<EnrollOutcome, 'conversion_pending' | 'conversion_refused'> | null {
+  if (serverOutcome === 'already_enrolled' || serverOutcome === 'restored') {
+    return null;
+  }
+  const conversionState = conversion?.state;
+  switch (conversionState) {
     case 'pending':
-      return (
-        'Rockhopper is converting it to Google format, and until that ' +
-        'finishes it still opens as the Office file. There is nothing to do: ' +
-        'check again with `search_files` shortly.'
-      );
-    case 'waiting_for_member':
-      return (
-        'Rockhopper converts Office files in Google Drive to Google format, ' +
-        'and this one is waiting: ' +
-        said(
-          WAITING_FOR,
-          conversion.reason,
-          (verbatim) => `the reason Rockhopper gives is ${verbatim}`,
-        ) +
-        '. ' +
-        'Rockhopper converts it as soon as that is done.'
-      );
+      return 'conversion_pending';
     case 'refused':
-      return (
-        'Rockhopper cannot track it, because ' +
-        said(
-          REFUSED_BECAUSE,
-          conversion.reason,
-          (verbatim) => `Google cannot convert it (reason ${verbatim})`,
-        ) +
-        '. Nothing was ' +
-        'created and the original in Google Drive is unchanged. Retrying will ' +
-        'not change the answer.'
-      );
+      return 'conversion_refused';
+    case undefined:
+    case 'converted':
+    case 'kept_as_office':
+    case 'waiting_for_member':
+      return null;
     default: {
-      const unheard: never = conversion.state;
-      return `Rockhopper reports this file's conversion as "${String(unheard)}".`;
+      const unheard: never = conversionState;
+      void unheard;
+      return null;
     }
   }
 }

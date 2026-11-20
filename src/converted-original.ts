@@ -29,8 +29,19 @@ import {
 } from './enrollment-conversion.js';
 import { log } from './logger.js';
 
-/** `ApiClient` methods whose first argument is the file id a tool was given. */
-const FILE_ID_METHODS = [
+/**
+ * `ApiClient` methods whose first argument is the file id a tool was given.
+ *
+ * Scope, said where it is decided: only these and {@link BODY_ID_METHODS} are
+ * followed; any other call refused for an original's id answers its bare
+ * refusal, as before. The in-app assistant is narrower still: its
+ * confirmed write tools (`rename_file`, `discard_changes`, `create_version`,
+ * `add_comment`) are checked by the backend's proposal seam BEFORE the tool
+ * runs (`proposal-confirmation.seam.ts!fileName`, `findWorkspaceFileByAnyId`),
+ * which answers "the file was not found" for an original's id, so this never
+ * sees those calls there.
+ */
+const FILE_ID_METHODS: readonly (keyof ApiClient)[] = [
   'getEnrolledFile',
   'getFileVersions',
   'getFoldStatus',
@@ -41,7 +52,28 @@ const FILE_ID_METHODS = [
   'getDocumentChanges',
   'discardChanges',
   'updateEnrolledFile',
-] as const satisfies readonly (keyof ApiClient)[];
+];
+
+/**
+ * `ApiClient` methods whose file id rides in a BODY object, by its key there:
+ * `add_comment` sends `{ fileMsId, ... }` (`api-client.ts!createComment`).
+ */
+const BODY_ID_METHODS: Readonly<Partial<Record<keyof ApiClient, string>>> = {
+  createComment: 'fileMsId',
+};
+
+/** The file id a followed call was given, or undefined for any other call. */
+function fileIdOf(property: PropertyKey, args: unknown[]): string | undefined {
+  if (typeof property !== 'string') return undefined;
+  const first = args[0];
+  if ((FILE_ID_METHODS as readonly string[]).includes(property)) {
+    return typeof first === 'string' ? first : undefined;
+  }
+  const key = BODY_ID_METHODS[property as keyof ApiClient];
+  if (!key || typeof first !== 'object' || first === null) return undefined;
+  const value: unknown = (first as Record<string, unknown>)[key];
+  return typeof value === 'string' ? value : undefined;
+}
 
 type AnyMethod = (...args: unknown[]) => Promise<unknown>;
 
@@ -113,7 +145,10 @@ async function convertedFileFor(
  * registration is the one that runs.
  */
 export function followConvertedOriginals(api: ApiClient): ApiClient {
-  const followed = new Set<PropertyKey>(FILE_ID_METHODS);
+  const followed = new Set<PropertyKey>([
+    ...FILE_ID_METHODS,
+    ...Object.keys(BODY_ID_METHODS),
+  ]);
   return new Proxy(api, {
     get(target, property) {
       const value: unknown = Reflect.get(target, property, target);
@@ -124,8 +159,8 @@ export function followConvertedOriginals(api: ApiClient): ApiClient {
         try {
           return await method.apply(target, args);
         } catch (error) {
-          const fileId = args[0];
-          if (!isUnresolvedId(error) || typeof fileId !== 'string') throw error;
+          const fileId = fileIdOf(property, args);
+          if (!isUnresolvedId(error) || fileId === undefined) throw error;
           const convertedFile = await convertedFileFor(target, fileId);
           throw convertedFile
             ? new ConvertedOriginalError(error, convertedFile)

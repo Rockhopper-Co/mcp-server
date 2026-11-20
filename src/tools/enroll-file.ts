@@ -1,13 +1,12 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
 import {
-  describeServerOutcome,
   resolveTeamShareTargets,
   TeamUnresolvedError,
   type ShareWith,
 } from '../enrollment.js';
-import { conversionDetail, conversionSentence } from '../enrollment-conversion.js';
 import type { QueuedEnrollment, QueuedEnrollmentFile } from '../types.js';
+import { answerAfterWrite } from './enroll-file.after-write.js';
 import {
   ENROLL_ANNOTATIONS,
   ENROLL_DESCRIPTION,
@@ -17,8 +16,6 @@ import {
 } from './enroll-file.contract.js';
 import {
   answerBeforeWrite,
-  answerId,
-  answerName,
   classify,
   resolveTarget,
   type Target,
@@ -79,7 +76,7 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
      * `0` for a `share_with: 'me'` enroll, which shares with nobody by design.
      */
     skipped: number;
-    /** ENG-9660 — its `msId` names the record, the converted one included. */
+    /** ENG-9660 — the door's per-file answer, its conversion included. */
     serverFile: QueuedEnrollmentFile | null;
   }> {
     const file = {
@@ -197,35 +194,22 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
                   'Settings, then share the file with them again'
                 : '')
             : ' — visible to you only';
-        // ENG-2536: the SERVER's verdict wins over the one inferred from the
-        // lookup taken before the write. The two can disagree, and when they
-        // do the server is right: the lookup happened earlier, so a file
-        // somebody else added in between reads `not_enrolled` here and would
-        // otherwise be reported as a fresh add. The fallback is what shipped
-        // before, for a backend older than the field.
-        const { outcome, text } = describeServerOutcome(
-          serverFile?.outcome ?? (restoring ? 'restored' : 'enrolled'),
-          answerName(target),
-          who,
+        return toolResult(
+          answerAfterWrite({
+            target,
+            serverFile,
+            restoring,
+            who,
+            shared: {
+              enrollmentId,
+              shareWith: share_with,
+              sharedWithCount: sharedWith,
+              // ENG-4279 — structured alongside the prose, so a client that
+              // renders `detail` rather than the text still sees the drop.
+              skippedCount: skipped,
+            },
+          }),
         );
-        const sentence = conversionSentence(target);
-        return toolResult({
-          outcome,
-          text: sentence ? `${text} ${sentence}` : text,
-          detail: {
-            // ENG-9660 — the server names the record it enrolled; for an
-            // original that is the converted record, never the original.
-            fileMsId: serverFile?.msId ?? answerId(target),
-            name: answerName(target) || null,
-            ...conversionDetail(target),
-            enrollmentId,
-            shareWith: share_with,
-            sharedWithCount: sharedWith,
-            // ENG-4279 — structured alongside the prose, so a client that
-            // renders `detail` rather than the text still sees the drop.
-            skippedCount: skipped,
-          },
-        });
       } catch (error) {
         if (error instanceof TeamUnresolvedError) {
           return toolResult({
