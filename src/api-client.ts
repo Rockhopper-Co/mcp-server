@@ -8,6 +8,12 @@ import {
   type CompareSummary,
 } from './ledger-wire.js';
 import type {
+  CreateErpLinkBody,
+  ErpLink,
+  ErpLinkStatus,
+  ErpPage,
+} from './erp-links.js';
+import type {
   CellHistoryEntry,
   DocumentAnchorHistory,
   EnrolledFile,
@@ -1315,6 +1321,45 @@ export class ApiClient {
     });
   }
 
+  // --- ERP record links (ENG-8441) ---
+  // Keyed by the enrolled file's INTERNAL id, like `getCompareSummary`: the
+  // backend's `EnrolledFileUserAccessGuard` reads `:enrolledFileId`.
+
+  async listErpLinks(enrolledFileId: number): Promise<ErpPage<ErpLink>> {
+    return this.request<ErpPage<ErpLink>>(
+      `${erpLinksPath(enrolledFileId)}?limit=100`,
+    );
+  }
+
+  async listErpLinkStatuses(
+    enrolledFileId: number,
+  ): Promise<ErpPage<ErpLinkStatus>> {
+    return this.request<ErpPage<ErpLinkStatus>>(
+      `${erpLinksPath(enrolledFileId)}/status?limit=100`,
+    );
+  }
+
+  async createErpLink(
+    enrolledFileId: number,
+    body: CreateErpLinkBody,
+  ): Promise<ErpLink> {
+    return this.request<ErpLink>(erpLinksPath(enrolledFileId), {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async removeErpLink(
+    enrolledFileId: number,
+    linkId: string,
+  ): Promise<ErpLink> {
+    const link = encodeURIComponent(linkId);
+    return this.request<ErpLink>(
+      `${erpLinksPath(enrolledFileId)}/links/${link}`,
+      { method: 'DELETE' },
+    );
+  }
+
   // --- File metadata update ---
 
   /**
@@ -1338,4 +1383,9 @@ export class ApiClient {
       EnrolledFileSchema as unknown as ZodType<EnrolledFile>,
     );
   }
+}
+
+function erpLinksPath(enrolledFileId: number): string {
+  const id = encodeURIComponent(String(enrolledFileId));
+  return `/integrations/erp-links/files/${id}`;
 }

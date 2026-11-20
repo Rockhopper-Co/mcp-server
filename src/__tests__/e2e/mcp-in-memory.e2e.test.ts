@@ -84,6 +84,8 @@ describe('MCP in-memory protocol e2e', () => {
         'get_unattributed_changes',
         'google_link_status',
         'smartsheet_link_status',
+        'link_erp_record',
+        'list_erp_links',
         'list_files',
         'list_unenrolled_files',
         'microsoft_link_status',
@@ -92,6 +94,7 @@ describe('MCP in-memory protocol e2e', () => {
         'resolve_comment',
         'search_drive_files',
         'search_files',
+        'unlink_erp_record',
       ].sort(),
     );
 
@@ -1148,6 +1151,7 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     'get_file_versions',
     'get_reviews',
     'get_unattributed_changes',
+    'list_erp_links',
     'list_files',
     'list_unenrolled_files',
     'search_files',
@@ -1183,9 +1187,9 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     }
   }
 
-  it('shows 28 tools to a read-write token', async () => {
+  it('shows 31 tools to a read-write token', async () => {
     const names = await toolNamesForScope('read-write');
-    expect(names).toHaveLength(28);
+    expect(names).toHaveLength(31);
     expect(names).toContain('add_comment');
   });
 
