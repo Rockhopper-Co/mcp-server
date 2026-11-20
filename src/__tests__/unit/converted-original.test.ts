@@ -19,6 +19,8 @@ import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
  *   file's own id" test rewrites a real refusal.
  * - dropping `error.code === null`: the coded-refusal test makes a lookup.
  * - retrying against the new id: `getFileVersions` is called twice.
+ * - dropping `createComment` from `BODY_ID_METHODS`: the add_comment test
+ *   answers the bare 403 and makes no lookup.
  */
 
 type Api = ReturnType<typeof createMockApiClient>;
@@ -42,6 +44,17 @@ function versionsTool(api: Api) {
   const call = server.registerTool.mock.calls.find(
     (c) => c[0] === 'get_file_versions',
   );
+  return call?.[2] as (args: Record<string, unknown>) => Promise<{
+    content: Array<{ type: string; text: string }>;
+    isError?: boolean;
+  }>;
+}
+
+/** `add_comment`, registered with the comment-writing capability. */
+function commentTool(api: Api) {
+  const server = createMockMcpServer();
+  registerTools(server as never, api as never, { capabilities: ['comments:write'] });
+  const call = server.registerTool.mock.calls.find((c) => c[0] === 'add_comment');
   return call?.[2] as (args: Record<string, unknown>) => Promise<{
     content: Array<{ type: string; text: string }>;
     isError?: boolean;
@@ -104,6 +117,23 @@ describe("a tool given an original's id after its conversion", () => {
 
     expect(api.getEnrollmentInfo).not.toHaveBeenCalled();
     expect(text).toBe(`Failed to get versions: ${coded.message}`);
+  });
+
+  it("follows add_comment, whose id rides in the body's fileMsId", async () => {
+    const api = createMockApiClient();
+    api.createComment.mockRejectedValue(FORBIDDEN);
+    infoAnswers(api, { convertedFile: CONVERTED, conversion: { state: 'converted' } });
+
+    const result = await commentTool(api)({
+      fileMsId: 'orig-docx-1',
+      message: 'Check this',
+      versionInternalId: 3,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('id gdoc-7: call again with that id');
+    expect(api.getEnrollmentInfo).toHaveBeenCalledWith(['orig-docx-1'], 'google');
+    expect(api.createComment).toHaveBeenCalledTimes(1);
   });
 
   it('rethrows the original refusal when the lookup itself fails', async () => {
