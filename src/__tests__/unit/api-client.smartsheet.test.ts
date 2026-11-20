@@ -53,14 +53,6 @@ describe('Smartsheet link calls', () => {
     expect(url()).toBe('https://api.test/auth/smartsheet/link');
     expect(init().method ?? 'GET').toBe('GET');
   });
-
-  it('unlinks with a DELETE that names the region', async () => {
-    const { client, url, init } = wired({ linked: false, removed: true });
-    const answer = await client.unlinkSmartsheet();
-    expect(answer).toEqual({ linked: false, removed: true });
-    expect(url()).toBe('https://api.test/auth/smartsheet/link?region=us');
-    expect(init().method).toBe('DELETE');
-  });
 });
 
 describe('Smartsheet discovery calls', () => {

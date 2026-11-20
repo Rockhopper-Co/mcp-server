@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { RockhopperApiError } from '../../api-client.js';
 import { registerTools } from '../../tools/index.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
 
@@ -41,17 +40,15 @@ describe('account-link tools — both providers, one registration', () => {
     },
   );
 
-  it('registers the Google three on the read floor beside the Microsoft three', () => {
+  it('registers the Google two on the read floor beside the Microsoft two', () => {
     const names = register(createMockApiClient()).registerTool.mock.calls.map(
       (c) => c[0],
     );
     for (const name of [
       'connect_microsoft',
       'microsoft_link_status',
-      'disconnect_microsoft',
       'connect_google',
       'google_link_status',
-      'disconnect_google',
     ]) {
       expect(names).toContain(name);
     }
@@ -120,46 +117,16 @@ describe('google_link_status', () => {
   });
 });
 
-describe('disconnect_google', () => {
-  it('confirms the stored grant was deleted', async () => {
-    const api = createMockApiClient();
-    const [, spec, handler] = callFor(register(api), 'disconnect_google')!;
-
-    const result = await handler({});
-
-    expect(api.unlinkGoogle).toHaveBeenCalledTimes(1);
-    expect(api.unlinkMicrosoft).not.toHaveBeenCalled();
-    expect(result.content[0].text).toBe(
-      'Google account disconnected. The stored credential has been deleted.',
+describe('no disconnect tool (ENG-9682)', () => {
+  it('registers connect and status for every provider and no disconnect', () => {
+    const names = register(createMockApiClient()).registerTool.mock.calls.map(
+      (c) => c[0],
     );
-    expect(spec.annotations.destructiveHint).toBe(true);
-  });
-
-  it('is honest when there was nothing to disconnect', async () => {
-    const api = createMockApiClient();
-    api.unlinkGoogle.mockResolvedValue({ linked: false, removed: false });
-    const [, , handler] = callFor(register(api), 'disconnect_google')!;
-    expect((await handler({})).content[0].text).toBe(
-      'No Google account was connected.',
-    );
-  });
-
-  it('says plainly that a personal access token cannot disconnect', async () => {
-    const api = createMockApiClient();
-    api.unlinkGoogle.mockRejectedValue(
-      new RockhopperApiError(
-        403,
-        'Rockhopper API 403: Forbidden — {"message":"Disconnecting a Google account requires interactive login (JWT)"}',
-      ),
-    );
-    const [, , handler] = callFor(register(api), 'disconnect_google')!;
-
-    const result = await handler({});
-    const text = result.content[0].text as string;
-
-    expect(result.isError).toBe(true);
-    expect(text).toContain('Nothing was disconnected');
-    expect(text).toContain('personal access token');
-    expect(text).not.toContain('Rockhopper API 403');
+    // Positive control: the tools that stay are registered.
+    for (const provider of ['microsoft', 'google', 'smartsheet']) {
+      expect(names).toContain(`connect_${provider}`);
+      expect(names).toContain(`${provider}_link_status`);
+    }
+    expect(names.filter((n) => n.startsWith('disconnect_'))).toEqual([]);
   });
 });

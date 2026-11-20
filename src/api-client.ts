@@ -1,6 +1,6 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
-import { getCorrelationId } from './correlation.js';
+import { getCorrelationId, getToolName } from './correlation.js';
 import { log } from './logger.js';
 import {
   compareSurfaceHeaders,
@@ -451,6 +451,11 @@ export class ApiClient {
           //
           // Placed before the spread so a per-call header still wins.
           'X-Rockhopper-Surface': this.surface,
+          // ENG-8848: the MCP tool name, so the backend writes its per-call
+          // audit row for stdio calls as it does for mcp-gateway. Absent
+          // outside a tool-call scope. Before the spread: a per-call header
+          // (the gateway's own X-MCP-Tool) still wins.
+          ...(getToolName() ? { 'X-MCP-Tool': getToolName() } : {}),
           // ENG-1756 (decision 15), unchanged: the two admission-bearing
           // headers stay on writes, because the admission only fires there.
           ...(WRITE_METHODS.has(method)
@@ -604,15 +609,8 @@ export class ApiClient {
     return this.request<MicrosoftLinkStatus>('/auth/microsoft/link');
   }
 
-  async unlinkMicrosoft(): Promise<{ linked: boolean; removed: boolean }> {
-    return this.request<{ linked: boolean; removed: boolean }>(
-      '/auth/microsoft/link',
-      { method: 'DELETE' },
-    );
-  }
-
   // --- Google Drive link (ENG-6414) ---
-  // Same shape as the Microsoft three above, and the same rule: the backend
+  // Same shape as the Microsoft two above, and the same rule: the backend
   // builds the sign-in URL (`POST /auth/google/connect`, ENG-6411); this
   // client can send nothing that shapes it.
 
@@ -625,13 +623,6 @@ export class ApiClient {
 
   async getGoogleLink(): Promise<GoogleLinkStatus> {
     return this.request<GoogleLinkStatus>('/auth/google/link');
-  }
-
-  async unlinkGoogle(): Promise<{ linked: boolean; removed: boolean }> {
-    return this.request<{ linked: boolean; removed: boolean }>(
-      '/auth/google/link',
-      { method: 'DELETE' },
-    );
   }
 
   // --- Smartsheet link and discovery ---
@@ -647,13 +638,6 @@ export class ApiClient {
 
   async getSmartsheetLink(): Promise<SmartsheetLinkStatusResponse> {
     return this.request<SmartsheetLinkStatusResponse>('/auth/smartsheet/link');
-  }
-
-  async unlinkSmartsheet(): Promise<{ linked: boolean; removed: boolean }> {
-    return this.request<{ linked: boolean; removed: boolean }>(
-      `/auth/smartsheet/link?region=${SMARTSHEET_REGION}`,
-      { method: 'DELETE' },
-    );
   }
 
   /** The caller's own workspaces, folders and sheets, one level at a time. */

@@ -131,8 +131,7 @@ export function registerTools(
   // ENG-2198 / ENG-6414 — connecting a Microsoft or Google account is an
   // account action, not a write to Rockhopper data, so it rides with the read
   // floor: a read-only
-  // token can still connect, check and disconnect. The backend requires an
-  // interactive login for the disconnect itself.
+  // token can still connect and check. There is no disconnect (ENG-9682).
   registerAccountLinkTools(server, api);
 
   // Write tools — one registrar per granted family, so a token holding
