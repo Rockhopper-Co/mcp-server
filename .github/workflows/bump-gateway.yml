@@ -490,8 +490,8 @@ jobs:
       # anything else has since landed on `chore/mcp-server-sync` this refuses
       # rather than merging a tree no proof ever saw.
       #
-      # `--squash`, because the pull request is one commit and `dev` should read
-      # as one line per bump. The branch is deleted by the repository's own
+      # `--merge`: a merge commit is the only merge method the organization
+      # allows (squash and rebase are turned off on every repository). The branch is deleted by the repository's own
       # `delete_branch_on_merge`; the next publish re-cuts it from `dev`.
       - name: Merge it — the proofs already ran on this exact tree
         if: success() && steps.pending.outputs.changed == 'true'
@@ -517,7 +517,7 @@ jobs:
             echo "::error::No open pull request into dev on chore/mcp-server-sync. Refusing to merge something I cannot see."
             exit 1
           fi
-          gh pr merge "$number" --repo Rockhopper-Co/mcp-gateway --squash --match-head-commit "$SHA"
+          gh pr merge "$number" --repo Rockhopper-Co/mcp-gateway --merge --match-head-commit "$SHA"
 
           # HOP 4, MEASURED RATHER THAN PREDICTED (ENG-2843 item 4). The claim
           # being made is "about 2 minutes to `dev`"; this is the line that
