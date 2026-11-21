@@ -491,7 +491,8 @@ jobs:
       # rather than merging a tree no proof ever saw.
       #
       # `--merge`: a merge commit is the only merge method the organization
-      # allows (squash and rebase are turned off on every repository). The branch is deleted by the repository's own
+      # allows (squash and rebase are turned off on every repository).
+      # The branch is deleted by the repository's own
       # `delete_branch_on_merge`; the next publish re-cuts it from `dev`.
       - name: Merge it — the proofs already ran on this exact tree
         if: success() && steps.pending.outputs.changed == 'true'
