@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
+import { followConvertedOriginals } from '../converted-original.js';
 import {
   CAPABILITY_SET,
   PAT_CAPABILITIES,
@@ -110,9 +111,13 @@ const REGISTRARS: Readonly<
 
 export function registerTools(
   server: McpServer,
-  api: ApiClient,
+  client: ApiClient,
   options?: RegisterToolsOptions,
 ): void {
+  // ENG-9660 — a file id an AI client stored before Rockhopper converted an
+  // Office file in Drive is refused by the backend; this names the Google file
+  // the record now tracks instead (`converted-original.ts`).
+  const api = followConvertedOriginals(client);
   // Read tools — the floor every scope gets, including an unrecognised one.
   registerListFilesTool(server, api);
   registerGetVersionsTool(server, api);
