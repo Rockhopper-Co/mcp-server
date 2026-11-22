@@ -847,7 +847,9 @@ describe('the bump merges itself, and ONLY when the proofs passed (ENG-2843)', (
     // `--match-head-commit` is what ties the thing merged to the thing proved.
     // Without it the step would merge whatever the branch happened to carry by
     // the time it ran, which no proof in this job ever saw.
-    expect(mergeCall(tree)).toContain('--squash');
+    // A merge commit is the only merge method the organization allows.
+    expect(mergeCall(tree)).toContain('--merge');
+    expect(mergeCall(tree)).not.toContain('--squash');
     expect(mergeCall(tree)).toContain(`--match-head-commit ${remoteTip(remote)}`);
   });
 
