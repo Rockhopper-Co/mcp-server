@@ -210,6 +210,29 @@
     }
   },
   {
+    "name": "list_erp_links",
+    "title": "List Linked JD Edwards Records",
+    "description": "List the JD Edwards records (billing batches, leases, expense participation calculations, properties) a file is linked to, each with its latest known status and when it was seen. Returns the linkId to pass to unlink_erp_record and the connectionId to reuse with link_erp_record.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "fileMsId": {
+          "type": "string",
+          "description": "Platform ID of the enrolled file"
+        }
+      },
+      "required": [
+        "fileMsId"
+      ],
+      "$schema": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    }
+  },
+  {
     "name": "list_files",
     "title": "List Enrolled Files",
     "description": "List the files the user tracks in Rockhopper — Excel workbooks and Google Sheets alike. Optionally filter by search term matching file names. This list is scoped to this ONE person and is not everything the team tracks: files this person has archived are excluded from it, and so are files nobody has added to Rockhopper yet. An archived file is still enrolled, still tracked, and still visible to teammates — archive only hides it from this person's own list, and it is restored from the archived list in the Rockhopper web app. There is no archive or restore tool here. Never report a file as missing, deleted or un-enrolled on the strength of its absence from this list.",

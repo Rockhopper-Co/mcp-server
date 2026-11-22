@@ -48,6 +48,13 @@ const WRITE_TOOL_ARGS: Record<string, Record<string, unknown>> = {
     url: 'https://contoso.sharepoint.com/:x:/r/sites/finance/Doc.aspx',
     share_with: 'me',
   },
+  link_erp_record: {
+    fileMsId: 'file-1',
+    connectionId: '3',
+    recordKind: 'property',
+    businessUnit: 'BU100',
+  },
+  unlink_erp_record: { fileMsId: 'file-1', linkId: '12' },
 };
 
 interface SeenRequest {

@@ -15,6 +15,7 @@ import { registerSearchTool } from './search.js';
 import { registerDriveSearchTool } from './drive-search.js';
 import { registerListUnenrolledFilesTool } from './list-unenrolled-files.js';
 import { registerAccountLinkTools } from './account-link.js';
+import { registerListErpLinksTool } from './erp-links.js';
 import { registerWriteCommentTools } from './write-comments.js';
 import { registerWriteReviewTools } from './write-reviews.js';
 import { registerWriteVersionTools } from './write-versions.js';
@@ -138,6 +139,10 @@ export function registerTools(
   // floor: a read-only
   // token can still connect and check. There is no disconnect (ENG-9682).
   registerAccountLinkTools(server, api);
+  // ENG-8441 — a file's JD Edwards record links with their status. A read of
+  // Rockhopper's own rows, so it rides the floor; link and unlink ride
+  // `files:write` (`write-files.ts`).
+  registerListErpLinksTool(server, api);
 
   // Write tools — one registrar per granted family, so a token holding
   // `comments:write` alone cannot reach `discard_changes`.
