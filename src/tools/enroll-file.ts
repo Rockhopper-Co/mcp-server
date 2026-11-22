@@ -1,23 +1,12 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
 import {
-  classifyEnrollmentFailure,
-  describeServerOutcome,
-  outcomeForState,
   resolveTeamShareTargets,
   TeamUnresolvedError,
   type ShareWith,
 } from '../enrollment.js';
-import type {
-  EnrollmentState,
-  FileProvider,
-  QueuedEnrollment,
-  ServerEnrollmentOutcome,
-} from '../types.js';
-import {
-  classifySmartsheetEnrollment,
-  enrolledSheetIds,
-} from '../smartsheet-discovery.js';
+import type { QueuedEnrollment, QueuedEnrollmentFile } from '../types.js';
+import { answerAfterWrite } from './enroll-file.after-write.js';
 import {
   ENROLL_ANNOTATIONS,
   ENROLL_DESCRIPTION,
@@ -25,6 +14,12 @@ import {
   SHARE_QUESTION,
   toolResult,
 } from './enroll-file.contract.js';
+import {
+  answerBeforeWrite,
+  classify,
+  resolveTarget,
+  type Target,
+} from './enroll-file.target.js';
 
 /**
  * ENG-2200 — the tool ENG-1647's customer reached for and did not find.
@@ -47,90 +42,7 @@ import {
  *    `confirm_restore: true` writes anything.
  */
 
-/**
- * One resolved file plus what Rockhopper already knows about it.
- *
- * ENG-4958 — `provider` is carried, never assumed. The three write sites in
- * `api-client.ts` hardcoded `accountType: 'microsoft'`, so a Google file the
- * backend was already willing to enroll could not be enrolled from here at
- * all. `fileId` is whichever id that provider uses: a Graph driveItem id, or a
- * Drive file id.
- */
-interface Target {
-  provider: FileProvider;
-  fileId: string;
-  /** Microsoft only. Empty for a Google file, which has no drive id. */
-  driveMsId: string;
-  name: string;
-  state: EnrollmentState;
-}
-
-function classify(error: unknown, provider: 'smartsheet' | undefined) {
-  const sheet =
-    provider === 'smartsheet' ? classifySmartsheetEnrollment(error) : null;
-  return sheet ?? classifyEnrollmentFailure(error);
-}
-
 export function registerEnrollFileTool(server: McpServer, api: ApiClient): void {
-  /**
-   * Turn whichever input arrived into `(identity, current state)`.
-   *
-   * Both branches learn the state BEFORE writing anything, because the whole
-   * point of the tool is that `enrolled`, `hidden` and `not_enrolled` lead to
-   * three different conversations.
-   */
-  async function resolveTarget(args: {
-    url?: string;
-    driveMsId?: string;
-    msId?: string;
-    provider?: 'smartsheet';
-  }): Promise<Target> {
-    if (args.provider === 'smartsheet') {
-      // A sheet is named by its id alone. For a sheet not yet added the
-      // backend stamps the real name from Smartsheet during the enroll, so
-      // the empty name here is a placeholder that never reaches a user.
-      const sheetId = (args.msId as string).trim();
-      const enrolled = await enrolledSheetIds(api);
-      return {
-        provider: 'smartsheet',
-        fileId: sheetId,
-        driveMsId: '',
-        name: enrolled.get(sheetId) ?? '',
-        state: enrolled.has(sheetId) ? 'enrolled' : 'not_enrolled',
-      };
-    }
-    if (args.url) {
-      const resolved = await api.resolveEnrollmentUrl(args.url);
-      return {
-        // ENG-4958: taken from the ANSWER, not guessed from the link shape.
-        // A backend older than the Google lane sends no `provider` and only
-        // ever resolves Microsoft files, so the fallback is the truth there.
-        provider: resolved.provider ?? 'microsoft',
-        fileId: resolved.msId,
-        driveMsId: resolved.driveMsId ?? '',
-        name: resolved.name,
-        state: resolved.enrollmentState,
-      };
-    }
-
-    const msId = args.msId as string;
-    const driveMsId = args.driveMsId as string;
-    // The id pair is Microsoft's by construction — `search_drive_files` is the
-    // one honest source of it, and a Google candidate carries no drive id.
-    const [info] = await api.getEnrollmentInfo([msId], 'microsoft');
-    return {
-      provider: 'microsoft',
-      fileId: msId,
-      driveMsId,
-      // The bulk read withholds `name` for a hidden or stub row, and an id
-      // enroll has no other source for it. The backend fills the real name
-      // from Graph during the enroll, so an empty string here is a placeholder
-      // that never reaches a user, not a guess at what the file is called.
-      name: info?.name ?? '',
-      state: info?.enrollmentState ?? 'not_enrolled',
-    };
-  }
-
   /**
    * ENG-2536 — the server's own verdict, or null when it did not give one.
    *
@@ -139,17 +51,17 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
    * predates the field is a live case. The caller falls back to what the
    * pre-write lookup said, which is exactly the behaviour that shipped before.
    */
-  function serverOutcomeOf(
+  function serverFileOf(
     queued: QueuedEnrollment,
     target: Target,
-  ): ServerEnrollmentOutcome | null {
+  ): QueuedEnrollmentFile | null {
     const files = queued.files ?? [];
-    const mine =
+    return (
       files.find(
         (f) => f.msId === target.fileId || f.platformId === target.fileId,
       ) ??
-      (files.length === 1 ? files[0] : undefined);
-    return mine?.outcome ?? null;
+      (files.length === 1 ? files[0] : null)
+    );
   }
 
   async function enroll(
@@ -164,7 +76,8 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
      * `0` for a `share_with: 'me'` enroll, which shares with nobody by design.
      */
     skipped: number;
-    serverOutcome: ServerEnrollmentOutcome | null;
+    /** ENG-9660 — the door's per-file answer, its conversion included. */
+    serverFile: QueuedEnrollmentFile | null;
   }> {
     const file = {
       provider: target.provider,
@@ -178,7 +91,7 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
         enrollmentId: queued.enrollmentId,
         sharedWith: 0,
         skipped: 0,
-        serverOutcome: serverOutcomeOf(queued, target),
+        serverFile: serverFileOf(queued, target),
       };
     }
     const { targets, unreachable } = await resolveTeamShareTargets(api);
@@ -187,7 +100,7 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
       enrollmentId: queued.enrollmentId,
       sharedWith: targets.length,
       skipped: unreachable,
-      serverOutcome: serverOutcomeOf(queued, target),
+      serverFile: serverFileOf(queued, target),
     };
   }
 
@@ -246,7 +159,7 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
 
       let target: Target;
       try {
-        target = await resolveTarget({ url, driveMsId, msId, provider });
+        target = await resolveTarget(api, { url, driveMsId, msId, provider });
       } catch (error) {
         const { outcome, message } = classify(error, provider);
         return toolResult({
@@ -259,33 +172,13 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
         });
       }
 
-      const known = outcomeForState(target.state);
-      if (known === 'already_enrolled') {
-        return toolResult({
-          outcome: 'already_enrolled',
-          text:
-            `"${target.name}" is already in Rockhopper — nothing to do. Its ` +
-            'versions and history are available through `get_file_versions` ' +
-            'and `get_cell_history`.',
-          detail: { fileMsId: target.fileId, name: target.name },
-        });
-      }
-      if (known === 'restore_confirmation_required' && !confirm_restore) {
-        return toolResult({
-          outcome: 'restore_confirmation_required',
-          text:
-            `"${target.name || 'That workbook'}" was previously removed from ` +
-            'Rockhopper\'s file lists. Its versions, comments and history were ' +
-            'kept. Ask the user whether they want it restored, and if they do, ' +
-            'call `enroll_file` again with the same arguments plus ' +
-            'confirm_restore: true. Nothing has been changed.',
-          detail: { fileMsId: target.fileId, name: target.name || null },
-        });
-      }
-      const restoring = known === 'restore_confirmation_required';
+      // ENG-9660 — the answers that need no write, the conversion's included.
+      const known = answerBeforeWrite(target, confirm_restore);
+      if (known !== 'write' && known !== 'restore') return toolResult(known);
+      const restoring = known === 'restore';
 
       try {
-        const { enrollmentId, sharedWith, skipped, serverOutcome } =
+        const { enrollmentId, sharedWith, skipped, serverFile } =
           await enroll(target, share_with);
         // ENG-4279 — SAY WHO WAS LEFT OUT. Sharing with 1 of 4 and reporting
         // plain success is the damaging half of that defect: the user is told
@@ -301,31 +194,22 @@ export function registerEnrollFileTool(server: McpServer, api: ApiClient): void 
                   'Settings, then share the file with them again'
                 : '')
             : ' — visible to you only';
-        // ENG-2536: the SERVER's verdict wins over the one inferred from the
-        // lookup taken before the write. The two can disagree, and when they
-        // do the server is right: the lookup happened earlier, so a file
-        // somebody else added in between reads `not_enrolled` here and would
-        // otherwise be reported as a fresh add. The fallback is what shipped
-        // before, for a backend older than the field.
-        const { outcome, text } = describeServerOutcome(
-          serverOutcome ?? (restoring ? 'restored' : 'enrolled'),
-          target.name,
-          who,
+        return toolResult(
+          answerAfterWrite({
+            target,
+            serverFile,
+            restoring,
+            who,
+            shared: {
+              enrollmentId,
+              shareWith: share_with,
+              sharedWithCount: sharedWith,
+              // ENG-4279 — structured alongside the prose, so a client that
+              // renders `detail` rather than the text still sees the drop.
+              skippedCount: skipped,
+            },
+          }),
         );
-        return toolResult({
-          outcome,
-          text,
-          detail: {
-            fileMsId: target.fileId,
-            name: target.name || null,
-            enrollmentId,
-            shareWith: share_with,
-            sharedWithCount: sharedWith,
-            // ENG-4279 — structured alongside the prose, so a client that
-            // renders `detail` rather than the text still sees the drop.
-            skippedCount: skipped,
-          },
-        });
       } catch (error) {
         if (error instanceof TeamUnresolvedError) {
           return toolResult({

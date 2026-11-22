@@ -327,7 +327,7 @@ export type ServerEnrollmentOutcome =
 
 /** One file's outcome on an enroll response. */
 export interface QueuedEnrollmentFile {
-  msId: string;
+  msId?: string; // ENG-9660: absent for a new Google file (the body sends none)
   platformId: string;
   outcome: ServerEnrollmentOutcome;
 }
