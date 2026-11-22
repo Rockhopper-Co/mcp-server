@@ -40,6 +40,7 @@ const READ_TOOL_NAMES = [
   'search_files',
   'search_drive_files',
   'list_unenrolled_files',
+  'list_erp_links',
 ];
 
 function registeredToolNames(options?: {
@@ -96,9 +97,9 @@ describe('per-capability tool registration (ENG-2212)', () => {
     // A backend older than ENG-2211 serves `patScope` and no `patScopes`.
     // 13 floor (7 read + 3 Microsoft + 3 Google link) + 10 write, enroll_file included
     // since ENG-2200 registered it and emptied PENDING_WRITE_TOOLS.
-    expect(registeredToolNames({ scope: 'read-write' })).toHaveLength(25);
-    expect(registeredToolNames({ scope: 'read-only' })).toHaveLength(15);
-    expect(registeredToolNames()).toHaveLength(15);
+    expect(registeredToolNames({ scope: 'read-write' })).toHaveLength(28);
+    expect(registeredToolNames({ scope: 'read-only' })).toHaveLength(16);
+    expect(registeredToolNames()).toHaveLength(16);
   });
 
   it('collapses duplicates rather than registering a tool twice', () => {
