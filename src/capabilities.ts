@@ -40,7 +40,12 @@ export const WRITE_TOOLS_BY_CAPABILITY: Readonly<
   'comments:write': ['add_comment', 'reply_to_comment', 'resolve_comment'],
   'reviews:write': ['create_review_request', 'approve_review', 'cancel_review'],
   'versions:write': ['create_version', 'discard_changes'],
-  'files:write': ['rename_file', 'enroll_file'],
+  'files:write': [
+    'rename_file',
+    'enroll_file',
+    'link_erp_record',
+    'unlink_erp_record',
+  ],
 };
 
 /**

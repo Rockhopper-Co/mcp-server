@@ -6,22 +6,50 @@ All notable changes to this project are documented here. Follows
 
 ## [Unreleased]
 
+### Removed
+
+- **`disconnect_microsoft`, `disconnect_google` and `disconnect_smartsheet`** (ENG-9682).
+  A connection, once made, cannot be removed in the product, so no tool removes it.
+  `connect_*` and `*_link_status` stay.
+
 ### Added
+
+- **`list_erp_links`, `link_erp_record` and `unlink_erp_record`** (ENG-8441).
+  A file's links to JD Edwards records (billing batches, leases, expense
+  participation calculations, properties), each with its latest known status.
+  Listing rides the read floor; linking and unlinking need `files:write`, as
+  the backend's `/integrations/erp-links` routes demand.
 
 - **PDF, Markdown, plain text, JSON and XML files** (ENG-8069). The ten new
   `fileType` values (`microsoft_pdf` … `gdrive_xml`) are known, so
   `get_unattributed_changes` reads a PDF, Markdown, text, JSON or XML file's
   changes instead of refusing it as `unknown_file_type`.
 
-- **`connect_google`, `google_link_status` and `disconnect_google`** (ENG-6414).
-  The Google Drive counterparts of the three Microsoft account-link tools,
+- **`connect_google` and `google_link_status`** (ENG-6414).
+  The Google Drive counterparts of the Microsoft account-link tools,
   registered by the same code on the same read floor. `connect_google` relays
   the sign-in link the backend builds (`POST /auth/google/connect`) and takes no
   input. A Google `search_drive_files` caller with no connected account now gets
-  that link instead of being sent to Settings. `disconnect_microsoft` and
-  `disconnect_google` now say plainly when a personal access token is refused.
+  that link instead of being sent to Settings.
 
 ### Changed
+
+- **`enroll_file` answers for the Google file an Office file in Drive became**
+  (ENG-9660). Rockhopper converts an Excel, Word or PowerPoint file added from
+  Google Drive to Google Sheets, Docs or Slides and tracks the converted file.
+  `enroll_file` now hands back the converted Google file's id (`fileMsId`, the
+  id `list_files` shows) and name, carries a `conversion` field (`pending`,
+  `converted`, `waiting_for_member`, `refused`, `kept_as_office`), and answers
+  two new outcomes, `conversion_pending` and `conversion_refused`, both from
+  the lookup before the write and from the server's answer after it. While a
+  conversion is ahead the id is the original's, and the answer says so
+  (`idChangesOnConversion`). In this MCP server, the read tools,
+  `discard_changes`, `rename_file` and `add_comment` given an id stored for an
+  original before its conversion answer with the Google file's id instead of a
+  bare 403. In the in-app assistant, a confirmed write tool given such an id
+  still answers that the file was not found.
+- **`enroll_file` answers a server outcome this release does not know**
+  (ENG-9660) instead of returning an answer with no text.
 
 - **`get_cell_history` says when a history is still updating** (ENG-7243).
   Cell-history reads now send `X-Rockhopper-Client-Capabilities:

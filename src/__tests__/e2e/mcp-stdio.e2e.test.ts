@@ -165,17 +165,18 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
     }
   }
 
-  // The read floor is 18: the seven read tools, the two discovery tools, and
-  // connect / status / disconnect for each of the three account-link
-  // providers (Microsoft, Google, Smartsheet), which `registerTools` registers
-  // for every scope. Read-write adds the ten write tools.
+  // The read floor is 16: the seven read tools, the two discovery tools,
+  // `list_erp_links` (ENG-8441), and connect / status for each
+  // of the three account-link providers (Microsoft, Google, Smartsheet),
+  // which `registerTools` registers for every scope. Read-write adds the
+  // twelve write tools.
   it.each([
     ['read-write', 28],
-    ['read-only', 18],
+    ['read-only', 16],
     // An unrecognised scope value, and a backend too old to serve the field
     // at all (`null` omits it) — both deny, where both used to grant.
-    ['some-future-scope', 18],
-    [null, 18],
+    ['some-future-scope', 16],
+    [null, 16],
   ])('serves %s a tools/list of %i tools', async (patScope, expected) => {
     const names = await toolNames(patScope);
     expect(names).toHaveLength(expected);
@@ -183,7 +184,7 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
     expect(names).toContain('list_files');
     expect(names).toContain('connect_smartsheet');
     expect(names).toContain('smartsheet_link_status');
-    expect(names).toContain('disconnect_smartsheet');
+    expect(names.filter((n) => n.startsWith('disconnect_'))).toEqual([]);
   }, 30_000);
 
   /**
@@ -200,12 +201,9 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
         [
           'add_comment',
           'connect_microsoft',
-          'disconnect_microsoft',
           'microsoft_link_status',
           'connect_google',
           'connect_smartsheet',
-          'disconnect_google',
-          'disconnect_smartsheet',
           'google_link_status',
           'smartsheet_link_status',
           'get_cell_history',
@@ -213,6 +211,7 @@ describe('stdio tools/list is gated by the token scope (ENG-2208)', () => {
           'get_file_versions',
           'get_reviews',
           'get_unattributed_changes',
+          'list_erp_links',
           'list_files',
           'list_unenrolled_files',
           'reply_to_comment',

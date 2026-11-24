@@ -9,6 +9,16 @@
 # surfaces on its own and gets the NEEDS-REVIEW treatment (release notes /
 # breaking changes) the runbook requires. Majors are NOT ignored — that would
 # hide major-version security fixes.
+#
+# One carve-out, ENG-9410: runtime and platform majors follow LTS only.
+# `@types/node` (it describes the Node runtime's APIs) must
+# ignore `version-update:semver-major`.
+# Patch, minor and digest updates are unaffected, and the next LTS major is
+# taken by hand on its own ticket. The `update-types` form does not block
+# security updates: dependabot-core
+# common/lib/dependabot/config/ignore_condition.rb returns only explicit
+# `versions` ranges when the job is a security update. A `versions:` range
+# WOULD block them, so never use one for this rule.
 version: 2
 updates:
   - package-ecosystem: "npm"
@@ -17,6 +27,18 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    # ENG-9410, LTS-only policy. @types/node describes the Node runtime's APIs,
+    # so its major follows the runtime this repository runs
+    # (.nvmrc 24),
+    # never the newest types: a later major type-checks code against APIs
+    # the runtime lacks.
+    # Same-major minors and patches still arrive through
+    # dev-minor-patch. Raise it by hand, in the same change that moves the
+    # runtime to the next LTS major. Note @types/node is ^26 while .nvmrc is
+    # 24: this ignore stops the gap widening, it does not close it.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       # Version-coupled family — bump together to avoid ERESOLVE peer conflicts
       # (vitest + @vitest/coverage-v8 must match exactly).

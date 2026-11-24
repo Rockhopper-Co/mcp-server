@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { ApiClient } from '../api-client.js';
+import { followConvertedOriginals } from '../converted-original.js';
 import {
   CAPABILITY_SET,
   PAT_CAPABILITIES,
@@ -14,6 +15,7 @@ import { registerSearchTool } from './search.js';
 import { registerDriveSearchTool } from './drive-search.js';
 import { registerListUnenrolledFilesTool } from './list-unenrolled-files.js';
 import { registerAccountLinkTools } from './account-link.js';
+import { registerListErpLinksTool } from './erp-links.js';
 import { registerWriteCommentTools } from './write-comments.js';
 import { registerWriteReviewTools } from './write-reviews.js';
 import { registerWriteVersionTools } from './write-versions.js';
@@ -109,9 +111,13 @@ const REGISTRARS: Readonly<
 
 export function registerTools(
   server: McpServer,
-  api: ApiClient,
+  client: ApiClient,
   options?: RegisterToolsOptions,
 ): void {
+  // ENG-9660 — a file id an AI client stored before Rockhopper converted an
+  // Office file in Drive is refused by the backend; this names the Google file
+  // the record now tracks instead (`converted-original.ts`).
+  const api = followConvertedOriginals(client);
   // Read tools — the floor every scope gets, including an unrecognised one.
   registerListFilesTool(server, api);
   registerGetVersionsTool(server, api);
@@ -131,9 +137,12 @@ export function registerTools(
   // ENG-2198 / ENG-6414 — connecting a Microsoft or Google account is an
   // account action, not a write to Rockhopper data, so it rides with the read
   // floor: a read-only
-  // token can still connect, check and disconnect. The backend requires an
-  // interactive login for the disconnect itself.
+  // token can still connect and check. There is no disconnect (ENG-9682).
   registerAccountLinkTools(server, api);
+  // ENG-8441 — a file's JD Edwards record links with their status. A read of
+  // Rockhopper's own rows, so it rides the floor; link and unlink ride
+  // `files:write` (`write-files.ts`).
+  registerListErpLinksTool(server, api);
 
   // Write tools — one registrar per granted family, so a token holding
   // `comments:write` alone cannot reach `discard_changes`.

@@ -72,9 +72,6 @@ describe('MCP in-memory protocol e2e', () => {
         'connect_microsoft',
         'create_review_request',
         'create_version',
-        'disconnect_google',
-        'disconnect_smartsheet',
-        'disconnect_microsoft',
         'discard_changes',
         'enroll_file',
         'get_cell_history',
@@ -84,6 +81,8 @@ describe('MCP in-memory protocol e2e', () => {
         'get_unattributed_changes',
         'google_link_status',
         'smartsheet_link_status',
+        'link_erp_record',
+        'list_erp_links',
         'list_files',
         'list_unenrolled_files',
         'microsoft_link_status',
@@ -92,6 +91,7 @@ describe('MCP in-memory protocol e2e', () => {
         'resolve_comment',
         'search_drive_files',
         'search_files',
+        'unlink_erp_record',
       ].sort(),
     );
 
@@ -151,10 +151,7 @@ describe('MCP in-memory protocol e2e', () => {
       return tool.annotations;
     };
 
-    // Every tool a read-only token is given claims to change nothing — with
-    // ONE exception per provider, and it is deliberate: `disconnect_microsoft` (and
-    // `disconnect_google`) rides the
-    // read floor because it is an account action, and it is destructive.
+    // Every tool a read-only token is given claims to change nothing.
     for (const name of [
       'connect_microsoft',
       'microsoft_link_status',
@@ -175,14 +172,11 @@ describe('MCP in-memory protocol e2e', () => {
       expect(annotationsFor(name).readOnlyHint, name).toBe(true);
     }
 
-    // The three that destroy something a user cannot get back by re-running
+    // The two that destroy something a user cannot get back by re-running
     // the tool. A host that auto-runs these has been told it may.
     for (const name of [
       'discard_changes',
       'cancel_review',
-      'disconnect_microsoft',
-      'disconnect_google',
-      'disconnect_smartsheet',
     ]) {
       expect(annotationsFor(name).destructiveHint, name).toBe(true);
       expect(annotationsFor(name).readOnlyHint, name).toBe(false);
@@ -1135,12 +1129,9 @@ describe('MCP in-memory protocol e2e', () => {
 describe('tools/list is gated by the token scope (ENG-2208)', () => {
   const READ_TOOLS = [
     'connect_microsoft',
-    'disconnect_microsoft',
     'microsoft_link_status',
     'connect_google',
     'connect_smartsheet',
-    'disconnect_google',
-    'disconnect_smartsheet',
     'google_link_status',
     'smartsheet_link_status',
     'get_cell_history',
@@ -1148,6 +1139,7 @@ describe('tools/list is gated by the token scope (ENG-2208)', () => {
     'get_file_versions',
     'get_reviews',
     'get_unattributed_changes',
+    'list_erp_links',
     'list_files',
     'list_unenrolled_files',
     'search_files',

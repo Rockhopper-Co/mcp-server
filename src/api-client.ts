@@ -1,12 +1,18 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
-import { getCorrelationId } from './correlation.js';
+import { getCorrelationId, getToolName } from './correlation.js';
 import { log } from './logger.js';
 import {
   compareSurfaceHeaders,
   type CompareSheetPage,
   type CompareSummary,
 } from './ledger-wire.js';
+import type {
+  CreateErpLinkBody,
+  ErpLink,
+  ErpLinkStatus,
+  ErpPage,
+} from './erp-links.js';
 import type {
   CellHistoryEntry,
   DocumentAnchorHistory,
@@ -451,6 +457,11 @@ export class ApiClient {
           //
           // Placed before the spread so a per-call header still wins.
           'X-Rockhopper-Surface': this.surface,
+          // ENG-8848: the MCP tool name, so the backend writes its per-call
+          // audit row for stdio calls as it does for mcp-gateway. Absent
+          // outside a tool-call scope. Before the spread: a per-call header
+          // (the gateway's own X-MCP-Tool) still wins.
+          ...(getToolName() ? { 'X-MCP-Tool': getToolName() } : {}),
           // ENG-1756 (decision 15), unchanged: the two admission-bearing
           // headers stay on writes, because the admission only fires there.
           ...(WRITE_METHODS.has(method)
@@ -604,15 +615,8 @@ export class ApiClient {
     return this.request<MicrosoftLinkStatus>('/auth/microsoft/link');
   }
 
-  async unlinkMicrosoft(): Promise<{ linked: boolean; removed: boolean }> {
-    return this.request<{ linked: boolean; removed: boolean }>(
-      '/auth/microsoft/link',
-      { method: 'DELETE' },
-    );
-  }
-
   // --- Google Drive link (ENG-6414) ---
-  // Same shape as the Microsoft three above, and the same rule: the backend
+  // Same shape as the Microsoft two above, and the same rule: the backend
   // builds the sign-in URL (`POST /auth/google/connect`, ENG-6411); this
   // client can send nothing that shapes it.
 
@@ -625,13 +629,6 @@ export class ApiClient {
 
   async getGoogleLink(): Promise<GoogleLinkStatus> {
     return this.request<GoogleLinkStatus>('/auth/google/link');
-  }
-
-  async unlinkGoogle(): Promise<{ linked: boolean; removed: boolean }> {
-    return this.request<{ linked: boolean; removed: boolean }>(
-      '/auth/google/link',
-      { method: 'DELETE' },
-    );
   }
 
   // --- Smartsheet link and discovery ---
@@ -647,13 +644,6 @@ export class ApiClient {
 
   async getSmartsheetLink(): Promise<SmartsheetLinkStatusResponse> {
     return this.request<SmartsheetLinkStatusResponse>('/auth/smartsheet/link');
-  }
-
-  async unlinkSmartsheet(): Promise<{ linked: boolean; removed: boolean }> {
-    return this.request<{ linked: boolean; removed: boolean }>(
-      `/auth/smartsheet/link?region=${SMARTSHEET_REGION}`,
-      { method: 'DELETE' },
-    );
   }
 
   /** The caller's own workspaces, folders and sheets, one level at a time. */
@@ -1310,6 +1300,45 @@ export class ApiClient {
     });
   }
 
+  // --- ERP record links (ENG-8441) ---
+  // Keyed by the enrolled file's INTERNAL id, like `getCompareSummary`: the
+  // backend's `EnrolledFileUserAccessGuard` reads `:enrolledFileId`.
+
+  async listErpLinks(enrolledFileId: number): Promise<ErpPage<ErpLink>> {
+    return this.request<ErpPage<ErpLink>>(
+      `${erpLinksPath(enrolledFileId)}?limit=100`,
+    );
+  }
+
+  async listErpLinkStatuses(
+    enrolledFileId: number,
+  ): Promise<ErpPage<ErpLinkStatus>> {
+    return this.request<ErpPage<ErpLinkStatus>>(
+      `${erpLinksPath(enrolledFileId)}/status?limit=100`,
+    );
+  }
+
+  async createErpLink(
+    enrolledFileId: number,
+    body: CreateErpLinkBody,
+  ): Promise<ErpLink> {
+    return this.request<ErpLink>(erpLinksPath(enrolledFileId), {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async removeErpLink(
+    enrolledFileId: number,
+    linkId: string,
+  ): Promise<ErpLink> {
+    const link = encodeURIComponent(linkId);
+    return this.request<ErpLink>(
+      `${erpLinksPath(enrolledFileId)}/links/${link}`,
+      { method: 'DELETE' },
+    );
+  }
+
   // --- File metadata update ---
 
   /**
@@ -1333,4 +1362,9 @@ export class ApiClient {
       EnrolledFileSchema as unknown as ZodType<EnrolledFile>,
     );
   }
+}
+
+function erpLinksPath(enrolledFileId: number): string {
+  const id = encodeURIComponent(String(enrolledFileId));
+  return `/integrations/erp-links/files/${id}`;
 }

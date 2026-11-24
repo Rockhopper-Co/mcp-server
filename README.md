@@ -157,6 +157,7 @@ npm run generate:postman
 | `search_drive_files` | Find a workbook in the user's own OneDrive, SharePoint, Google Drive or Smartsheet, including files Rockhopper has never seen; returns candidates to confirm with the user before `enroll_file` |
 | `get_unattributed_changes` | Get the changes made since the last saved version (cells, paragraphs or shapes) |
 | `list_unenrolled_files` | List files Rockhopper has seen for the user that are not enrolled yet |
+| `list_erp_links` | List the JD Edwards records a file is linked to, each with its latest known status |
 
 ## Account Link Tools
 
@@ -164,13 +165,10 @@ npm run generate:postman
 |------|-------------|
 | `connect_microsoft` | Start connecting the user's Microsoft account; returns a sign-in link the user opens |
 | `microsoft_link_status` | Check whether a Microsoft account is connected and which one |
-| `disconnect_microsoft` | Remove the stored Microsoft connection (requires an interactive login, not a PAT) |
 | `connect_google` | Start connecting the user's Google account; returns a sign-in link the user opens |
 | `google_link_status` | Check whether a Google account is connected and which one |
-| `disconnect_google` | Remove the stored Google connection (requires an interactive login, not a PAT) |
 | `connect_smartsheet` | Start connecting the user's Smartsheet account; returns a sign-in link the user opens |
 | `smartsheet_link_status` | Check whether a Smartsheet account is connected, which one, and whether the connection is usable |
-| `disconnect_smartsheet` | Remove the stored Smartsheet connection (requires an interactive login, not a PAT) |
 
 ## Available Resources
 
@@ -209,6 +207,8 @@ npm run generate:postman
 | `discard_changes` | `versions:write` | Discard all uncommitted changes, revert to latest committed version |
 | `rename_file` | `files:write` | Rename an enrolled file (its display name across Rockhopper) |
 | `enroll_file` | `files:write` | Add a file to Rockhopper from its SharePoint, OneDrive, Google Sheets or Google Drive link |
+| `link_erp_record` | `files:write` | Link a file to a JD Edwards billing batch, lease, expense participation calculation or property |
+| `unlink_erp_record` | `files:write` | Remove a JD Edwards record link from a file (the link stays in its history) |
 
 ## Identifiers
 
