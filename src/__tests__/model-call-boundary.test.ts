@@ -9,9 +9,10 @@ import { describe, expect, it } from "vitest";
  * books it in `llm_token_usage`. A model SDK or a model-call path here would
  * be a call the ledger never sees, so this fails, naming the file, on:
  *  - an import of `@aws-sdk/client-bedrock-runtime`, `@anthropic-ai/sdk` or
- *    `openai` (static, dynamic or `require`);
+ *    `openai`, `@google/generative-ai`, or any `@ai-sdk/` or `@langchain/`
+ *    package (static, dynamic or `require`);
  *  - any text containing the Anthropic Messages path or the OpenAI chat
- *    completions path.
+ *    completions or responses path.
  * The paths are written split below so this file does not match itself; it
  * is also excluded by name.
  *
@@ -38,7 +39,8 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 function roots(): string[] {
-  const found = ["src", "scripts"].filter((r) => existsSync(join(ROOT, r)));
+  const candidates: string[] = ["src", "scripts"];
+  const found = candidates.filter((r) => existsSync(join(ROOT, r)));
   if (existsSync(join(ROOT, "packages"))) {
     for (const pkg of readdirSync(join(ROOT, "packages"))) {
       const src = join("packages", pkg, "src");
@@ -54,11 +56,26 @@ const files = roots()
   .filter((f) => f !== SELF);
 const read = (file: string): string => readFileSync(join(ROOT, file), "utf8");
 
-const SDKS = ["@aws-sdk/client-bedrock-runtime", "@anthropic-ai/sdk", "openai"];
-const MODEL_PATHS = ["/v1" + "/messages", "/chat" + "/completions"];
-const quoted = SDKS.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+const SDKS = [
+  "@aws-sdk/client-bedrock-runtime",
+  "@anthropic-ai/sdk",
+  "openai",
+  "@google/generative-ai",
+];
+/** Whole families: any package under these scopes is a model SDK. */
+const SDK_SCOPES = ["@ai-sdk/", "@langchain/"];
+const MODEL_PATHS = [
+  "/v1" + "/messages",
+  "/chat" + "/completions",
+  "/v1" + "/responses",
+];
+const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const SPECIFIER = [
+  ...SDKS.map((s) => `${escape(s)}(?:/[^"']*)?`),
+  ...SDK_SCOPES.map((s) => `${escape(s)}[^"']+`),
+].join("|");
 const SDK_IMPORT = new RegExp(
-  `(?:from\\s*|import\\s*\\(\\s*|require\\s*\\(\\s*|import\\s+)["'](?:${quoted.join("|")})(?:/[^"']*)?["']`,
+  `(?:from\\s*|import\\s*\\(\\s*|require\\s*\\(\\s*|import\\s+)["'](?:${SPECIFIER})["']`,
 );
 
 function offencesIn(file: string, source: string): string[] {
@@ -66,14 +83,18 @@ function offencesIn(file: string, source: string): string[] {
   const sdk = SDK_IMPORT.exec(source);
   if (sdk) out.push(`${file}: imports a model SDK (${sdk[0]})`);
   for (const path of MODEL_PATHS) {
-    if (source.includes(path)) out.push(`${file}: names the model path ${path}`);
+    if (source.includes(path)) {
+      out.push(`${file}: names the model path ${path}`);
+    }
   }
   return out;
 }
 
 describe("no model call from this repository (plan 129 SP06)", () => {
   it("actually read the tree it polices", () => {
-    expect(files.length).toBeGreaterThan(0);
+    // A floor near the real count (189 when written), not `> 0`: a
+    // wrong root that still finds a few files must not pass.
+    expect(files.length).toBeGreaterThan(150);
     expect(files).toContain(KNOWN);
   });
 
@@ -82,12 +103,15 @@ describe("no model call from this repository (plan 129 SP06)", () => {
       `import { BedrockRuntimeClient } from "${SDKS[0]}";`,
       `const Anthropic = await import("${SDKS[1]}");`,
       `const OpenAI = require("${SDKS[2]}/index");`,
+      `import { GoogleGenerativeAI } from "${SDKS[3]}";`,
+      `import { openai } from "${SDK_SCOPES[0]}openai";`,
+      `import { ChatOpenAI } from "${SDK_SCOPES[1]}openai";`,
       `fetch(base + "${MODEL_PATHS[0]}");`,
       `fetch(base + "${MODEL_PATHS[1]}");`,
+      `fetch(base + "${MODEL_PATHS[2]}");`,
     ];
-    expect(planted.map((line) => offencesIn("plant.ts", line).length)).toEqual([
-      1, 1, 1, 1, 1,
-    ]);
+    const counts = planted.map((line) => offencesIn("plant.ts", line).length);
+    expect(counts).toEqual(planted.map(() => 1));
   });
 
   it("imports no model SDK and names no model-call path", () => {
