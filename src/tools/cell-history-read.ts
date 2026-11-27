@@ -47,33 +47,52 @@ interface ToolResult {
 }
 
 /**
- * A row whose AI provenance or actor kind the organization's plan withheld.
- * The backend re-renders `formatted` from the stripped entry, so that line
- * then carries the raw `plan_locked` in its provenance slot; it is detected
- * there too, by the separator the backend's template puts before it.
+ * A row whose AI provenance, actor kind or actor claim the organization's plan
+ * withheld. The claim matters on its own: a person accepting an AI suggestion
+ * keeps the `human_direct` cause and the `user` actor kind, so the backend
+ * locks only `actorClaim` on that row.
  */
 function isWithheldRow(h: CellHistoryEntry): boolean {
   return (
     isPlanLocked(h.provenance) ||
     isPlanLocked(h.actorKind) ||
-    (h.formatted?.includes(` — ${PLAN_LOCKED}`) ?? false)
+    isPlanLocked(h.actorClaim)
+  );
+}
+
+/**
+ * The backend's line for a withheld row, kept so its time wording (an edit
+ * window, or "first seen") matches the rows around it. When the provenance is
+ * locked, the backend wrote `plan_locked` into its provenance slot, the last
+ * ` — plan_locked` on the line (the value comes before it); only that slot is
+ * replaced. A lock carried by the actor kind or claim alone leaves nothing to
+ * replace, so the mark is appended.
+ */
+function withheldFormatted(h: CellHistoryEntry, formatted: string): string {
+  const slot = ` — ${PLAN_LOCKED}`;
+  const at = isPlanLocked(h.provenance) ? formatted.lastIndexOf(slot) : -1;
+  if (at === -1) return `${formatted} — ${PLAN_LOCKED_ROW_MARK}`;
+  return (
+    `${formatted.slice(0, at)} — ${PLAN_LOCKED_ROW_MARK}` +
+    formatted.slice(at + slot.length)
   );
 }
 
 /**
  * A ledger-served entry carries a backend-rendered
  * `formatted` line — 'vX.Y.Z: <value> — <provenance> (driven by <human>) —
- * <ts>' — printed verbatim. An older backend's entry has only the four core
+ * <when>' — printed verbatim. An older backend's entry has only the four core
  * fields; it keeps the original rendering. The AI clause follows
  * either form; the display name wins.
  *
- * A withheld row never prints `formatted`, because `plan_locked` is not a
- * provenance: it prints the original rendering plus the withheld mark.
+ * A withheld row never prints the raw `plan_locked`: it is not a provenance.
  */
 export function cellHistoryLine(h: CellHistoryEntry): string {
   const ai = aiLinksClause(h.aiLinks);
   const withheld = isWithheldRow(h);
-  if (h.formatted && !withheld) return `- ${h.formatted}${ai}`;
+  if (h.formatted) {
+    return `- ${withheld ? withheldFormatted(h, h.formatted) : h.formatted}${ai}`;
+  }
   const actor = h.changedByName ?? h.changedBy;
   return (
     `- Version ${h.versionId}: **${JSON.stringify(h.value)}**` +

@@ -1,5 +1,9 @@
 import { ResourceTemplate } from '@modelcontextprotocol/server';
 import type { McpServer } from '@modelcontextprotocol/server';
+import {
+  aiAttributionFromBody,
+  aiAttributionWithheldNote,
+} from '../ai-attribution.js';
 import type { ApiClient } from '../api-client.js';
 import { fileChangesUnavailableText, readFileChanges } from '../file-changes.js';
 
@@ -48,12 +52,21 @@ export function registerChangeResources(
           : read.kind === 'spreadsheet'
             ? read.page
             : read.changes;
+      // Both bodies carry the backend's `aiAttribution` / `lockedFrom` when
+      // the organization's plan withheld AI attribution; the note a tool
+      // appends rides along too, since a resource reader sees only the JSON.
+      // Nothing is added when shown, so an entitled body keeps its bytes.
+      const note = aiAttributionWithheldNote(aiAttributionFromBody(body));
+      const served =
+        note === null || Array.isArray(body)
+          ? body
+          : { ...body, aiAttributionNote: note };
       return {
         contents: [
           {
             uri: uri.href,
             mimeType: 'application/json',
-            text: JSON.stringify(body, null, 2),
+            text: JSON.stringify(served, null, 2),
           },
         ],
       };

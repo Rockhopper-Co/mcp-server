@@ -51,8 +51,8 @@ export function planExcludesFeatureToolResult(): PlanRefusalToolResult {
           `request asked for, so Rockhopper refused it.\n` +
           `Do NOT say that no AI was involved or that nothing matched — none ` +
           `of that is known.\n` +
-          `Ask again without the AI filter, or tell the user that AI ` +
-          `attribution needs an organization plan that includes it.\n` +
+          `Tell the user that AI attribution needs an organization plan ` +
+          `that includes it.\n` +
           JSON.stringify(payload),
       },
     ],

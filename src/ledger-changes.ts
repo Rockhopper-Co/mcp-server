@@ -1,9 +1,10 @@
 import {
   AI_ATTRIBUTION_SHOWN,
   aiAttributionFromBody,
-  isAiAttributionWithheld,
+  aiAttributionWireFields,
   mergeAiAttribution,
   type AiAttribution,
+  type PLAN_LOCKED,
 } from './ai-attribution.js';
 import type { PaginatedUnattributedResponse, UnattributedChange } from './types.js';
 import {
@@ -164,11 +165,15 @@ export async function readLedgerSheet(
 
 /**
  * A file-wide page, plus whether the organization's plan withheld AI
- * attribution on the reads this call made. The field is set ONLY when
- * withheld, so an entitled page serialises exactly as it always did.
+ * attribution on the reads this call made, in the backend's own wire fields
+ * (`aiAttributionWireFields`), so the changes resource serialises one shape
+ * for a workbook and a document. Set ONLY when withheld, so an entitled page
+ * serialises exactly as it always did. Renderers read it back with
+ * `aiAttributionFromBody`.
  */
 export interface AttributedLedgerPage extends PaginatedUnattributedResponse {
-  aiAttribution?: AiAttribution;
+  aiAttribution?: typeof PLAN_LOCKED;
+  lockedFrom?: string | null;
 }
 
 /**
@@ -272,6 +277,6 @@ export async function readLedgerPage(
     totalCount,
     snapshotId: state.s,
     aiLinksAvailable,
-    ...(isAiAttributionWithheld(aiAttribution) ? { aiAttribution } : {}),
+    ...aiAttributionWireFields(aiAttribution),
   };
 }

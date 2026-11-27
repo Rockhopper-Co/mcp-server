@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { AI_ATTRIBUTION_SHOWN, aiAttributionSuffix } from '../ai-attribution.js';
+import { aiAttributionFromBody, aiAttributionSuffix } from '../ai-attribution.js';
 import type { ApiClient } from '../api-client.js';
 import { isNotReady, notReadyToolResult } from '../not-ready.js';
 import { formatDocumentChanges } from '../document-changes.js';
@@ -146,7 +146,7 @@ export function registerUnattributedChangesTool(
         // Absent `aiAttribution` is shown: the reader sets it only when withheld.
         const note =
           aiLinksUnavailableSuffix(page.aiLinksAvailable) +
-          aiAttributionSuffix(page.aiAttribution ?? AI_ATTRIBUTION_SHOWN);
+          aiAttributionSuffix(aiAttributionFromBody(page));
 
         if (page.changes.length === 0) {
           return {

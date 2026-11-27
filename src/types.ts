@@ -775,9 +775,11 @@ export interface CellHistoryEntry {
   provenance?: string;
   /** Raw actor kind (`human`, `agent`, …). */
   actorKind?: string | null;
+  /** The actor claim (`ai_auto`, …); `plan_locked` when the plan withheld it. */
+  actorClaim?: string | null;
   /** Resolved human who drove an agent edit (P1-8). */
   drivingHuman?: string | null;
-  /** Backend-rendered line: `vX.Y.Z: <value> — <provenance> (driven by <human>) — <ts>`. */
+  /** Backend-rendered line: `vX.Y.Z: <value> — <provenance> (driven by <human>) — <when>`. */
   formatted?: string;
 }
 

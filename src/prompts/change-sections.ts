@@ -1,4 +1,4 @@
-import { AI_ATTRIBUTION_SHOWN, aiAttributionSuffix } from '../ai-attribution.js';
+import { aiAttributionFromBody, aiAttributionSuffix } from '../ai-attribution.js';
 import { formatSpreadsheetChangeRows } from '../change-row-vocabulary.js';
 import { formatDocumentChanges } from '../document-changes.js';
 import {
@@ -32,7 +32,7 @@ export function changeSummarySection(read: FileChangesRead): string {
       // The documents' renderer appends the withheld-by-plan note itself.
       const attribution =
         read.kind === 'spreadsheet'
-          ? (read.page.aiAttribution ?? AI_ATTRIBUTION_SHOWN)
+          ? aiAttributionFromBody(read.page)
           : read.aiAttribution;
       return `## Unattributed Changes (${total} total)\n${body}${aiAttributionSuffix(attribution)}`;
     }

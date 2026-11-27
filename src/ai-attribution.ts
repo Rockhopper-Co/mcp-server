@@ -94,9 +94,27 @@ export function mergeAiAttribution(a: AiAttribution, b: AiAttribution): AiAttrib
   return { kind: 'withheld_extent_unknown' };
 }
 
-/** Whether a read withheld anything. */
-export const isAiAttributionWithheld = (a: AiAttribution): boolean =>
-  a.kind !== 'shown';
+/**
+ * The backend's own wire fields for an answer, for a body this client builds
+ * (the file-wide ledger page): nothing when shown, so an entitled body keeps
+ * its bytes; `lockedFrom` only when the extent is known. Read back with
+ * {@link aiAttributionFromBody}, which inverts it exactly.
+ */
+export function aiAttributionWireFields(a: AiAttribution): {
+  aiAttribution?: typeof PLAN_LOCKED;
+  lockedFrom?: string | null;
+} {
+  switch (a.kind) {
+    case 'shown':
+      return {};
+    case 'withheld_all':
+      return { aiAttribution: PLAN_LOCKED, lockedFrom: null };
+    case 'withheld_from':
+      return { aiAttribution: PLAN_LOCKED, lockedFrom: a.lockedFrom };
+    case 'withheld_extent_unknown':
+      return { aiAttribution: PLAN_LOCKED };
+  }
+}
 
 const DO_NOT_INFER =
   'A change listed without AI credit may still have involved AI: do not ' +

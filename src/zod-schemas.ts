@@ -78,6 +78,8 @@ export const CellHistoryEntrySchema = z.object({
   formula: z.string().nullable().optional(),
   provenance: z.string().optional(),
   actorKind: z.string().nullable().optional(),
+  // The actor claim; `plan_locked` when the organization's plan withheld it.
+  actorClaim: z.string().nullable().optional(),
   drivingHuman: z.string().nullable().optional(),
   formatted: z.string().optional(),
 });
@@ -143,11 +145,9 @@ export const DocumentChangesResponseSchema = z
     windowStart: z.string(),
     // ENG-8332 — absent on an older backend, whose links are what it served.
     aiLinksAvailable: z.boolean().default(true),
-    // AI attribution withheld by the organization's plan (`ai-attribution.ts`).
-    // Optional strings: an older backend omits both, and a value this build
-    // does not know must not fail the read.
-    aiAttribution: z.string().optional(),
-    lockedFrom: z.string().nullable().optional(),
+    // `aiAttribution` / `lockedFrom` (AI attribution withheld by the plan) ride
+    // the passthrough untyped: `ai-attribution.ts` reads them without trusting
+    // their type, so an unexpected value never fails the read.
   })
   .passthrough();
 
@@ -218,8 +218,6 @@ export const DocumentAnchorHistorySchema = z
     // ENG-8763 — false when the backend could not check the rows' AI links;
     // absent (an older backend) reads as checked.
     aiLinksAvailable: z.boolean().default(true),
-    // As on `DocumentChangesResponseSchema`.
-    aiAttribution: z.string().optional(),
-    lockedFrom: z.string().nullable().optional(),
+    // As on `DocumentChangesResponseSchema`: the withheld fields pass through.
   })
   .passthrough();
