@@ -4,6 +4,7 @@ import {
   isDefinitiveRejection,
   type CompletenessProbe,
 } from './not-ready.js';
+import { billingRefusalCodeOf } from './billing-refusal.js';
 
 /**
  * ENG-7243 — "is the history I am about to print complete?", for the two
@@ -114,6 +115,9 @@ export async function foldFreshness(
     return status.foldPending ? { ...CURRENT, state: 'updating' } : CURRENT;
   } catch (err) {
     if (isDefinitiveRejection(err)) throw err;
+    // A coded billing refusal is the caller's real answer too, as in
+    // `not-ready.ts!assertChangeHistoryComplete`: never `updating`.
+    if (billingRefusalCodeOf(err) !== null) throw err;
     const seconds = (err as { retryAfterSeconds?: unknown } | null)
       ?.retryAfterSeconds;
     const fromCause = (err as { cause?: { retryAfterSeconds?: unknown } } | null)

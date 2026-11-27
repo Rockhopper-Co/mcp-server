@@ -21,6 +21,7 @@ import {
   assertChangeHistoryComplete,
   isNotReady,
 } from '../../not-ready.js';
+import { foldFreshness } from '../../ledger-freshness.js';
 import { registerTools } from '../../tools/index.js';
 import { createMockApiClient, createMockMcpServer } from './test-helpers.js';
 
@@ -171,6 +172,17 @@ describe('the API client: a 429/503 is not-ready unless it carries a billing cod
     const real = realClient({ status: 503, body: UNREADABLE_BODY });
     const err = await assertChangeHistoryComplete(real, 'file-1').catch((e: unknown) => e);
     expect(isNotReady(err)).toBe(false);
+    expect((err as RockhopperApiError).code).toBe('billing_unreadable');
+  });
+
+  it('the fold freshness probe: a plain 503 is updating, a billing 503 is the refusal', async () => {
+    // Positive control under the same probe: an uncoded 503 still reads as updating.
+    const plain = await foldFreshness(realClient({ status: 503, body: 'upstream busy' }), 'file-1');
+    expect(plain.state).toBe('updating');
+    const err = await foldFreshness(realClient({ status: 503, body: UNREADABLE_BODY }), 'file-1').catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(RockhopperApiError);
     expect((err as RockhopperApiError).code).toBe('billing_unreadable');
   });
 
