@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { aiAttributionFromBody, aiAttributionSuffix } from '../ai-attribution.js';
 import type { ApiClient } from '../api-client.js';
 import { isNotReady, notReadyToolResult } from '../not-ready.js';
+import {
+  billingRefusalCodeOf,
+  billingRefusalToolResult,
+} from '../billing-refusal.js';
 import { formatDocumentChanges } from '../document-changes.js';
 import {
   aiLinksUnavailableSuffix,
@@ -210,6 +214,9 @@ export function registerUnattributedChangesTool(
         };
       } catch (error) {
         if (isNotReady(error)) return notReadyToolResult(error);
+        // A billing refusal is not "still producing": render it by its code.
+        const billing = billingRefusalCodeOf(error);
+        if (billing !== null) return billingRefusalToolResult(billing);
         // ENG-4347 — a sheet that cannot be shown to exist is a refusal naming
         // the sheet, never the empty answer the generic branch below would
         // dress it as.

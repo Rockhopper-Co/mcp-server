@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
+import { isBillingRefusalCode } from './billing-refusal.js';
 import { getCorrelationId, getToolName } from './correlation.js';
 import { log } from './logger.js';
 import {
@@ -508,7 +509,12 @@ export class ApiClient {
       // an assistant reading `Rockhopper API 429: …` has no reliable way to
       // tell a capacity signal from a real failure, and either way it is not
       // data. Classified here, at the one place every call passes through.
-      const notReady = response.status === 429 || response.status === 503;
+      // A coded billing refusal shares the status and is NOT not-ready
+      // (`billing-refusal.ts`): it stays a RockhopperApiError with its code.
+      const body = await response.text().catch(() => '');
+      const notReady =
+        (response.status === 429 || response.status === 503) &&
+        !isBillingRefusalCode(parseErrorField(body, 'code'));
       const classification =
         response.status === 401 || response.status === 403
           ? 'auth_failed'
@@ -537,7 +543,6 @@ export class ApiClient {
         this.authExpiredNotified = true;
         this.authExpiredHandler();
       }
-      const body = await response.text().catch(() => '');
       if (notReady) {
         throw new ChangeHistoryNotReadyError({
           reason: 'still_producing',
