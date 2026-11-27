@@ -15,6 +15,10 @@ import {
 } from '../ledger-freshness.js';
 import { isNotReady, notReadyToolResult } from '../not-ready.js';
 import {
+  billingRefusalCodeOf,
+  billingRefusalToolResult,
+} from '../billing-refusal.js';
+import {
   isPlanExcludesFeature,
   planExcludesFeatureToolResult,
 } from '../plan-excludes-feature.js';
@@ -153,6 +157,9 @@ export async function readAnchorHistory(
     };
   } catch (error) {
     if (isNotReady(error)) return notReadyToolResult(error);
+    // A billing refusal is not "still producing": render it by its code.
+    const billing = billingRefusalCodeOf(error);
+    if (billing !== null) return billingRefusalToolResult(billing);
     if (isCellHistoryUnavailable(error)) {
       return anchorHistoryUnavailableToolResult(anchorId);
     }
