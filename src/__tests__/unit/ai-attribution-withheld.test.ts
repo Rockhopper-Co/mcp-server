@@ -88,10 +88,14 @@ describe('withheld AI attribution — parsing', () => {
     expect(aiAttributionSuffix({ kind: 'withheld_extent_unknown' })).toBe(`\n\n${NOTE_UNKNOWN}`);
   });
 
-  it('the document envelopes parse with and without the new fields', () => {
+  it('the document envelopes carry the fields through, and an unexpected value never fails the read', () => {
     const old = { rows: [], truncated: false, declineReason: null, windowStart: 'w' };
     expect(DocumentChangesResponseSchema.parse(old)).not.toHaveProperty('aiAttribution');
     expect(DocumentChangesResponseSchema.parse({ ...old, ...FROM })).toMatchObject(FROM);
+    const odd = { aiAttribution: null, lockedFrom: 7 };
+    expect(DocumentChangesResponseSchema.parse({ ...old, ...odd })).toMatchObject(odd);
+    const anchorBody = { documentType: 'text', anchorId: 'p', anchorLane: 'both', anchorIdentity: 'provider_id', history: [], truncated: false };
+    expect(DocumentAnchorHistorySchema.parse({ ...anchorBody, ...odd })).toMatchObject(odd);
   });
 });
 
@@ -185,9 +189,7 @@ describe('withheld AI attribution — a locked row is never printed as a provena
       drivingHuman: null,
       formatted: 'v3.0.0: 7 [=A1+1] — plan_locked (by u-1) — 2026-11-02T10:00:00.000Z',
     });
-    expect(line).toBe(
-      `- Version v3.0.0: **7** [=A1+1] — by Ada — ${MARK} — 2026-11-02T10:00:00.000Z`,
-    );
+    expect(line).toBe(`- v3.0.0: 7 [=A1+1] — ${MARK} (by u-1) — 2026-11-02T10:00:00.000Z`);
     expect(line).not.toContain('plan_locked');
   });
 
@@ -236,6 +238,7 @@ describe('withheld AI attribution — the ledger compare reads', () => {
     const read = await readLedgerPage(api as never, 11);
     expect(read.changes).toHaveLength(1);
     expect(read).not.toHaveProperty('aiAttribution');
+    expect(read).not.toHaveProperty('lockedFrom');
   });
 
   it('a dated lock on a page reaches the file-wide and the sheet read', async () => {
@@ -244,7 +247,9 @@ describe('withheld AI attribution — the ledger compare reads', () => {
     withBody(api, FROM);
     const read = await readLedgerPage(api as never, 11);
     expect(read.changes).toHaveLength(1);
-    expect(read.aiAttribution).toEqual({ kind: 'withheld_from', lockedFrom: DATE });
+    // The backend's own wire shape, never the client's internal union.
+    expect(read.aiAttribution).toBe('plan_locked');
+    expect(read.lockedFrom).toBe(DATE);
     const sheetRead = await readLedgerSheet(api as never, 11, 'Sheet1');
     expect(sheetRead.changes).toHaveLength(1);
     expect(sheetRead.aiAttribution).toEqual({ kind: 'withheld_from', lockedFrom: DATE });
@@ -261,7 +266,7 @@ describe('withheld AI attribution — the change-summary prompt section', () => 
     const wide = changeSummarySection({
       kind: 'spreadsheet',
       file,
-      page: { ...page, aiAttribution: { kind: 'withheld_from', lockedFrom: DATE } },
+      page: { ...page, aiAttribution: 'plan_locked', lockedFrom: DATE },
     });
     expect(wide).toBe(`## Unattributed Changes (0 total)\nNone\n\n${NOTE_FROM}`);
     const sheet = changeSummarySection({

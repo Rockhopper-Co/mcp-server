@@ -108,9 +108,27 @@ describe('get_cell_history — withheld AI attribution over the wire', () => {
     });
     const out = text(await handler(cellArgs));
     expect(out).toContain('- v1.0.0: 5 — human_direct (by u-1) — 2026-10-01T00:00:00.000Z');
-    expect(out).toContain(`- Version v2.0.0: **6** — by u-1 — ${MARK} — 2026-11-02T00:00:00.000Z`);
+    expect(out).toContain(`- v2.0.0: 6 — ${MARK} (by u-1) — 2026-11-02T00:00:00.000Z`);
     expect(out.split(NOTE_UNKNOWN)).toHaveLength(2);
     expect(out).not.toContain('plan_locked');
+  });
+
+  it('a row locked only through its actor claim keeps that claim through the client and is marked', async () => {
+    // A person accepted an AI suggestion: the cause stays human_direct and the
+    // actor is the user, so only `actorClaim` carries the lock.
+    const accepted = {
+      versionId: 'v1.2.0',
+      value: 5,
+      changedBy: 'Bob',
+      changedAt: '2026-11-02T00:00:00.000Z',
+      provenance: 'human_direct',
+      actorKind: 'user',
+      actorClaim: 'plan_locked',
+      drivingHuman: null,
+      formatted: 'v1.2.0: 5 — human_direct (by Bob) — between 2026-11-01T23:00:00.000Z and 2026-11-02T00:00:00.000Z',
+    };
+    const { handler } = wired({ body: [accepted], headers: { 'X-AI-Attribution': 'plan_locked' } });
+    expect(text(await handler(cellArgs))).toContain(`- ${accepted.formatted} — ${MARK}\n`);
   });
 
   it('renders plan_excludes_feature by its code, not as a generic failure', async () => {
@@ -126,6 +144,12 @@ describe('get_cell_history — withheld AI attribution over the wire', () => {
     expect(out.startsWith('PLAN_EXCLUDES_FEATURE — this is NOT a result')).toBe(true);
     expect(out).toContain('{"status":"refused","code":"plan_excludes_feature"}');
     expect(out).not.toContain('Failed to get cell history');
+    // No read here sends an AI filter, so the refusal never tells the
+    // assistant to drop one.
+    expect(out).not.toContain('filter');
+    expect(out).toContain(
+      'Tell the user that AI attribution needs an organization plan that includes it.',
+    );
   });
 
   it('positive control: a 403 without that code stays the generic failure', async () => {
