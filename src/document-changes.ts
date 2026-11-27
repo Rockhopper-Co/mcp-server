@@ -25,6 +25,7 @@
  * module never shadows it.
  */
 
+import { aiAttributionFromBody, aiAttributionSuffix } from './ai-attribution.js';
 import {
   aiLinksClause,
   aiLinksUnavailableSuffix,
@@ -177,7 +178,11 @@ export function formatDocumentChanges(
   fileName: string,
 ): string {
   // ENG-8332 — only an explicit false is "not checked"; absent is checked.
-  const note = aiLinksUnavailableSuffix(response.aiLinksAvailable !== false);
+  // The envelope's `aiAttribution` / `lockedFrom` say when the organization's
+  // plan withheld AI attribution; absent reads as shown.
+  const note =
+    aiLinksUnavailableSuffix(response.aiLinksAvailable !== false) +
+    aiAttributionSuffix(aiAttributionFromBody(response));
   const scope =
     `Changes to "${fileName}" since the last saved version ` +
     `(${response.windowStart}).`;
