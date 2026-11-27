@@ -71,12 +71,18 @@ import {
   freshnessFromHeaders,
   type ReadFreshness,
 } from './ledger-freshness.js';
+import {
+  aiAttributionFromHeaders,
+  type AiAttribution,
+} from './ai-attribution.js';
 
 /** ENG-7243 — opt-in freshness return for the cell-history reads. */
 export interface CellHistoryReadOptions {
   onFreshness?: (freshness: ReadFreshness) => void;
   /** ENG-8332 — the `X-AI-Links-Available` answer; `true` when absent. */
   onAiLinksAvailable?: (available: boolean) => void;
+  /** The `X-AI-Attribution` answer; shown when absent (`ai-attribution.ts`). */
+  onAiAttribution?: (attribution: AiAttribution) => void;
 }
 
 /**
@@ -1046,6 +1052,8 @@ export class ApiClient {
         opts?.onFreshness?.(freshnessFromHeaders(headers));
         // ENG-8332 — the body is a bare array, so the flag is a header.
         opts?.onAiLinksAvailable?.(aiLinksAvailableFromHeaders(headers));
+        // Same reason: a withheld-by-plan answer rides the header only.
+        opts?.onAiAttribution?.(aiAttributionFromHeaders(headers));
       },
     );
   }

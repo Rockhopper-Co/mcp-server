@@ -1,3 +1,4 @@
+import { aiAttributionFromBody, aiAttributionSuffix } from '../ai-attribution.js';
 import type { ApiClient } from '../api-client.js';
 import { aiLinksUnavailableSuffix } from '../change-row-vocabulary.js';
 import {
@@ -13,6 +14,10 @@ import {
   type ReadFreshness,
 } from '../ledger-freshness.js';
 import { isNotReady, notReadyToolResult } from '../not-ready.js';
+import {
+  isPlanExcludesFeature,
+  planExcludesFeatureToolResult,
+} from '../plan-excludes-feature.js';
 import type { DocumentAnchorHistory } from '../types.js';
 
 /**
@@ -66,7 +71,9 @@ function coverageNotes(response: DocumentAnchorHistory): string[] {
 
 /**
  * ENG-8763 — the same note the cell arm appends when the backend could not
- * check AI links, so an empty AI clause never reads as "no AI".
+ * check AI links, so an empty AI clause never reads as "no AI". The anchor
+ * envelope is an object, so a withheld-by-plan answer (and its `lockedFrom`)
+ * rides the body.
  */
 export function formatAnchorHistory(
   response: DocumentAnchorHistory,
@@ -74,7 +81,8 @@ export function formatAnchorHistory(
 ): string {
   return (
     formatAnchorBody(response, freshness) +
-    aiLinksUnavailableSuffix(response.aiLinksAvailable !== false)
+    aiLinksUnavailableSuffix(response.aiLinksAvailable !== false) +
+    aiAttributionSuffix(aiAttributionFromBody(response))
   );
 }
 
@@ -148,6 +156,7 @@ export async function readAnchorHistory(
     if (isCellHistoryUnavailable(error)) {
       return anchorHistoryUnavailableToolResult(anchorId);
     }
+    if (isPlanExcludesFeature(error)) return planExcludesFeatureToolResult();
     return {
       content: [
         {

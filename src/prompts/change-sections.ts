@@ -1,3 +1,4 @@
+import { aiAttributionFromBody, aiAttributionSuffix } from '../ai-attribution.js';
 import { formatSpreadsheetChangeRows } from '../change-row-vocabulary.js';
 import { formatDocumentChanges } from '../document-changes.js';
 import {
@@ -28,7 +29,12 @@ export function changeSummarySection(read: FileChangesRead): string {
       // so a structural row (a sheet moved, a row inserted) is NAMED rather
       // than printed as a raw cell edit.
       const body = rows.length ? formatSpreadsheetChangeRows(rows.slice(0, 20)) : 'None';
-      return `## Unattributed Changes (${total} total)\n${body}`;
+      // The documents' renderer appends the withheld-by-plan note itself.
+      const attribution =
+        read.kind === 'spreadsheet'
+          ? aiAttributionFromBody(read.page)
+          : read.aiAttribution;
+      return `## Unattributed Changes (${total} total)\n${body}${aiAttributionSuffix(attribution)}`;
     }
   }
 }

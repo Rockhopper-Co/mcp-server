@@ -1,3 +1,11 @@
+import {
+  AI_ATTRIBUTION_SHOWN,
+  aiAttributionFromBody,
+  aiAttributionWireFields,
+  mergeAiAttribution,
+  type AiAttribution,
+  type PLAN_LOCKED,
+} from './ai-attribution.js';
 import type { PaginatedUnattributedResponse, UnattributedChange } from './types.js';
 import {
   BAND_KINDS,
@@ -127,11 +135,17 @@ export async function readLedgerSheet(
   api: LedgerChangeReader,
   enrolledFileInternalId: number,
   sheetName: string,
-): Promise<{ changes: UnattributedChange[]; aiLinksAvailable: boolean }> {
+): Promise<{
+  changes: UnattributedChange[];
+  aiLinksAvailable: boolean;
+  /** Whether the organization's plan withheld AI attribution on any read. */
+  aiAttribution: AiAttribution;
+}> {
   const summary = await api.getCompareSummary(enrolledFileInternalId);
   let aiLinksAvailable = linksChecked(summary);
+  let aiAttribution = aiAttributionFromBody(summary);
   const sheet = summary.sheets.find((s) => s.sheetName === sheetName);
-  if (!sheet) return { changes: [], aiLinksAvailable };
+  if (!sheet) return { changes: [], aiLinksAvailable, aiAttribution };
   const rows: UnattributedChange[] = [];
   let cursor: string | undefined;
   do {
@@ -143,9 +157,23 @@ export async function readLedgerSheet(
     );
     rows.push(...sheetPageRows(page));
     aiLinksAvailable &&= linksChecked(page);
+    aiAttribution = mergeAiAttribution(aiAttribution, aiAttributionFromBody(page));
     cursor = page.nextCursor ?? undefined;
   } while (cursor);
-  return { changes: rows, aiLinksAvailable };
+  return { changes: rows, aiLinksAvailable, aiAttribution };
+}
+
+/**
+ * A file-wide page, plus whether the organization's plan withheld AI
+ * attribution on the reads this call made, in the backend's own wire fields
+ * (`aiAttributionWireFields`), so the changes resource serialises one shape
+ * for a workbook and a document. Set ONLY when withheld, so an entitled page
+ * serialises exactly as it always did. Renderers read it back with
+ * `aiAttributionFromBody`.
+ */
+export interface AttributedLedgerPage extends PaginatedUnattributedResponse {
+  aiAttribution?: typeof PLAN_LOCKED;
+  lockedFrom?: string | null;
 }
 
 /**
@@ -201,15 +229,17 @@ export async function readLedgerPage(
   api: LedgerChangeReader,
   enrolledFileInternalId: number,
   cursor?: string,
-): Promise<PaginatedUnattributedResponse> {
+): Promise<AttributedLedgerPage> {
   let state: WalkState;
   const rows: UnattributedChange[] = [];
   let aiLinksAvailable = true;
+  let aiAttribution: AiAttribution = AI_ATTRIBUTION_SHOWN;
   if (cursor) {
     state = decode(cursor);
   } else {
     const summary = await api.getCompareSummary(enrolledFileInternalId);
     aiLinksAvailable = linksChecked(summary);
+    aiAttribution = aiAttributionFromBody(summary);
     const sheets = summary.sheets.filter(
       (s) => s.cellChangeCount + s.rowColumnChangeCount > 0,
     );
@@ -235,6 +265,7 @@ export async function readLedgerPage(
     );
     rows.push(...sheetPageRows(page));
     aiLinksAvailable &&= linksChecked(page);
+    aiAttribution = mergeAiAttribution(aiAttribution, aiAttributionFromBody(page));
     state = page.nextCursor
       ? { ...state, c: page.nextCursor }
       : { ...state, q: state.q.slice(1), c: null };
@@ -246,5 +277,6 @@ export async function readLedgerPage(
     totalCount,
     snapshotId: state.s,
     aiLinksAvailable,
+    ...aiAttributionWireFields(aiAttribution),
   };
 }
