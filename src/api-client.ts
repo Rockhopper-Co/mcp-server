@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
+import { isBillingRefusalCode } from './billing-refusal.js';
 import { getCorrelationId, getToolName } from './correlation.js';
 import { log } from './logger.js';
 import {
@@ -71,12 +72,18 @@ import {
   freshnessFromHeaders,
   type ReadFreshness,
 } from './ledger-freshness.js';
+import {
+  aiAttributionFromHeaders,
+  type AiAttribution,
+} from './ai-attribution.js';
 
 /** ENG-7243 — opt-in freshness return for the cell-history reads. */
 export interface CellHistoryReadOptions {
   onFreshness?: (freshness: ReadFreshness) => void;
   /** ENG-8332 — the `X-AI-Links-Available` answer; `true` when absent. */
   onAiLinksAvailable?: (available: boolean) => void;
+  /** The `X-AI-Attribution` answer; shown when absent (`ai-attribution.ts`). */
+  onAiAttribution?: (attribution: AiAttribution) => void;
 }
 
 /**
@@ -502,7 +509,12 @@ export class ApiClient {
       // an assistant reading `Rockhopper API 429: …` has no reliable way to
       // tell a capacity signal from a real failure, and either way it is not
       // data. Classified here, at the one place every call passes through.
-      const notReady = response.status === 429 || response.status === 503;
+      // A coded billing refusal shares the status and is NOT not-ready
+      // (`billing-refusal.ts`): it stays a RockhopperApiError with its code.
+      const body = await response.text().catch(() => '');
+      const notReady =
+        (response.status === 429 || response.status === 503) &&
+        !isBillingRefusalCode(parseErrorField(body, 'code'));
       const classification =
         response.status === 401 || response.status === 403
           ? 'auth_failed'
@@ -531,7 +543,6 @@ export class ApiClient {
         this.authExpiredNotified = true;
         this.authExpiredHandler();
       }
-      const body = await response.text().catch(() => '');
       if (notReady) {
         throw new ChangeHistoryNotReadyError({
           reason: 'still_producing',
@@ -1046,6 +1057,8 @@ export class ApiClient {
         opts?.onFreshness?.(freshnessFromHeaders(headers));
         // ENG-8332 — the body is a bare array, so the flag is a header.
         opts?.onAiLinksAvailable?.(aiLinksAvailableFromHeaders(headers));
+        // Same reason: a withheld-by-plan answer rides the header only.
+        opts?.onAiAttribution?.(aiAttributionFromHeaders(headers));
       },
     );
   }

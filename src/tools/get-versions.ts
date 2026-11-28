@@ -7,6 +7,10 @@ import {
   isNotReady,
   notReadyToolResult,
 } from '../not-ready.js';
+import {
+  billingRefusalCodeOf,
+  billingRefusalToolResult,
+} from '../billing-refusal.js';
 import type { ToolAnnotations } from './tool-annotations.js';
 
 export function registerGetVersionsTool(
@@ -80,6 +84,9 @@ export function registerGetVersionsTool(
         };
       } catch (error) {
         if (isNotReady(error)) return notReadyToolResult(error);
+        // A billing refusal is not "still producing": render it by its code.
+        const billing = billingRefusalCodeOf(error);
+        if (billing !== null) return billingRefusalToolResult(billing);
         return {
           content: [
             {

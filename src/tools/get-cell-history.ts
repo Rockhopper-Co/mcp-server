@@ -1,28 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ApiClient } from '../api-client.js';
-import {
-  aiLinksClause,
-  aiLinksUnavailableSuffix,
-} from '../change-row-vocabulary.js';
-import {
-  cellHistoryUnavailableToolResult,
-  isCellHistoryUnavailable,
-} from '../cell-history-unavailable.js';
-import {
-  CURRENT,
-  foldFreshness,
-  mergeFreshness,
-  updatingLine,
-  type ReadFreshness,
-} from '../ledger-freshness.js';
-import { isNotReady, notReadyToolResult } from '../not-ready.js';
-import {
-  assertSheetExistsForFile,
-  isUnknownSheet,
-  unknownSheetToolResult,
-} from '../sheet-catalogue.js';
 import { readAnchorHistory } from './anchor-history-read.js';
+import { readCellHistory } from './cell-history-read.js';
 import { parseCellAddress, sheetNamesAgree } from './cell-address.js';
 import { readSmartsheetCellHistory } from './smartsheet-cell-history.js';
 import type { ToolAnnotations } from './tool-annotations.js';
@@ -236,102 +216,7 @@ export function registerGetCellHistoryTool(
           isError: true,
         };
       }
-      const cell = parsed.cell;
-
-      try {
-        // ENG-7243 — ledger reads never refuse (R1, David 2026-10-08): a
-        // pending fold no longer withholds the rows, it marks them UPDATING.
-        // Either source saying `updating` wins: the fold probe, or the
-        // backend's `X-Ledger-Freshness` answer to the capability header.
-        const fold = await foldFreshness(api, fileMsId);
-        let served: ReadFreshness = CURRENT;
-        // ENG-8332 — the backend's `X-AI-Links-Available`; true when absent.
-        let linksChecked = true;
-        const history = await api.getCellHistory(fileMsId, sheetName, cell, {
-          onFreshness: (f) => {
-            served = f;
-          },
-          onAiLinksAvailable: (available) => {
-            linksChecked = available;
-          },
-        });
-        const freshness = mergeFreshness(fold, served);
-
-        // ENG-4347 — ENG-4340 above compares the two ARGUMENTS against each
-        // other; neither was ever compared against the workbook. A caller who
-        // misspells the sheet the same way in both places passed every check
-        // and got "No history found", which this tool's own description
-        // establishes as a positive claim about the cell.
-        //
-        // Only the empty answer pays for the check: a row that came back names
-        // the sheet it is on. Two hops here rather than one, because this tool
-        // never fetches the file otherwise — still nothing on the path that
-        // was never ambiguous.
-        if (history.length === 0) {
-          await assertSheetExistsForFile(api, fileMsId, sheetName);
-        }
-
-        // ENG-1638 (P3-2): a ledger-served entry carries a backend-rendered
-        // `formatted` line — 'vX.Y.Z: <value> — <provenance> (driven by
-        // <human>) — <ts>' — print it verbatim. An older backend's entry has
-        // only the four core fields; keep the original rendering for it.
-        // ENG-8331 — the AI clause follows either form; the display name wins.
-        const summary = history
-          .map((h) => {
-            const ai = aiLinksClause(h.aiLinks);
-            if (h.formatted) return `- ${h.formatted}${ai}`;
-            const actor = h.changedByName ?? h.changedBy;
-            return (
-              `- Version ${h.versionId}: **${JSON.stringify(h.value)}**` +
-              (actor ? ` — by ${actor}` : '') +
-              `${ai} — ${h.changedAt}`
-            );
-          })
-          .join('\n');
-
-        // Render the normalized cell, so the qualified and bare forms of one
-        // address answer identically rather than merely equivalently.
-        const listed = `Cell ${cell} on "${sheetName}" — ${history.length} change(s)`;
-        // ENG-7243 — never "No history found" while updating: that sentence
-        // is a positive claim about the cell, and an updating zero is not one.
-        const text =
-          freshness.state === 'updating'
-            ? `${updatingLine(history.length, freshness.retryAfterSeconds)}\n\n` +
-              (history.length ? `${listed}:\n\n${summary}` : `${listed} so far.`)
-            : history.length
-              ? `${listed}:\n\n${summary}`
-              : `No history found for ${cell} on "${sheetName}".`;
-        return {
-          content: [
-            { type: 'text', text: text + aiLinksUnavailableSuffix(linksChecked) },
-          ],
-        };
-      } catch (error) {
-        // A not-ready answer is a refusal, never an error string: the generic
-        // branch below hands the model prose it may read as "the tool is
-        // broken, answer from what I already have".
-        if (isNotReady(error)) return notReadyToolResult(error);
-        // ENG-4347 — a sheet that cannot be shown to exist is a refusal naming
-        // the sheet, never the "No history found" branch above.
-        if (isUnknownSheet(error)) return unknownSheetToolResult(error);
-        // ENG-1748 — the backend refused because it cannot reconstruct this
-        // file's history. Rendering it through the generic branch below would
-        // hand the model prose it may read as "the tool is broken, answer from
-        // what I already have" — the same wrong turn the not-ready branch above
-        // exists to prevent.
-        if (isCellHistoryUnavailable(error)) {
-          return cellHistoryUnavailableToolResult(cell, sheetName);
-        }
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Failed to get cell history: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+      return readCellHistory(api, fileMsId, sheetName, parsed.cell);
     },
   );
 }

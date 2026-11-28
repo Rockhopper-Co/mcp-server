@@ -1,3 +1,9 @@
+import {
+  PLAN_LOCKED_ROW_MARK,
+  aiAttributionFromBody,
+  aiAttributionSuffix,
+  isPlanLocked,
+} from '../ai-attribution.js';
 import type { ApiClient } from '../api-client.js';
 import {
   anchorHistoryUnavailableToolResult,
@@ -10,6 +16,14 @@ import {
   updatingLine,
 } from '../ledger-freshness.js';
 import { isNotReady, notReadyToolResult } from '../not-ready.js';
+import {
+  billingRefusalCodeOf,
+  billingRefusalToolResult,
+} from '../billing-refusal.js';
+import {
+  isPlanExcludesFeature,
+  planExcludesFeatureToolResult,
+} from '../plan-excludes-feature.js';
 import { SMARTSHEET_FILE_TYPE } from '../smartsheet-discovery.js';
 import type {
   SmartsheetCellHistory,
@@ -46,7 +60,13 @@ function valueText(stored: unknown): string {
   return cell.v === undefined ? '(empty)' : JSON.stringify(cell.v);
 }
 
+/**
+ * A withheld AI actor arrives as `actorKind: 'plan_locked'` with its id
+ * nulled; it was recorded, so it never reads as "actor not recorded", and
+ * `plan_locked` is never printed as a kind of actor.
+ */
 function actorText(entry: SmartsheetCellHistoryEntry): string {
+  if (isPlanLocked(entry.actorKind)) return 'actor not shown';
   if (!entry.actorPlatformId) return 'actor not recorded';
   const kind = entry.actorKind ? `${entry.actorKind} ` : '';
   return `by ${kind}${entry.actorPlatformId}`;
@@ -57,14 +77,28 @@ function entryText(entry: SmartsheetCellHistoryEntry): string {
   const coalesced = entry.coalesced
     ? ' [several writes were seen between two reads; only the first and last values are kept]'
     : '';
+  const withheld = isPlanLocked(entry.provenance) || isPlanLocked(entry.actorKind);
+  const source = isPlanLocked(entry.provenance) ? 'source not shown' : entry.provenance;
   return (
     `- ${when}: ${valueText(entry.fromValue)} -> ${valueText(entry.toValue)}` +
-    ` — ${entry.provenance}, ${actorText(entry)}` +
-    ` (attribution ${entry.attributionConfidence})${coalesced}`
+    ` — ${source}, ${actorText(entry)}` +
+    ` (attribution ${entry.attributionConfidence})${coalesced}` +
+    (withheld ? ` — ${PLAN_LOCKED_ROW_MARK}` : '')
   );
 }
 
+/** The rendered answer, plus the withheld-by-plan note the body carries. */
 export function formatSmartsheetCellHistory(
+  response: SmartsheetCellHistory,
+  updating: { retryAfterSeconds: number } | null,
+): string {
+  return (
+    formatSmartsheetBody(response, updating) +
+    aiAttributionSuffix(aiAttributionFromBody(response))
+  );
+}
+
+function formatSmartsheetBody(
   response: SmartsheetCellHistory,
   updating: { retryAfterSeconds: number } | null,
 ): string {
@@ -134,11 +168,15 @@ export async function readSmartsheetCellHistory(
     };
   } catch (error) {
     if (isNotReady(error)) return notReadyToolResult(error);
+    // A billing refusal is not "still producing": render it by its code.
+    const billing = billingRefusalCodeOf(error);
+    if (billing !== null) return billingRefusalToolResult(billing);
     if (isCellHistoryUnavailable(error)) {
       return anchorHistoryUnavailableToolResult(
         `row ${rowAnchorId}, column ${columnAnchorId}`,
       );
     }
+    if (isPlanExcludesFeature(error)) return planExcludesFeatureToolResult();
     return refusal(
       `Failed to get cell history: ${
         error instanceof Error ? error.message : String(error)
