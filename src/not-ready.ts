@@ -22,6 +22,8 @@
  * `cause`, exactly like the backend's `isParsedOutputNotReady`.
  */
 
+import { billingRefusalCodeOf } from './billing-refusal.js';
+
 /** Why a change-history answer is being refused. */
 export type NotReadyReason =
   /** A commit-diff fold is still rewriting this file's change-log window. */
@@ -242,6 +244,8 @@ export async function assertChangeHistoryComplete(
     // A definitive rejection is the caller's real answer — let it through so
     // the tool reports "not found" / "no access" instead of "retry in 15s".
     if (isDefinitiveRejection(err)) throw err;
+    // A coded billing refusal is an answer too, never "completeness unknown".
+    if (billingRefusalCodeOf(err) !== null) throw err;
     throw new ChangeHistoryNotReadyError({
       reason: 'completeness_unknown',
       fileMsId,

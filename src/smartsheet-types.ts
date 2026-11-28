@@ -60,7 +60,9 @@ export interface SmartsheetCellHistoryEntry {
   eventType: string;
   fromValue: unknown;
   toValue: unknown;
+  /** `plan_locked` when the organization's plan withheld an AI provenance. */
   provenance: string;
+  /** `plan_locked` when the organization's plan withheld an AI actor. */
   actorKind: string | null;
   actorPlatformId: string | null;
   attributionConfidence: string;
@@ -77,4 +79,8 @@ export interface SmartsheetCellHistory {
   history: SmartsheetCellHistoryEntry[];
   /** The oldest entries beyond the page are not listed. */
   truncated: boolean;
+  /** `plan_locked` when the organization's plan withholds AI attribution. */
+  aiAttribution?: string;
+  /** When the withholding began (ISO); null withholds every change. */
+  lockedFrom?: string | null;
 }

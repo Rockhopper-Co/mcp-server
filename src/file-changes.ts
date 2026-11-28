@@ -8,12 +8,16 @@ import {
   documentChangesUnavailableToolResult,
   type DocumentChangesUnavailableReason,
 } from './document-changes.js';
-import { readLedgerPage, readLedgerSheet } from './ledger-changes.js';
+import type { AiAttribution } from './ai-attribution.js';
+import {
+  readLedgerPage,
+  readLedgerSheet,
+  type AttributedLedgerPage,
+} from './ledger-changes.js';
 import { assertSheetExists } from './sheet-catalogue.js';
 import type {
   EnrolledFile,
   LinkCheckedDocumentChanges,
-  PaginatedUnattributedResponse,
   UnattributedChange,
 } from './types.js';
 
@@ -34,7 +38,7 @@ import type {
  * (`ChangeHistoryNotReadyError`), exactly as before.
  */
 export type FileChangesRead =
-  | { kind: 'spreadsheet'; file: EnrolledFile; page: PaginatedUnattributedResponse }
+  | { kind: 'spreadsheet'; file: EnrolledFile; page: AttributedLedgerPage }
   | {
       kind: 'spreadsheet_sheet';
       file: EnrolledFile;
@@ -42,6 +46,8 @@ export type FileChangesRead =
       changes: UnattributedChange[];
       /** ENG-8332 — false when the backend could not check AI links. */
       aiLinksAvailable: boolean;
+      /** Whether the organization's plan withheld AI attribution. */
+      aiAttribution: AiAttribution;
     }
   | { kind: 'document'; file: EnrolledFile; response: LinkCheckedDocumentChanges }
   | {
@@ -106,7 +112,7 @@ export async function readFileChanges(
 
   // ENG-6757 — both spreadsheet modes read the ledger compare routes.
   if (opts.sheetName) {
-    const { changes, aiLinksAvailable } = await readLedgerSheet(
+    const { changes, aiLinksAvailable, aiAttribution } = await readLedgerSheet(
       api,
       file.internalId,
       opts.sheetName,
@@ -123,6 +129,7 @@ export async function readFileChanges(
       sheetName: opts.sheetName,
       changes,
       aiLinksAvailable,
+      aiAttribution,
     };
   }
 

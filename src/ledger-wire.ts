@@ -68,6 +68,10 @@ export interface CompareSummary {
   snapshotId: string;
   /** ENG-8332 — false when the backend could not check AI links; absent ⇒ true. */
   aiLinksAvailable?: boolean;
+  /** `plan_locked` when the organization's plan withholds AI attribution. */
+  aiAttribution?: string;
+  /** When the withholding began (ISO); null withholds every change. */
+  lockedFrom?: string | null;
 }
 
 /** A `rowColumnChanges` bucket → the legacy row's `changeType`. */
@@ -86,6 +90,10 @@ export interface CompareSheetPage {
   nextCursor: string | null;
   /** ENG-8332 — as {@link CompareSummary.aiLinksAvailable}. */
   aiLinksAvailable?: boolean;
+  /** As {@link CompareSummary.aiAttribution}. */
+  aiAttribution?: string;
+  /** As {@link CompareSummary.lockedFrom}. */
+  lockedFrom?: string | null;
 }
 
 /**
